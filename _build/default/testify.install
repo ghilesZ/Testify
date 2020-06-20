@@ -1,0 +1,17 @@
+lib: [
+  "_build/install/default/lib/testify/META"
+  "_build/install/default/lib/testify/dune-package"
+  "_build/install/default/lib/testify/opam"
+  "_build/install/default/lib/testify/testify.a"
+  "_build/install/default/lib/testify/testify.cma"
+  "_build/install/default/lib/testify/testify.cmi"
+  "_build/install/default/lib/testify/testify.cmt"
+  "_build/install/default/lib/testify/testify.cmx"
+  "_build/install/default/lib/testify/testify.cmxa"
+  "_build/install/default/lib/testify/testify.cmxs"
+  "_build/install/default/lib/testify/testify.ml"
+]
+doc: [
+  "_build/install/default/doc/testify/LICENSE"
+  "_build/install/default/doc/testify/README.md"
+]

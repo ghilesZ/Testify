@@ -1,0 +1,6 @@
+description = ""
+requires = "qcheck"
+archive(byte) = "testify.cma"
+archive(native) = "testify.cmxa"
+plugin(byte) = "testify.cma"
+plugin(native) = "testify.cmxs"

@@ -1,0 +1,4 @@
+(test
+  (name arith)
+  (preprocess (staged_pps ppx_testify))
+  (libraries qcheck testify))

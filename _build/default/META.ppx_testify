@@ -1,0 +1,12 @@
+description = ""
+requires(ppx_driver) = "ocaml-migrate-parsetree
+                        ppx_tools_versioned
+                        ppx_tools_versioned.metaquot_408"
+archive(ppx_driver,byte) = "ppx_testify.cma"
+archive(ppx_driver,native) = "ppx_testify.cmxa"
+plugin(ppx_driver,byte) = "ppx_testify.cma"
+plugin(ppx_driver,native) = "ppx_testify.cmxs"
+# This line makes things transparent for people mixing preprocessors
+# and normal dependencies
+requires(-ppx_driver) = ""
+ppx(-ppx_driver,-custom_ppx) = "./ppx.exe --as-ppx"

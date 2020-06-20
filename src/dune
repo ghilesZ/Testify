@@ -1,0 +1,8 @@
+(library
+  (public_name ppx_testify)
+  (name ppx_testify)
+  (kind ppx_rewriter)
+  (preprocess (pps ppx_tools_versioned.metaquot_408))
+  (libraries ppx_tools_versioned
+             ppx_tools_versioned.metaquot_408
+             ocaml-migrate-parsetree))

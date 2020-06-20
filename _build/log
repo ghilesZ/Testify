@@ -1,0 +1,119 @@
+# dune runtest
+# OCAMLPARAM: unset
+# Workspace root: /home/disc/g.ziat/testify
+$ /usr/bin/nproc > /tmp/dune9eb940.output 2> /dev/null
+# Auto-detected concurrency: 8
+# disable binary cache
+$ /home/disc/g.ziat/.opam/4.09.0/bin/ocamlc.opt -config > /tmp/duned345f4.output
+# Dune context:
+#  { name = "default"
+#  ; kind = "default"
+#  ; profile = Dyn
+#  ; merlin = true
+#  ; for_host = None
+#  ; fdo_target_exe = None
+#  ; build_dir = "default"
+#  ;
+#  toplevel_path = Some External "/home/disc/g.ziat/.opam/4.09.0/lib/toplevel"
+#  ; ocaml_bin = External "/home/disc/g.ziat/.opam/4.09.0/bin"
+#  ; ocaml = External "/home/disc/g.ziat/.opam/4.09.0/bin/ocaml"
+#  ; ocamlc = External "/home/disc/g.ziat/.opam/4.09.0/bin/ocamlc.opt"
+#  ; ocamlopt = Some External "/home/disc/g.ziat/.opam/4.09.0/bin/ocamlopt.opt"
+#  ; ocamldep = External "/home/disc/g.ziat/.opam/4.09.0/bin/ocamldep.opt"
+#  ; ocamlmklib = External "/home/disc/g.ziat/.opam/4.09.0/bin/ocamlmklib.opt"
+#  ;
+#  env =
+#    map
+#      { "DUNE_CONFIGURATOR" : "/home/disc/g.ziat/.opam/4.09.0/bin/ocamlc.opt"
+#      ; "INSIDE_DUNE" : "1"
+#      ;
+#      "OCAMLFIND_IGNORE_DUPS_IN" :
+#        "/home/disc/g.ziat/testify/_build/install/default/lib"
+#      ; "OCAMLPATH" : "/home/disc/g.ziat/testify/_build/install/default/lib"
+#      ; "OCAML_COLOR" : "always"
+#      ; "OPAMCOLOR" : "always"
+#      }
+#  ; findlib_path = [ External "/home/disc/g.ziat/.opam/4.09.0/lib" ]
+#  ; arch_sixtyfour = true
+#  ; natdynlink_supported = true
+#  ; supports_shared_libraries = true
+#  ; opam_vars = map {}
+#  ;
+#  ocaml_config =
+#    { version = "4.09.0"
+#    ; standard_library_default = "/home/disc/g.ziat/.opam/4.09.0/lib/ocaml"
+#    ; standard_library = "/home/disc/g.ziat/.opam/4.09.0/lib/ocaml"
+#    ; standard_runtime = "the_standard_runtime_variable_was_deleted"
+#    ; ccomp_type = "cc"
+#    ; c_compiler = "gcc"
+#    ; ocamlc_cflags = [ "-O2"; "-fno-strict-aliasing"; "-fwrapv"; "-fPIC" ]
+#    ; ocamlopt_cflags = [ "-O2"; "-fno-strict-aliasing"; "-fwrapv" ]
+#    ;
+#    bytecomp_c_compiler =
+#      [ "gcc"
+#      ; "-O2"
+#      ; "-fno-strict-aliasing"
+#      ; "-fwrapv"
+#      ; "-fPIC"
+#      ; "-D_FILE_OFFSET_BITS=64"
+#      ; "-D_REENTRANT"
+#      ]
+#    ; bytecomp_c_libraries = [ "-lm"; "-ldl"; "-lpthread" ]
+#    ;
+#    native_c_compiler =
+#      [ "gcc"
+#      ; "-O2"
+#      ; "-fno-strict-aliasing"
+#      ; "-fwrapv"
+#      ; "-D_FILE_OFFSET_BITS=64"
+#      ; "-D_REENTRANT"
+#      ]
+#    ; native_c_libraries = [ "-lm"; "-ldl" ]
+#    ; cc_profile = []
+#    ; architecture = "amd64"
+#    ; model = "default"
+#    ; int_size = 63
+#    ; word_size = 64
+#    ; system = "linux"
+#    ; asm = [ "as" ]
+#    ; asm_cfi_supported = true
+#    ; with_frame_pointers = false
+#    ; ext_exe = ""
+#    ; ext_obj = ".o"
+#    ; ext_asm = ".s"
+#    ; ext_lib = ".a"
+#    ; ext_dll = ".so"
+#    ; os_type = "Unix"
+#    ; default_executable_name = "a.out"
+#    ; systhread_supported = true
+#    ; host = "x86_64-pc-linux-gnu"
+#    ; target = "x86_64-pc-linux-gnu"
+#    ; profiling = false
+#    ; flambda = false
+#    ; spacetime = false
+#    ; safe_string = false
+#    ; exec_magic_number = "Caml1999X026"
+#    ; cmi_magic_number = "Caml1999I026"
+#    ; cmo_magic_number = "Caml1999O026"
+#    ; cma_magic_number = "Caml1999A026"
+#    ; cmx_magic_number = "Caml1999Y026"
+#    ; cmxa_magic_number = "Caml1999Z026"
+#    ; ast_impl_magic_number = "Caml1999M026"
+#    ; ast_intf_magic_number = "Caml1999N026"
+#    ; cmxs_magic_number = "Caml1999D026"
+#    ; cmt_magic_number = "Caml1999T026"
+#    ; natdynlink_supported = true
+#    ; supports_shared_libraries = true
+#    ; windows_unicode = false
+#    }
+#  ;
+#  which =
+#    map
+#      { "ocaml" : Some External "/home/disc/g.ziat/.opam/4.09.0/bin/ocaml"
+#      ;
+#      "ocamlc" : Some External "/home/disc/g.ziat/.opam/4.09.0/bin/ocamlc.opt"
+#      ;
+#      "ocamlobjinfo" :
+#        Some External "/home/disc/g.ziat/.opam/4.09.0/bin/ocamlobjinfo.opt"
+#      }
+#  }

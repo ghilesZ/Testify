@@ -1,0 +1,20 @@
+(lang dune 2.1)
+(name ppx_testify)
+(library
+ (name ppx_testify)
+ (kind ppx_rewriter)
+ (archives (byte ppx_testify.cma) (native ppx_testify.cmxa))
+ (plugins (byte ppx_testify.cma) (native ppx_testify.cmxs))
+ (native_archives ppx_testify.a)
+ (requires
+  ppx_tools_versioned
+  ppx_tools_versioned.metaquot_408
+  ocaml-migrate-parsetree)
+ (main_module_name Ppx_testify)
+ (modes byte native)
+ (modules
+  (singleton
+   (name Ppx_testify)
+   (obj_name ppx_testify)
+   (visibility public)
+   (impl))))
