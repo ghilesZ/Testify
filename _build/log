@@ -1,10 +1,10 @@
-# dune runtest
+# dune build
 # OCAMLPARAM: unset
 # Workspace root: /home/disc/g.ziat/testify
-$ /usr/bin/nproc > /tmp/dune9eb940.output 2> /dev/null
+$ /usr/bin/nproc > /tmp/dune37311c.output 2> /dev/null
 # Auto-detected concurrency: 8
 # disable binary cache
-$ /home/disc/g.ziat/.opam/4.09.0/bin/ocamlc.opt -config > /tmp/duned345f4.output
+$ /home/disc/g.ziat/.opam/4.09.0/bin/ocamlc.opt -config > /tmp/dunecd5bc8.output
 # Dune context:
 #  { name = "default"
 #  ; kind = "default"
