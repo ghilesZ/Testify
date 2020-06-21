@@ -1,6 +1,5 @@
 open Testify
 
-(***************************************)
 (* testing few arithmetical properties *)
 (***************************************)
 
@@ -11,10 +10,9 @@ let[@gen] int_gen = QCheck.int
 let[@commut][@assoc] add a b = a + b
 
 (* test that mul is distributive over add *)
-let[@distrib add] mul a b = a * b
+let[@commut][@assoc][@distrib add] mul a b = a * b
 
-(*********************************)
-(* soundyness test for intervals *)
+(* soundiness test for intervals *)
 (*********************************)
 
 let print_itv fmt (a,b) =
@@ -36,9 +34,9 @@ let[@rand_gamma] rec spawn (a,b) =
 (* in_gamma(e,i) <==> i \in \gamma(e). It avoids computing gamma *)
 let[@in_gamma] abstracts (a,b) i = a <= i && i <= b
 
-(* setting the current generator *)
+(* setting a generator for itvs *)
 let[@gen] gen_itv =
-  QCheck.(Gen.(map2 (fun i j -> (min i j),(max i j)) small_int small_int)
+  QCheck.(Gen.(map2 (fun i j -> (min i j),(max i j)) int int)
           |> make ~print:(Format.asprintf "%a" print_itv))
 
 (* test that add_itv is a sound over-approx of add, w.r.t to the GC-ish (spawn,abstracts)*)

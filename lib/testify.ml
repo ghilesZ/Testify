@@ -1,98 +1,105 @@
-let commut ~count ~name gen f =
-  QCheck.Test.make ~count ~name
+(* holder for test suites *)
+let suite = ref []
+
+let commut ?subscribe:(s=true) ~count ~name gen f =
+  let t = QCheck.Test.make ~count ~name
     (QCheck.pair gen gen)
     (fun (i,j) -> f i j = f j i)
-  |> QCheck.Test.check_exn
+  in
+  if s then suite := (t::!suite) else QCheck.Test.check_exn t
 
-let assoc ~count ~name gen f =
-  QCheck.Test.make ~count ~name
+let assoc ?subscribe:(s=true) ~count ~name gen f =
+  let t = QCheck.Test.make ~count ~name
     (QCheck.triple gen gen gen)
     (fun (i,j,k) -> f (f i j) k = f i (f j k))
-  |> QCheck.Test.check_exn
+  in if s then suite := (t::!suite) else QCheck.Test.check_exn t
 
-let distrib_left ~count ~name gen f g =
-  QCheck.Test.make ~count ~name
+let distrib_left ?subscribe:(s=true) ~count ~name gen f g =
+  let t = QCheck.Test.make ~count ~name
     (QCheck.triple gen gen gen)
     (fun (i,j,k) -> f i (g j k) = g (f i j) (f i k))
-  |> QCheck.Test.check_exn
+  in if s then suite := (t::!suite) else QCheck.Test.check_exn t
 
-let distrib_right ~count ~name gen f g =
-  QCheck.Test.make ~count ~name
+let distrib_right ?subscribe:(s=true) ~count ~name gen f g =
+  let t = QCheck.Test.make ~count ~name
     (QCheck.triple gen gen gen)
     (fun (i,j,k) -> f (g i j) k = g (f i k) (f j k))
-  |> QCheck.Test.check_exn
+  in if s then suite := (t::!suite) else QCheck.Test.check_exn t
 
-let distrib ~count ~name gen f g =
-  QCheck.Test.make ~count ~name
+let distrib ?subscribe:(s=true) ~count ~name gen f g =
+  let t = QCheck.Test.make ~count ~name
     (QCheck.triple gen gen gen)
     (fun (i,j,k) -> f i (g j k) = g (f i j) (f i k) && f (g i j) k = g (f i k) (f j k))
-  |> QCheck.Test.check_exn
+  in if s then suite := (t::!suite) else QCheck.Test.check_exn t
 
-let increasing ~count ~name gen f compare =
-  QCheck.Test.make ~count ~name
+
+let increasing ?subscribe:(s=true) ~count ~name gen f compare =
+  let t = QCheck.Test.make ~count ~name
     (QCheck.pair gen gen)
     (fun (i,j) -> (compare i j) * (compare (f i) (f j)) > 0)
-  |> QCheck.Test.check_exn
+  in if s then suite := (t::!suite) else QCheck.Test.check_exn t
 
-let decreasing ~count ~name gen f compare =
-  QCheck.Test.make ~count ~name
+let decreasing ?subscribe:(s=true) ~count ~name gen f compare =
+  let t = QCheck.Test.make ~count ~name
     (QCheck.pair gen gen)
     (fun (i,j) -> (compare i j) * (compare (f i) (f j)) < 0)
-  |> QCheck.Test.check_exn
+  in if s then suite := (t::!suite) else QCheck.Test.check_exn t
 
 
-let neutral_left ~count ~name gen f neutral =
-  QCheck.Test.make ~count ~name
+let neutral_left ?subscribe:(s=true) ~count ~name gen f neutral =
+  let t = QCheck.Test.make ~count ~name
     gen
     (fun i -> f neutral i = i)
-  |> QCheck.Test.check_exn
+  in if s then suite := (t::!suite) else QCheck.Test.check_exn t
 
-let neutral_right ~count ~name gen f neutral =
-  QCheck.Test.make ~count ~name
+let neutral_right ?subscribe:(s=true) ~count ~name gen f neutral =
+  let t = QCheck.Test.make ~count ~name
     gen
     (fun i -> f i neutral = i)
-  |> QCheck.Test.check_exn
+  in if s then suite := (t::!suite) else QCheck.Test.check_exn t
 
-let neutral ~count ~name gen f neutral =
-  QCheck.Test.make ~count ~name
+let neutral ?subscribe:(s=true) ~count ~name gen f neutral =
+  let t = QCheck.Test.make ~count ~name
     gen
     (fun i -> f i neutral = i && f neutral i = i)
-  |> QCheck.Test.check_exn
+  in if s then suite := (t::!suite) else QCheck.Test.check_exn t
 
-let absorb_left ~count ~name gen f absorb =
-  QCheck.Test.make ~count ~name
+let absorb_left ?subscribe:(s=true) ~count ~name gen f absorb =
+  let t = QCheck.Test.make ~count ~name
     gen
     (fun i -> f absorb i = absorb)
-  |> QCheck.Test.check_exn
+  in if s then suite := (t::!suite) else QCheck.Test.check_exn t
 
-let absorb_right ~count ~name gen f absorb =
-  QCheck.Test.make ~count ~name
+let absorb_right ?subscribe:(s=true) ~count ~name gen f absorb =
+  let t = QCheck.Test.make ~count ~name
     gen
     (fun i -> f i absorb = absorb)
-  |> QCheck.Test.check_exn
+  in if s then suite := (t::!suite) else QCheck.Test.check_exn t
 
-let absorb ~count ~name gen f absorb =
-  QCheck.Test.make ~count ~name
+let absorb ?subscribe:(s=true) ~count ~name gen f absorb =
+  let t = QCheck.Test.make ~count ~name
     gen
     (fun i -> f i absorb = absorb && f absorb i = absorb)
-  |> QCheck.Test.check_exn
+  in if s then suite := (t::!suite) else QCheck.Test.check_exn t
 
-let over_approx ~count ~name gen (f: 'a -> 'a) (g:'b -> 'b)
+let over_approx ?subscribe:(s=true) ~count ~name gen (f: 'a -> 'a) (g:'b -> 'b)
       (in_gamma : 'a -> 'b -> bool) (rand_gamma: 'a -> 'b) =
-  QCheck.Test.make ~count ~name
+  let t = QCheck.Test.make ~count ~name
     gen
     (fun i -> in_gamma (f i) (g (rand_gamma i)))
-  |> QCheck.Test.check_exn
+  in if s then suite := (t::!suite) else QCheck.Test.check_exn t
 
-let over_approx2 ~count ~name gen
+let over_approx2 ?subscribe:(s=true) ~count ~name gen
       (f: 'a -> 'a -> 'a)
       (g:'b -> 'b -> 'b)
       (in_gamma : 'a -> 'b -> bool)
       (rand_gamma: 'a -> 'b) =
-  QCheck.Test.make ~count ~name
+  let t = QCheck.Test.make ~count ~name
     (QCheck.pair gen gen)
     (fun (i,j) ->
       let abs = f i j in
       let conc = g (rand_gamma i) (rand_gamma j) in
       in_gamma abs conc)
-  |> QCheck.Test.check_exn
+  in if s then suite := (t::!suite) else QCheck.Test.check_exn t
+
+let run () = ignore (QCheck_runner.run_tests ~colors:true ~verbose:true (!suite))

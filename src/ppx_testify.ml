@@ -1,81 +1,68 @@
-open Migrate_parsetree.Ast_408
+open Migrate_parsetree
+open Ast_408
 open Parsetree
 open Ast_mapper
 open Ast_helper
 open Location
 
+let ocaml_version = Versions.ocaml_408
+module Convert_to_current = Convert (OCaml_408) (OCaml_current)
+
+(* TODO: change 1000 *)
+let count = ref 1000
+
+let string_of_expression (expr: Parsetree.expression) : string =
+  let copy = Convert_to_current.copy_expression expr in
+  Format.asprintf "%s" (Pprintast.string_of_expression copy)
+
 (* given a function name [fn], builds the identifier [fn] *)
-let id fname loc =
+let id ?loc:(loc=none) fname =
   Exp.ident ~loc {txt = Lident fname; loc}
 
 (* given an expression 'e', generates the ast fragment for "let _ = e"*)
-let wild_card_declaration expr =
-  Pstr_value(Asttypes.Nonrecursive,
-             [{pvb_pat={ppat_desc=Ppat_any;
-                        ppat_loc=none;
-                        ppat_loc_stack=[];
-                        ppat_attributes=[]};
-               pvb_attributes=[];
-               pvb_expr=expr;
-               pvb_loc=none
-    }])
+let wild_card_declaration loc expr = Str.eval ~loc expr
 
-(* TODO: change 1000 *)
-let call loc funname title gen arg =
-  Exp.apply ~loc:loc (id funname loc) [
-      Labelled "count",Exp.constant (Pconst_integer ("1000",None));
-      Labelled "name",Exp.constant (Pconst_string (title,None));
-      Nolabel,gen;
-      Nolabel,(id arg loc)
-    ]
+let testify_call funname testname args =
+  let open Asttypes in
+    Exp.(apply (id funname) ([
+      Labelled "count", constant (Pconst_integer (string_of_int (!count),None));
+      Labelled "name", constant (Pconst_string (testname,None));
+    ]@(List.map (fun e -> Nolabel,e) args)))
 
-let call2 loc funname title gen arg1 arg2 =
-  Exp.apply ~loc:loc (id funname loc) [
-      Labelled "count",Exp.constant (Pconst_integer ("1000",None));
-      Labelled "name",Exp.constant (Pconst_string (title,None));
-      Nolabel,gen;
-      Nolabel,(id arg1 loc);
-      Nolabel,(id arg2 loc)
-    ]
+let call funname title gen arg =
+  testify_call funname title [gen;arg]
 
-let call4 loc funname title gen arg1 arg2 arg3 arg4 =
-  Exp.apply ~loc:loc (id funname loc) [
-      Labelled "count",Exp.constant (Pconst_integer ("1000",None));
-      Labelled "name",Exp.constant (Pconst_string (title,None));
-      Nolabel,gen;
-      Nolabel,(id arg1 loc);
-      Nolabel,(id arg2 loc);
-      Nolabel, arg3;
-      Nolabel, arg4
- ]
+let call2 funname title gen arg1 arg2 =
+   testify_call funname title [gen; arg1; arg2]
+
+let call4 funname title gen arg1 arg2 arg3 arg4 =
+  testify_call funname title [gen; arg1; arg2; arg3; arg4]
 
 let commut_test loc funname gen : structure_item =
   let fname,_,_ = get_pos_info loc.loc_start in
-  let testname = "commutativity test of "^funname^" in file "^fname in
-  let test = call loc "commut" testname gen funname in
-  let desc = wild_card_declaration test in
-  {pstr_desc=desc;pstr_loc = loc}
+  let testname = funname^" in file "^fname^" is commutative" in
+  let test = call "commut" testname gen (id funname) in
+  wild_card_declaration loc test
 
 let assoc_test loc funname gen : structure_item =
   let fname,_,_ = get_pos_info loc.loc_start in
-  let testname = "associativity test of "^funname^" in file "^fname in
-  let test = call loc "assoc" testname gen funname in
-  let desc = wild_card_declaration test in
-  {pstr_desc=desc;pstr_loc = loc}
+  let testname = funname^" in file "^fname^" is associative" in
+  let test = call "assoc" testname gen (id funname) in
+  wild_card_declaration loc test
 
-let distrib_test loc funname1 funname2 gen : structure_item =
+let distrib_test loc funname1 over gen : structure_item =
   let fname,_,_ = get_pos_info loc.loc_start in
-  let testname = "distributivity test of "^funname1^" in file "^fname^" over"^funname2 in
-  let test = call2 loc "distrib" testname gen funname1 funname2   in
-  let desc = wild_card_declaration test in
-  {pstr_desc=desc;pstr_loc = loc}
+  let str = string_of_expression over in
+  let testname = funname1^" in file "^fname^"is distributive over "^str in
+  let test = call2 "distrib" testname gen (id funname1) over   in
+  wild_card_declaration loc test
 
-let over_approx_test loc funname1 funname2 in_g rand_g gen : structure_item =
+let over_approx_test loc funname1 over in_g rand_g gen : structure_item =
   let fname,_,_ = get_pos_info loc.loc_start in
-  let testname = " that "^funname1^" in file "^fname^" over-approximates "^funname2 in
-  let test = call4 loc "over_approx2" testname gen funname1 funname2 in_g rand_g in
-  let desc = wild_card_declaration test in
-  {pstr_desc=desc;pstr_loc = loc}
+  let str = string_of_expression over in
+  let testname = funname1^" in file "^fname^" over-approximates "^str in
+  let test = call4 "over_approx2" testname gen (id funname1) over in_g rand_g in
+  wild_card_declaration loc test
 
 type ppx_state = {
     gen:expression option;
@@ -100,51 +87,52 @@ let get_rand_gamma s =
 
 (* builds the list of tests to be added to the AST *)
 let gather_tests state loc funname (attr:attributes) =
-  let str = Stream.of_list attr in
-  let rec loop state acc =
-    match Stream.next str |> helper with
-    | "in_gamma",[] ->
-       loop {state with in_gamma = Some (id funname loc)} acc
-    | "rand_gamma",[] ->
-       loop {state with rand_gamma = Some (id funname loc)} acc
-    | "gen",[] ->
-       loop {state with gen = Some (id funname loc)} acc
-    | "gen",[{pstr_desc=Pstr_eval (e,_);_}] ->
-       loop {state with gen = Some e} acc
-    | "commut",[] ->
-       let t = commut_test loc funname (get_gen state) in
-       loop state (t::acc)
-    | "assoc",[] ->
-       let t = assoc_test loc funname (get_gen state) in
-       loop state (t::acc)
-    | "distrib",[{pstr_desc=Pstr_eval ({pexp_desc=Pexp_ident id;_},_);_}] ->
-       let t = distrib_test loc funname (Longident.last id.txt) (get_gen state) in
-       loop state (t::acc)
-    | "over_approx", [{pstr_desc=Pstr_eval ({pexp_desc=Pexp_ident id;_},_);_}]->
+    let helper a : string * expression list =
+      match a.attr_payload with
+      | PStr [] -> a.attr_name.txt,[]
+      | PStr [{pstr_desc=Pstr_eval (f,_);_}] -> a.attr_name.txt,[f]
+      | _ -> failwith "invalid payload"
+    in
+    let aux (state,acc) e =
+    match e |> helper with
+    | "in_gamma",[] -> {state with in_gamma = Some (id funname)},acc
+    | "rand_gamma",[] -> {state with rand_gamma = Some (id funname)},acc
+    | "gen",[] -> {state with gen = Some (id funname)},acc
+    | "gen",[e] -> {state with gen = Some e},acc
+    | "commut",[] -> let t = commut_test loc funname (get_gen state) in
+                     state,(t::acc)
+    | "assoc",[] -> let t = assoc_test loc funname (get_gen state) in
+                    state,(t::acc)
+    | "distrib",[f] -> let t = distrib_test loc funname f (get_gen state) in
+                       state,(t::acc)
+    | "over_approx", [f]->
        let t = over_approx_test loc funname
-                 (Longident.last id.txt)
+                 f
                  (get_in_gamma state)
                  (get_rand_gamma state)
                  (get_gen state) in
-       loop state (t::acc)
-    | _ -> loop state acc
-    | exception Stream.Failure -> acc,state
-  and helper a =
-    match a.attr_payload with
-    | PStr x -> a.attr_name.txt,x
-    | _ -> failwith "invalid payload"
+       state,(t::acc)
+    | _ -> state,acc
   in
-  loop state []
+  List.fold_left aux (state,[]) attr
+
+let call_run =
+  let unit_lid = Longident.Lident "()" in
+  let ghost = Location.none in
+  let unit_lid_loc = Location.mkloc unit_lid ghost in
+  let unit = Pexp_construct (unit_lid_loc,None) in
+  let call = Exp.(apply (id "run") [Nolabel, Exp.mk unit]) in
+  Str.mk (Pstr_eval (call,[]))
 
 let testify_mapper =
   let handle_str mapper =
     let rec aux state res = function
-      | [] -> List.rev res
+      | [] -> List.rev (call_run::res)
       | ({pstr_desc=
             Pstr_value(_,[
                   {pvb_pat={ppat_desc=Ppat_var ({txt=funname;_});ppat_loc=loc;_}
                   ;pvb_attributes=(_::_ as attr);_}]);_} as h)::tl ->
-         let tests,state = gather_tests state loc funname attr in
+         let state,tests = gather_tests state loc funname attr in
          aux state (tests@(h::res)) tl
       | h::tl ->
          let h' = mapper.structure_item mapper h in

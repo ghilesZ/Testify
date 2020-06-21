@@ -26,7 +26,7 @@ build:
 	dune build
 
 test:
-	@dune runtest
+	@dune runtest -f
 
 clean:
 	dune clean
