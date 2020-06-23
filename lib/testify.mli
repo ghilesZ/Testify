@@ -63,18 +63,32 @@ val absorb :
   name:string ->
   'a QCheck.arbitrary -> ('a -> 'a -> 'a) -> 'a -> unit
 
+type ('a,'b) gc = {
+    alpha : Random.State.t -> 'a; (* abstract value generator *)
+    r_gamma : 'a -> 'b;           (* concrete value generator, wrt an abstract element *)
+    in_gamma : 'a -> 'b -> bool;
+    a_printer : Format.formatter -> 'a -> unit;
+    g_printer : Format.formatter -> 'b -> unit
+  }
+
+val make_gc :
+  (Random.State.t -> 'a) ->
+  ('a -> 'b) ->
+  ('a -> 'b -> bool) ->
+  (Format.formatter -> 'a -> unit) ->
+  (Format.formatter -> 'b -> unit) ->
+  ('a, 'b) gc
+
 val over_approx :
-  ?subscribe:bool -> count:int ->
+  ?subscribe:bool ->
+  count:int ->
   name:string ->
-  'a QCheck.arbitrary ->
-  ('a -> 'a) ->
-  ('b -> 'b) -> ('a -> 'b -> bool) -> ('a -> 'b) -> unit
+  ('a, 'b) gc -> ('a -> 'a) -> ('b -> 'b) -> string -> string -> unit
 
 val over_approx2 :
-  ?subscribe:bool -> count:int ->
+  ?subscribe:bool ->
+  count:int ->
   name:string ->
-  'a QCheck.arbitrary ->
-  ('a -> 'a -> 'a) ->
-  ('b -> 'b -> 'b) -> ('a -> 'b -> bool) -> ('a -> 'b) -> unit
+  ('a, 'b) gc -> ('a -> 'a -> 'a) -> ('b -> 'b -> 'b) -> string -> string -> unit
 
 val run : unit -> unit

@@ -15,13 +15,13 @@ let[@commut][@assoc][@distrib add] mul a b = a * b
 (* soundiness test for intervals *)
 (*********************************)
 
-let print_itv fmt (a,b) =
-  Format.fprintf fmt "[%i;%i]" a b
+let [@abstract_printer] print_itv fmt (a,b) = Format.fprintf fmt "[%i;%i]" a b
+
+let [@concrete_printer] print_int fmt = Format.fprintf fmt "%i"
 
 (* rand_gamma tags a function that will be used for soundness test
    it should generate randomly and uniformly a value in \gamma(e) *)
 let[@rand_gamma] rec spawn (a,b) =
-  assert (a<=b);
   if b = a then a
   else if a >= 0 then (QCheck.Gen.int_range a b) (Random.get_state ())
   else if b <= 0 then - ((QCheck.Gen.int_range (-b) (-a)) (Random.get_state ()))
@@ -36,8 +36,7 @@ let[@in_gamma] abstracts (a,b) i = a <= i && i <= b
 
 (* setting a generator for itvs *)
 let[@gen] gen_itv =
-  QCheck.(Gen.(map2 (fun i j -> (min i j),(max i j)) int int)
-          |> make ~print:(Format.asprintf "%a" print_itv))
+  QCheck.(Gen.(map2 (fun i j -> (min i j),(max i j)) int int))
 
 (* test that add_itv is a sound over-approx of add, w.r.t to the GC-ish (spawn,abstracts)*)
 let[@over_approx add] add_itv (a1,a2) (b1,b2) =
