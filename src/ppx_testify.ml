@@ -8,12 +8,30 @@ open Location
 let ocaml_version = Versions.ocaml_408
 module Conv = Convert (OCaml_408) (OCaml_current)
 
-(* given a function name [fn], builds the identifier [fn] *)
-let id ?loc:(loc=none) fname =
-  Exp.ident ~loc {txt = Lident fname; loc}
+(* PPX helpers *)
+
+(* given a string [name], builds the identifier [name] *)
+let id ?loc:(loc=none) name =
+  Exp.ident ~loc {txt = Lident name; loc}
+
+(* let _ = assert (f a) *)
+let testify_call0 f a =
+  Str.eval (Exp.(assert_(apply f [Nolabel,a])))
 
 module Types = Map.Make(struct type t = Longident.t let compare = compare end)
 module Decl = Set.Make(struct type t = type_declaration let compare = compare end)
+
+let add_gen t_id gen_id =
+  Types.add (Longident.Lident t_id) (id gen_id)
+
+let add_prop t_id : expression -> expression Types.t -> expression Types.t =
+  Types.add (Longident.Lident t_id)
+
+(* search for the declaration of the type with identifier [lid]*)
+let find_decl lid decl =
+  Decl.find_first_opt (fun td ->
+      (Longident.parse td.ptype_name.txt) = lid
+    ) decl
 
 type rewritting_state = {
     filename     : string;
@@ -22,14 +40,13 @@ type rewritting_state = {
     properties   : expression Types.t
   }
 
-let find_decl lid decl =
-  Decl.find_first_opt (fun td ->
-      (Longident.parse td.ptype_name.txt) = lid
-    ) decl
-
-(* if no generator is attached to the type, we search for its
-   declaration and derive automatically a generator from it. TODO: if
-   the declaration was itself a dependant type, adapt generator *)
+(* Given a rewritting state [rs] and and a type [t], search for the
+   generator (currently) associated to [t] in [rs]. If no generator is
+   attached to [t], we search for its declaration and try to derive
+   automatically a generator from it. Returns the rewritting state
+   updated with potentially new generators, and agenerator option.
+   TODO: if the declaration was itself a dependant type, adapt
+   generator *)
 let rec get_generator rs (typ:core_type) =
   match typ.ptyp_desc with
   | Ptyp_constr ({txt;_},[]) ->
@@ -39,25 +56,19 @@ let rec get_generator rs (typ:core_type) =
             match decl with
             | Some {ptype_manifest = Some t;_} -> get_generator rs t
             | _ -> rs,None)
+  |	Ptyp_poly ([],ct)   -> get_generator rs ct
   | _ -> rs,None
-
 and add_to_rs rs t g =
   {rs with generators = Types.add t g rs.generators},Some g
 
-let add_gen t_id gen_id =
-  Types.add (Longident.Lident t_id) (id gen_id)
-
-let add_prop t_id : expression -> expression Types.t -> expression Types.t =
-  Types.add (Longident.Lident t_id)
-
-let add_decl td = Decl.add td
-
-let rec get_property ct rs =
+(* Checks if a property is attached to the type [ct] in [rs] *)
+let rec get_property ct rs : expression option =
   match ct.ptyp_desc with
   | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.properties
   |	Ptyp_poly ([],ct)   -> get_property ct rs
   | _ -> None
 
+(* initial rewritting state, with a few generators by default *)
 let initial_rs =
   let generators =
     Types.empty
@@ -67,6 +78,7 @@ let initial_rs =
   in
   {filename=""; declarations=Decl.empty; generators; properties=Types.empty}
 
+(* update the rewritting state according to a type declaration *)
 let declare_type state td =
   match td.ptype_manifest with
   | Some {ptyp_attributes;_} ->
@@ -79,16 +91,9 @@ let declare_type state td =
           *   Pprintast.expression (Conv.copy_expression e); *)
          {state with
            properties = add_prop td.ptype_name.txt e state.properties;
-           declarations = add_decl td state.declarations}
+           declarations = Decl.add td state.declarations}
       | _ -> failwith "bad satisfying attribute")
   | None -> state
-
-let testify_call0 funexpr arg =
-  Str.eval (Exp.(assert_(apply funexpr [Nolabel,arg])))
-
-(* given a function name [fn], builds the identifier [fn] *)
-let id ?loc:(loc=none) fname =
-  Exp.ident ~loc {txt = Lident fname; loc}
 
 let testify_mapper =
   let handle_str mapper =
@@ -110,9 +115,8 @@ let testify_mapper =
        * let typ' = Conv.copy_core_type typ in
        * (match g with
        * | None -> Format.printf "no generator for type %a\n" Pprintast.core_type typ'
-       * | Some _ -> Format.printf "generator found for type %a\n" Pprintast.core_type typ'); *)      | h::tl ->
-                                                                                                         let h' = mapper.structure_item mapper h in
-                                                                                                         aux state (h'::res) tl
+       * | Some _ -> Format.printf "generator found for type %a\n" Pprintast.core_type typ'); *)
+      | h::tl -> let h' = mapper.structure_item mapper h in aux state (h'::res) tl
     in
     aux initial_rs []
   in
