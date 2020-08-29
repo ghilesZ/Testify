@@ -4,11 +4,16 @@ open Parsetree
 open Ast_mapper
 open Ast_helper
 open Location
+open Asttypes
 
 let ocaml_version = Versions.ocaml_408
 module Conv = Convert (OCaml_408) (OCaml_current)
 
-(* PPX helpers *)
+(* Helpers for ast building *)
+(****************************)
+
+(* number of generation per test *)
+let count = ref 1000
 
 (* given a string [name], builds the identifier [name] *)
 let id ?loc:(loc=none) name =
@@ -18,14 +23,41 @@ let id ?loc:(loc=none) name =
 let testify_call0 f a =
   Str.eval (Exp.(assert_(apply f [Nolabel,a])))
 
-module Types = Map.Make(struct type t = Longident.t let compare = compare end)
-module Decl = Set.Make(struct type t = type_declaration let compare = compare end)
+(* generation of QCheck test *)
+let test name args =
+  let open Exp in
+  let args =
+    [Labelled "count", constant (Pconst_integer (string_of_int (!count),None));
+     Labelled "name", constant (Pconst_string (name,None))]
+    @(List.map (fun e -> Nolabel,e) args)
+  in
+  open_ (Opn.mk (Mod.ident {txt = Lident "QCheck"; loc=none}))
+    (apply (id "Test.make") args)
 
-let add_gen t_id gen_id =
+(* building an input from a list of generator and apply to it the
+   function funname *)
+let generate inputs funname =
+  let gen_to_val g =
+    let rnd = Exp.apply (id "Random.get_state") [Nolabel, id "()"] in
+    Exp.apply (Exp.apply (id "QCheck.gen") [Nolabel,g]) [Nolabel,rnd]
+  in
+  List.map (fun g -> Nolabel, gen_to_val g) inputs |> Exp.apply (id funname)
+
+(* Utilities for state rewritting *)
+(**********************************)
+
+(* map for type identifier *)
+module Types = Map.Make(struct type t = Longident.t let compare = compare end)
+
+(* [add_gen t g map] registers [g] as a generator for the type [t] in [map]*)
+let add_gen (t_id:string) (gen_id:string) =
   Types.add (Longident.Lident t_id) (id gen_id)
 
 let add_prop t_id : expression -> expression Types.t -> expression Types.t =
   Types.add (Longident.Lident t_id)
+
+(* sets for type declarations *)
+module Decl = Set.Make(struct type t = type_declaration let compare = compare end)
 
 (* search for the declaration of the type with identifier [lid]*)
 let find_decl lid decl =
@@ -33,6 +65,7 @@ let find_decl lid decl =
       (Longident.parse td.ptype_name.txt) = lid
     ) decl
 
+(* main type, for rewritting states *)
 type rewritting_state = {
     filename     : string;
     declarations : Decl.t;
@@ -58,12 +91,13 @@ let rec get_generator rs (typ:core_type) =
             | _ -> rs,None)
   |	Ptyp_poly ([],ct)   -> get_generator rs ct
   | _ -> rs,None
+
 and add_to_rs rs t g =
   {rs with generators = Types.add t g rs.generators},Some g
 
-(* Checks if a property is attached to the type [ct] in [rs] *)
-let rec get_property ct rs : expression option =
-  match ct.ptyp_desc with
+(* Checks if a property is attached to the type [t] in [rs] *)
+let rec get_property (t:typ) (rs:rewritting_state) : expression option =
+  match t.ptyp_desc with
   | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.properties
   |	Ptyp_poly ([],ct)   -> get_property ct rs
   | _ -> None
