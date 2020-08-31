@@ -17,10 +17,13 @@ let count = ref 1000
 
 (* given a string [name], builds the identifier [name] *)
 let id ?loc:(loc=none) name =
-  Exp.ident ~loc {txt = Lident name; loc}
+  Exp.ident ~loc {txt = Longident.parse name; loc}
+
+let apply_nolbl f args =
+  Exp.apply f (List.map (fun a -> Nolabel,a) args)
 
 (* let _ = assert (f a) *)
-let testify_call0 f a =
+let testify_call f a =
   Str.eval (Exp.(assert_(apply f [Nolabel,a])))
 
 (* generation of QCheck test *)
@@ -31,17 +34,37 @@ let test name args =
      Labelled "name", constant (Pconst_string (name,None))]
     @(List.map (fun e -> Nolabel,e) args)
   in
-  open_ (Opn.mk (Mod.ident {txt = Lident "QCheck"; loc=none}))
-    (apply (id "Test.make") args)
+  open_
+    (Opn.mk (Mod.ident {txt = Lident "QCheck"; loc=none}))
+    (apply (id "Test.make") args) |> Str.eval
 
-(* building an input from a list of generator and apply to it the
+(* building an input from a list of generators and apply to it the
    function funname *)
-let generate inputs funname =
-  let gen_to_val g =
-    let rnd = Exp.apply (id "Random.get_state") [Nolabel, id "()"] in
-    Exp.apply (Exp.apply (id "QCheck.gen") [Nolabel,g]) [Nolabel,rnd]
+
+let generate inputs funname satisfy =
+  let get_name =
+    let cpt = ref 0 in
+    fun () -> incr cpt; "x"^(string_of_int !cpt)
   in
-  List.map (fun g -> Nolabel, gen_to_val g) inputs |> Exp.apply (id funname)
+  let rec aux gen pat args = function
+    | [] -> gen,pat,List.rev args
+    | h::tl ->
+       let gen = apply_nolbl (id "QCheck.pair") [gen; h] in
+       let name = get_name () in
+       let pat = Pat.tuple [pat; Pat.var (mkloc name none)] in
+       let args = (id name)::args in
+       aux gen pat args tl
+  in
+  match inputs with
+  | h::tl ->
+     let name = get_name () in
+     let pat = Pat.var (mkloc name none) in
+     let gen,pat,args = aux h pat [id name] tl in
+     let f = id funname in
+     let f = Exp.fun_ Nolabel None pat (apply_nolbl satisfy [apply_nolbl f args]) in
+     test "lol" [gen;f]
+  | [] -> assert false
+
 
 (* Utilities for state rewritting *)
 (**********************************)
@@ -129,28 +152,54 @@ let declare_type state td =
       | _ -> failwith "bad satisfying attribute")
   | None -> state
 
+(* returns the generator associated to a function's argument *)
+let extract_gen state pat =
+  match pat.ppat_desc with
+  | Ppat_constraint (_,ct) -> (get_generator state ct)
+  | _ -> state,None
+
+let fun_decl_to_gen state e =
+  let rec aux state res = function
+    | Pexp_fun(Nolabel,None,pat,exp) ->
+       (match extract_gen state pat with
+        | s, Some g -> aux s (g::res) exp.pexp_desc
+        | _ -> raise Exit)
+    | Pexp_constraint (_,ct) -> state,(List.rev res),ct
+    | _ -> raise Exit
+  in
+  try Some (aux state [] e)
+  with Exit -> None
+
 let testify_mapper =
+  let update state = function
+    | Pstr_type(_,[td]) -> declare_type state td, []
+    | Pstr_value(_,[{pvb_pat={ppat_desc=Ppat_constraint(
+                                            {ppat_desc=Ppat_var({txt;_});_},
+                                            typ);
+                              _};_}]) ->
+       (match get_property typ state with
+        | None -> state,[]
+        | Some p -> state, [testify_call p (id txt)])
+    | Pstr_value(_,[
+            {pvb_pat={ppat_desc=Ppat_var({txt;_});_}; pvb_expr;_}]) ->
+       (match fun_decl_to_gen state pvb_expr.pexp_desc with
+        | None -> state,[]
+        | Some (s,args,ct) ->
+           (match get_property ct state with
+            | None -> s,[]
+            | Some p -> s, [generate args txt p])
+       )
+
+    | _ -> state,[]
+  in
+
   let handle_str mapper =
     let rec aux state res = function
       | [] -> List.rev res
-      | ({pstr_desc=Pstr_type(_,[td]);_} as h)::tl ->
-         aux(declare_type state td) (h::res) tl
-      | ({pstr_desc=
-            Pstr_value(_,[
-                  {pvb_pat={ppat_desc=Ppat_constraint(
-                                          {ppat_desc=Ppat_var({txt;_});_},
-                                          typ);
-                            _};_}]);_} as h) :: tl ->
-         (* if a property is attached to the type, we generate the corresponding test *)
-         (match get_property typ state with
-          | None -> aux state (h::res) tl
-          | Some p -> aux state ((testify_call0 p (id txt))::h::res) tl)
-      (* let s',g = get_generator state typ in
-       * let typ' = Conv.copy_core_type typ in
-       * (match g with
-       * | None -> Format.printf "no generator for type %a\n" Pprintast.core_type typ'
-       * | Some _ -> Format.printf "generator found for type %a\n" Pprintast.core_type typ'); *)
-      | h::tl -> let h' = mapper.structure_item mapper h in aux state (h'::res) tl
+      | h::tl ->
+         let state,tests = update state h.pstr_desc in
+         let h' = mapper.structure_item mapper h in
+         aux state (tests@(h'::res)) tl
     in
     aux initial_rs []
   in
