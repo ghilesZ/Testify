@@ -23,26 +23,33 @@ let lid ?loc:(loc=Location.none) id =
 let exp_id ?loc:(loc=Location.none) name =
   lid name |> Exp.ident ~loc
 
+(* same as apply but argument are not labelled *)
 let apply_nolbl f args =
   Exp.apply f (List.map (fun a -> Nolabel,a) args)
+
+(* same as apply_nolbl but argument function name is a string *)
+let apply_nolbl_s s = apply_nolbl (exp_id s)
+
+(* application of bang *)
+let bang = apply_nolbl_s "!"
 
 let test_suite_name = "__Testify__tests"
 let test_suite_exp = exp_id test_suite_name
 
 let add new_test =
   let added =
-    let tuple = Exp.tuple [new_test; apply_nolbl (exp_id "!") [test_suite_exp]] in
+    let tuple = Exp.tuple [new_test; bang [test_suite_exp]] in
     Exp.construct (lid "::") (Some tuple)
   in
-  apply_nolbl (exp_id ":=") [test_suite_exp; added] |> Str.eval
+  apply_nolbl_s ":=" [test_suite_exp; added] |> Str.eval
 
 let declare_test_suite =
-  let ref_empty = apply_nolbl (exp_id "ref") [Exp.construct (lid "[]") None] in
+  let ref_empty = apply_nolbl_s "ref" [Exp.construct (lid "[]") None] in
   Str.value Nonrecursive [Vb.mk (Pat.var (none_loc test_suite_name)) ref_empty]
 
 let run =
-  apply_nolbl (exp_id "QCheck_base_runner.run_tests_main")
-    [apply_nolbl (exp_id "!") [test_suite_exp]] |> Str.eval
+  apply_nolbl_s "QCheck_base_runner.run_tests_main"
+    [bang [test_suite_exp]] |> Str.eval
 
 (* number of generation per test *)
 let count = ref 1000
@@ -74,7 +81,7 @@ let generate inputs funname satisfy =
   let rec aux gen pat args = function
     | [] -> gen,pat,List.rev args
     | h::tl ->
-       let gen = apply_nolbl (exp_id "QCheck.pair") [gen; h] in
+       let gen = apply_nolbl_s "QCheck.pair" [gen; h] in
        let name = get_name () in
        let pat = Pat.tuple [pat; Pat.var (none_loc name)] in
        let args = (exp_id name)::args in
@@ -197,29 +204,34 @@ let fun_decl_to_gen state e =
   try Some (aux state [] e)
   with Exit -> None
 
+(* compute a list of structure item to be added to the AST. also
+   compute a rewritting where more generator are potentially
+   added.
+   handles:
+   - type declarations
+   - annotated constants
+   - fully annotated functions *)
+let update state = function
+  | Pstr_type(_,[td]) -> declare_type state td, []
+  | Pstr_value(_,[{pvb_pat={ppat_desc=Ppat_constraint(
+                                          {ppat_desc=Ppat_var({txt;_});_},
+                                          typ);
+                            _};_}]) ->
+     (match get_property typ state with
+      | None -> state,[]
+      | Some p -> state, [testify_call p (exp_id txt)])
+  | Pstr_value(_,[
+          {pvb_pat={ppat_desc=Ppat_var({txt;_});_}; pvb_expr;_}]) ->
+     (match fun_decl_to_gen state pvb_expr.pexp_desc with
+      | None -> state,[]
+      | Some (s,args,ct) ->
+         (match get_property ct state with
+          | None -> s,[]
+          | Some p -> s, [generate args txt p]))
+  | _ -> state,[]
+
+(* actual mapper *)
 let testify_mapper =
-  let update state = function
-    | Pstr_type(_,[td]) -> declare_type state td, []
-    | Pstr_value(_,[{pvb_pat={ppat_desc=Ppat_constraint(
-                                            {ppat_desc=Ppat_var({txt;_});_},
-                                            typ);
-                              _};_}]) ->
-       (match get_property typ state with
-        | None -> state,[]
-        | Some p -> state, [testify_call p (exp_id txt)])
-    | Pstr_value(_,[
-            {pvb_pat={ppat_desc=Ppat_var({txt;_});_}; pvb_expr;_}]) ->
-       (match fun_decl_to_gen state pvb_expr.pexp_desc with
-        | None -> state,[]
-        | Some (s,args,ct) ->
-           (match get_property ct state with
-            | None -> s,[]
-            | Some p -> s, [generate args txt p])
-       )
-
-    | _ -> state,[]
-  in
-
   let handle_str mapper =
     let rec aux state res = function
       | [] -> List.rev (run::res)
@@ -232,6 +244,7 @@ let testify_mapper =
   in
   {default_mapper with structure = handle_str}
 
+(* registering the mapper *)
 let () =
   let open Migrate_parsetree in
   Driver.register ~name:"ppx_testify" ~args:[]
