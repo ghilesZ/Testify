@@ -23,6 +23,14 @@ let lid ?loc:(loc=Location.none) id =
 let exp_id ?loc:(loc=Location.none) name =
   lid name |> Exp.ident ~loc
 
+(* same as [apply f args1@args2] where arguments in arg2 are not labelled *)
+let apply_lab_nolab f args1 args2 =
+  Exp.apply f (args1@(List.map (fun a -> Nolabel,a) args2))
+
+(* same as apply_lab_nolab but argument function name is a string  *)
+let apply_lab_nolab_s s =
+  apply_lab_nolab (exp_id s)
+
 (* same as apply but argument are not labelled *)
 let apply_nolbl f args =
   Exp.apply f (List.map (fun a -> Nolabel,a) args)
@@ -37,7 +45,6 @@ let bang = apply_nolbl_s "!"
    the ast, and each time a fully annotated function whose return type
    was attached a satisfying predicate, it adds the to the list the
    corresponding test. *)
-
 let test_suite_name = "__Testify__tests"
 let test_suite_exp = exp_id test_suite_name
 
@@ -57,8 +64,8 @@ let add new_test =
 
 (* ast for : let _ = QCheck_base_runner.run_tests_main !__Testify__tests *)
 let run =
-  apply_nolbl_s "QCheck_base_runner.run_tests_main"
-    [bang [test_suite_exp]] |> Str.eval
+  apply_lab_nolab_s "QCheck_base_runner.run_tests"
+    [Labelled "colors", Exp.construct (lid "true") None] [bang [test_suite_exp]] |> Str.eval
 
 (* number of generation per test *)
 let count = ref 1000
