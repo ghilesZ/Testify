@@ -3,188 +3,257 @@ open Ast_408
 open Parsetree
 open Ast_mapper
 open Ast_helper
-open Location
+open Asttypes
 
 let ocaml_version = Versions.ocaml_408
-module Convert_to_current = Convert (OCaml_408) (OCaml_current)
+module Conv = Convert (OCaml_408) (OCaml_current)
 
-(* TODO: change 1000 *)
+(* Helpers for ast building *)
+(****************************)
+
+(* same as mkloc but with optional argument; default is Location.none*)
+let none_loc ?loc:(loc=Location.none) s =
+  Location.mkloc s loc
+
+(* builds a Longident.t Location.t for a string *)
+let lid ?loc:(loc=Location.none) id =
+  none_loc ~loc (Longident.parse id)
+
+(* given a string [name], builds the identifier [name] *)
+let exp_id ?loc:(loc=Location.none) name =
+  lid name |> Exp.ident ~loc
+
+(* same as apply but argument are not labelled *)
+let apply_nolbl f args =
+  Exp.apply f (List.map (fun a -> Nolabel,a) args)
+
+(* same as apply_nolbl but argument function name is a string *)
+let apply_nolbl_s s = apply_nolbl (exp_id s)
+
+(* application of bang *)
+let bang = apply_nolbl_s "!"
+
+(* Testify generates an empty (Test.t list ref) at the beginning of
+   the ast, and each time a fully annotated function whose return type
+   was attached a satisfying predicate, it adds the to the list the
+   corresponding test. *)
+
+let test_suite_name = "__Testify__tests"
+let test_suite_exp = exp_id test_suite_name
+
+(* ast for : let __Testify__tests = ref [] *)
+let declare_test_suite =
+  let ref_empty = apply_nolbl_s "ref" [Exp.construct (lid "[]") None] in
+  Str.value Nonrecursive [Vb.mk (Pat.var (none_loc test_suite_name)) ref_empty]
+
+(* given x, generates the ast for :
+   let _ = __Testify__tests :=  x::!__Testify__tests *)
+let add new_test =
+  let added =
+    let tuple = Exp.tuple [new_test; bang [test_suite_exp]] in
+    Exp.construct (lid "::") (Some tuple)
+  in
+  apply_nolbl_s ":=" [test_suite_exp; added] |> Str.eval
+
+(* ast for : let _ = QCheck_base_runner.run_tests_main !__Testify__tests *)
+let run =
+  apply_nolbl_s "QCheck_base_runner.run_tests_main"
+    [bang [test_suite_exp]] |> Str.eval
+
+(* number of generation per test *)
 let count = ref 1000
 
+(* let _ = assert (f a) *)
+let testify_call f a =
+  Str.eval (Exp.(assert_(apply f [Nolabel,a])))
+
+(* generation of QCheck test *)
+let test name args =
+  let open Exp in
+  let args =
+    [Labelled "count", Exp.constant (Const.int (!count));
+     Labelled "name", Exp.constant (Const.string name)]
+    @(List.map (fun e -> Nolabel,e) args)
+  in
+  open_
+    (Opn.mk (Mod.ident (lid "QCheck")))
+    (apply (exp_id "Test.make") args)
+  |> add
+
+(* building an input from a list of generators and apply to it the
+   function funname *)
+let generate inputs funname satisfy =
+  let get_name =
+    let cpt = ref 0 in
+    fun () -> incr cpt; "x"^(string_of_int !cpt)
+  in
+  let rec aux gen pat args = function
+    | [] -> gen,pat,List.rev args
+    | h::tl ->
+       let gen = apply_nolbl_s "QCheck.pair" [gen; h] in
+       let name = get_name () in
+       let pat = Pat.tuple [pat; Pat.var (none_loc name)] in
+       let args = (exp_id name)::args in
+       aux gen pat args tl
+  in
+  match inputs with
+  | h::tl ->
+     let name = get_name () in
+     let pat = Pat.var (none_loc name) in
+     let gen,pat,args = aux h pat [exp_id name] tl in
+     let f = exp_id funname in
+     let f = Exp.fun_ Nolabel None pat (apply_nolbl satisfy [apply_nolbl f args]) in
+     let testname = Format.asprintf "Test : %s according to %a" funname
+                      Pprintast.expression (Conv.copy_expression satisfy) in
+     test testname [gen;f]
+  | [] -> assert false
+
+
+(* Utilities for state rewritting *)
+(**********************************)
+
+(* map for type identifier *)
+module Types = Map.Make(struct type t = Longident.t let compare = compare end)
+
+(* [add_gen t g map] registers [g] as a generator for the type [t] in [map]*)
+let add_gen (t_id:string) (gen_id:string) =
+  Types.add (Longident.Lident t_id) (exp_id gen_id)
+
+let add_prop t_id : expression -> expression Types.t -> expression Types.t =
+  Types.add (Longident.Lident t_id)
+
+(* sets for type declarations *)
+module Decl = Set.Make(struct type t = type_declaration let compare = compare end)
+
+(* search for the declaration of the type with identifier [lid]*)
+let find_decl lid decl =
+  Decl.find_first_opt (fun td ->
+      (Longident.parse td.ptype_name.txt) = lid
+    ) decl
+
+(* main type, for rewritting states *)
 type rewritting_state = {
-    filename : string;
-    gen : expression option;
-    in_gamma : expression option;
-    rand_gamma : expression option;
-    abstract_printer : expression option;
-    concrete_printer : expression option;
+    filename     : string;
+    declarations : Decl.t;
+    generators   : expression Types.t;
+    properties   : expression Types.t
   }
 
-let get_gen s =
-  match s.gen with
-  | None  -> failwith "generator not set"
-  | Some g -> g
+(* Given a rewritting state [rs] and and a type [t], search for the
+   generator (currently) associated to [t] in [rs]. If no generator is
+   attached to [t], we search for its declaration and try to derive
+   automatically a generator from it. Returns the rewritting state
+   updated with potentially new generators, and agenerator option.
+   TODO: if the declaration was itself a dependant type, adapt
+   generator *)
+let rec get_generator rs (typ:core_type) =
+  match typ.ptyp_desc with
+  | Ptyp_constr ({txt;_},[]) ->
+     (try Types.find txt rs.generators |> add_to_rs rs txt
+      with Not_found ->
+            let decl = find_decl txt rs.declarations in
+            match decl with
+            | Some {ptype_manifest = Some t;_} -> get_generator rs t
+            | _ -> rs,None)
+  |	Ptyp_poly ([],ct)   -> get_generator rs ct
+  | _ -> rs,None
 
-let get_in_gamma s =
-  match s.in_gamma with
-  | None  -> failwith "in_gamma not set"
-  | Some g -> g
+and add_to_rs rs t g =
+  {rs with generators = Types.add t g rs.generators},Some g
 
-let get_rand_gamma s =
-  match s.rand_gamma with
-  | None  -> failwith "rand_gamma not set"
-  | Some g -> g
+(* Checks if a property is attached to the type [t] in [rs] *)
+let rec get_property (t:typ) (rs:rewritting_state) : expression option =
+  match t.ptyp_desc with
+  | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.properties
+  |	Ptyp_poly ([],ct)   -> get_property ct rs
+  | _ -> None
 
-let get_a_print s =
-  match s.abstract_printer with
-  | None  -> failwith "abstract printer not set"
-  | Some g -> g
+(* initial rewritting state, with a few generators by default *)
+let initial_rs =
+  let generators =
+    Types.empty
+    |> add_gen "int"   "QCheck.int"
+    |> add_gen "float" "QCheck.float"
+    |> add_gen "bool"  "QCheck.bool"
+  in
+  {filename=""; declarations=Decl.empty; generators; properties=Types.empty}
 
-let get_c_print s =
-  match s.concrete_printer with
-  | None  -> failwith "concrete printer not set"
-  | Some g -> g
+(* update the rewritting state according to a type declaration *)
+let declare_type state td =
+  match td.ptype_manifest with
+  | Some {ptyp_attributes;_} ->
+     (match List.filter (fun a -> a.attr_name.txt = "satisfying") ptyp_attributes with
+      | [] -> state
+      | _::_::_ -> failwith "only one satisfying attribute accepted"
+      | [{attr_payload=PStr [{pstr_desc=Pstr_eval (e,_);_}];_}] ->
+         (* Format.printf "adding %s to the list of dependant types w.r.t %a\n"
+          *   td.ptype_name.txt
+          *   Pprintast.expression (Conv.copy_expression e); *)
+         {state with
+           properties = add_prop td.ptype_name.txt e state.properties;
+           declarations = Decl.add td state.declarations}
+      | _ -> failwith "bad satisfying attribute")
+  | None -> state
 
-(********************************************)
-(* Helpers for building OCaml AST fragments *)
-(********************************************)
+(* returns the generator associated to a function's argument *)
+let extract_gen state pat =
+  match pat.ppat_desc with
+  | Ppat_constraint (_,ct) -> (get_generator state ct)
+  | _ -> state,None
 
-let string_of_expression (expr: Parsetree.expression) : string =
-  let copy = Convert_to_current.copy_expression expr in
-  Format.asprintf "%s" (Pprintast.string_of_expression copy)
+let fun_decl_to_gen state e =
+  let rec aux state res = function
+    | Pexp_fun(Nolabel,None,pat,exp) ->
+       (match extract_gen state pat with
+        | s, Some g -> aux s (g::res) exp.pexp_desc
+        | _ -> raise Exit)
+    | Pexp_constraint (_,ct) -> state,(List.rev res),ct
+    | _ -> raise Exit
+  in
+  try Some (aux state [] e)
+  with Exit -> None
 
-let exp_string str = Exp.constant (Pconst_string(str,None))
+(* compute a list of structure item to be added to the AST. also
+   compute a rewritting where more generator are potentially
+   added.
+   handles:
+   - type declarations
+   - annotated constants
+   - fully annotated functions *)
+let update state = function
+  | Pstr_type(_,[td]) -> declare_type state td, []
+  | Pstr_value(_,[{pvb_pat={ppat_desc=Ppat_constraint(
+                                          {ppat_desc=Ppat_var({txt;_});_},
+                                          typ);
+                            _};_}]) ->
+     (match get_property typ state with
+      | None -> state,[]
+      | Some p -> state, [testify_call p (exp_id txt)])
+  | Pstr_value(_,[
+          {pvb_pat={ppat_desc=Ppat_var({txt;_});_}; pvb_expr;_}]) ->
+     (match fun_decl_to_gen state pvb_expr.pexp_desc with
+      | None -> state,[]
+      | Some (s,args,ct) ->
+         (match get_property ct state with
+          | None -> s,[]
+          | Some p -> s, [generate args txt p]))
+  | _ -> state,[]
 
-(* given a function name [fn], builds the identifier [fn] *)
-let id ?loc:(loc=none) fname =
-  Exp.ident ~loc {txt = Lident fname; loc}
-
-(* given an expression 'e', generates the ast fragment for "let _ = e"*)
-let wild_card_declaration loc expr = Str.eval ~loc expr
-
-(* () *)
-let exp_unit =
-  let unit_lid = Longident.Lident "()" in
-  let ghost = Location.none in
-  let unit_lid_loc = Location.mkloc unit_lid ghost in
-  let unit = Pexp_construct (unit_lid_loc,None) in
-  Exp.mk unit
-
-(*****************************************)
-(* Helpers for calling testify functions *)
-(*****************************************)
-let make_gc gen spawn in_gamma a_print c_print =
-  let open Asttypes in
-  Exp.(apply (id "make_gc")
-         (List.map (fun e -> Nolabel,e)
-            [gen; spawn; in_gamma; a_print; c_print]))
-
-let testify_call funname testname args =
-  let open Asttypes in
-    Exp.(apply (id funname) ([
-      Labelled "count", constant (Pconst_integer (string_of_int (!count),None));
-      Labelled "name", constant (Pconst_string (testname,None));
-             ]@(List.map (fun e -> Nolabel,e) args)))
-
-let call_run =
-  let call = Exp.(apply (id "run") [Nolabel, exp_unit]) in
-  Str.mk (Pstr_eval (call,[]))
-
-let call1 funname title gen arg =
-  testify_call funname title [gen;arg]
-
-let call2 funname title gen arg1 arg2 =
-   testify_call funname title [gen; arg1; arg2]
-
-let call4 funname title gen arg1 arg2 arg3 arg4 =
-  testify_call funname title [gen; arg1; arg2; arg3; arg4]
-
-let commut loc funname gen : structure_item =
-  let file,_,_ = get_pos_info loc.loc_start in
-  let testname = funname^" in file "^file^" is commutative" in
-  let test = call1 "commut" testname gen (id funname) in
-  wild_card_declaration loc test
-
-let assoc loc funname gen : structure_item =
-  let file,_,_ = get_pos_info loc.loc_start in
-  let testname = funname^" in file "^file^" is associative" in
-  let test = call1 "assoc" testname gen (id funname) in
-  wild_card_declaration loc test
-
-let distrib loc funname1 over gen : structure_item =
-  let file,_,_ = get_pos_info loc.loc_start in
-  let str = string_of_expression over in
-  let testname = funname1^" in file "^file^"is distributive over "^str in
-  let test = call2 "distrib" testname gen (id funname1) over   in
-  wild_card_declaration loc test
-
-let over_approx loc funname1 over gen in_g rand_g a_print c_print : structure_item =
-  let file,_,_ = get_pos_info loc.loc_start in
-  let str = string_of_expression over in
-  let gc_exp = make_gc gen rand_g in_g a_print c_print in
-  let testname = funname1^" in file "^file^" over-approximates "^str in
-  let test = call4 "over_approx2" testname gc_exp (id funname1) over
-               (exp_string funname1) (exp_string str) in
-  wild_card_declaration loc test
-
-(* builds the list of tests to be added to the AST *)
-let gather state loc funname (attr:attributes) =
-    let helper a : string * expression list =
-      match a.attr_payload with
-      | PStr [] -> a.attr_name.txt,[]
-      | PStr [{pstr_desc=Pstr_eval (f,_);_}] -> a.attr_name.txt,[f]
-      | _ -> failwith "invalid payload"
-    in
-    let id_fun = Some (id funname) in
-    let aux (state,acc) e =
-      match e |> helper with
-      (* state modification *)
-      | "in_gamma",[]         -> {state with in_gamma = id_fun},acc
-      | "rand_gamma",[]       -> {state with rand_gamma = id_fun},acc
-      | "gen",[]              -> {state with gen = id_fun},acc
-      | "abstract_printer",[] -> {state with abstract_printer = id_fun},acc
-      | "concrete_printer",[] -> {state with concrete_printer = id_fun},acc
-      (* test generation *)
-      | "commut",[]    -> state,(commut loc funname (get_gen state))::acc
-      | "assoc",[]    -> state,(assoc loc funname (get_gen state))::acc
-      | "distrib",[f] -> state,(distrib loc funname f (get_gen state))::acc
-      | "over_approx", [f]->
-         let t = over_approx loc funname f (get_gen state) (get_in_gamma state)
-                   (get_rand_gamma state)
-                   (get_a_print state)
-                   (get_c_print state)
-         in
-         state,(t::acc)
-      | _ -> state,acc
-    in
-    List.fold_left aux (state,[]) attr
-
+(* actual mapper *)
 let testify_mapper =
   let handle_str mapper =
     let rec aux state res = function
-      | [] -> List.rev (call_run::res)
-      | ({pstr_desc=
-            Pstr_value(_,[
-                  {pvb_pat={ppat_desc=Ppat_var ({txt=funname;_});ppat_loc=loc;_}
-                  ;pvb_attributes=(_::_ as attr);_}]);pstr_loc} as h)::tl ->
-         let state,tests = gather state loc funname attr in
-         let filename,_,_= get_pos_info pstr_loc.loc_start in
-         aux {state with filename} (tests@(h::res)) tl
+      | [] -> List.rev (run::res)
       | h::tl ->
+         let state,tests = update state h.pstr_desc in
          let h' = mapper.structure_item mapper h in
-         aux state (h'::res) tl
+         aux state (tests@(h'::res)) tl
     in
-    aux {
-        filename="";
-        gen=None;
-        in_gamma=None;
-        rand_gamma=None;
-        abstract_printer=None;
-        concrete_printer = None
-      } []
+    aux initial_rs [declare_test_suite]
   in
   {default_mapper with structure = handle_str}
 
+(* registering the mapper *)
 let () =
   let open Migrate_parsetree in
   Driver.register ~name:"ppx_testify" ~args:[]
