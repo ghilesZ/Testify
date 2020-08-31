@@ -33,9 +33,21 @@ let apply_nolbl_s s = apply_nolbl (exp_id s)
 (* application of bang *)
 let bang = apply_nolbl_s "!"
 
+(* Testify generates an empty (Test.t list ref) at the beginning of
+   the ast, and each time a fully annotated function whose return type
+   was attached a satisfying predicate, it adds the to the list the
+   corresponding test. *)
+
 let test_suite_name = "__Testify__tests"
 let test_suite_exp = exp_id test_suite_name
 
+(* ast for : let __Testify__tests = ref [] *)
+let declare_test_suite =
+  let ref_empty = apply_nolbl_s "ref" [Exp.construct (lid "[]") None] in
+  Str.value Nonrecursive [Vb.mk (Pat.var (none_loc test_suite_name)) ref_empty]
+
+(* given x, generates the ast for :
+   let _ = __Testify__tests :=  x::!__Testify__tests *)
 let add new_test =
   let added =
     let tuple = Exp.tuple [new_test; bang [test_suite_exp]] in
@@ -43,10 +55,7 @@ let add new_test =
   in
   apply_nolbl_s ":=" [test_suite_exp; added] |> Str.eval
 
-let declare_test_suite =
-  let ref_empty = apply_nolbl_s "ref" [Exp.construct (lid "[]") None] in
-  Str.value Nonrecursive [Vb.mk (Pat.var (none_loc test_suite_name)) ref_empty]
-
+(* ast for : let _ = QCheck_base_runner.run_tests_main !__Testify__tests *)
 let run =
   apply_nolbl_s "QCheck_base_runner.run_tests_main"
     [bang [test_suite_exp]] |> Str.eval
