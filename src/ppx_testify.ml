@@ -3,7 +3,6 @@ open Ast_408
 open Parsetree
 open Ast_mapper
 open Ast_helper
-open Location
 open Asttypes
 
 let ocaml_version = Versions.ocaml_408
@@ -12,15 +11,39 @@ module Conv = Convert (OCaml_408) (OCaml_current)
 (* Helpers for ast building *)
 (****************************)
 
-(* number of generation per test *)
-let count = ref 1000
+let lid ?loc:(loc=Location.none) id =
+  {txt = Longident.parse id; loc}
+
+let s_loc ?loc:(loc=Location.none) s =
+  Location.mkloc s loc
 
 (* given a string [name], builds the identifier [name] *)
-let id ?loc:(loc=none) name =
-  Exp.ident ~loc {txt = Longident.parse name; loc}
+let exp_id ?loc:(loc=Location.none) name =
+  lid name |> Exp.ident ~loc
 
 let apply_nolbl f args =
   Exp.apply f (List.map (fun a -> Nolabel,a) args)
+
+let test_suite_name = "__Testify__tests"
+let test_suite_exp = exp_id test_suite_name
+
+let add new_test =
+  let added =
+    let tuple = Exp.tuple [new_test; apply_nolbl (exp_id "!") [test_suite_exp]] in
+    Exp.construct (lid "::") (Some tuple)
+  in
+  apply_nolbl (exp_id ":=") [test_suite_exp; added] |> Str.eval
+
+let declare_test_suite =
+  let ref_empty = apply_nolbl (exp_id "ref") [Exp.construct (lid "[]") None] in
+  Str.value Nonrecursive [Vb.mk (Pat.var (s_loc test_suite_name)) ref_empty]
+
+let run =
+  apply_nolbl (exp_id "QCheck_base_runner.run_tests_main")
+    [apply_nolbl (exp_id "!") [test_suite_exp]] |> Str.eval
+
+(* number of generation per test *)
+let count = ref 1000
 
 (* let _ = assert (f a) *)
 let testify_call f a =
@@ -30,17 +53,17 @@ let testify_call f a =
 let test name args =
   let open Exp in
   let args =
-    [Labelled "count", constant (Pconst_integer (string_of_int (!count),None));
-     Labelled "name", constant (Pconst_string (name,None))]
+    [Labelled "count", Exp.constant (Const.int (!count));
+     Labelled "name", Exp.constant (Const.string name)]
     @(List.map (fun e -> Nolabel,e) args)
   in
   open_
-    (Opn.mk (Mod.ident {txt = Lident "QCheck"; loc=none}))
-    (apply (id "Test.make") args) |> Str.eval
+    (Opn.mk (Mod.ident (lid "QCheck")))
+    (apply (exp_id "Test.make") args)
+  |> add
 
 (* building an input from a list of generators and apply to it the
    function funname *)
-
 let generate inputs funname satisfy =
   let get_name =
     let cpt = ref 0 in
@@ -49,20 +72,22 @@ let generate inputs funname satisfy =
   let rec aux gen pat args = function
     | [] -> gen,pat,List.rev args
     | h::tl ->
-       let gen = apply_nolbl (id "QCheck.pair") [gen; h] in
+       let gen = apply_nolbl (exp_id "QCheck.pair") [gen; h] in
        let name = get_name () in
-       let pat = Pat.tuple [pat; Pat.var (mkloc name none)] in
-       let args = (id name)::args in
+       let pat = Pat.tuple [pat; Pat.var (s_loc name)] in
+       let args = (exp_id name)::args in
        aux gen pat args tl
   in
   match inputs with
   | h::tl ->
      let name = get_name () in
-     let pat = Pat.var (mkloc name none) in
-     let gen,pat,args = aux h pat [id name] tl in
-     let f = id funname in
+     let pat = Pat.var (s_loc name) in
+     let gen,pat,args = aux h pat [exp_id name] tl in
+     let f = exp_id funname in
      let f = Exp.fun_ Nolabel None pat (apply_nolbl satisfy [apply_nolbl f args]) in
-     test "lol" [gen;f]
+     let testname = Format.asprintf "Test : %s according to %a" funname
+                      Pprintast.expression (Conv.copy_expression satisfy) in
+     test testname [gen;f]
   | [] -> assert false
 
 
@@ -74,7 +99,7 @@ module Types = Map.Make(struct type t = Longident.t let compare = compare end)
 
 (* [add_gen t g map] registers [g] as a generator for the type [t] in [map]*)
 let add_gen (t_id:string) (gen_id:string) =
-  Types.add (Longident.Lident t_id) (id gen_id)
+  Types.add (Longident.Lident t_id) (exp_id gen_id)
 
 let add_prop t_id : expression -> expression Types.t -> expression Types.t =
   Types.add (Longident.Lident t_id)
@@ -179,7 +204,7 @@ let testify_mapper =
                               _};_}]) ->
        (match get_property typ state with
         | None -> state,[]
-        | Some p -> state, [testify_call p (id txt)])
+        | Some p -> state, [testify_call p (exp_id txt)])
     | Pstr_value(_,[
             {pvb_pat={ppat_desc=Ppat_var({txt;_});_}; pvb_expr;_}]) ->
        (match fun_decl_to_gen state pvb_expr.pexp_desc with
@@ -195,13 +220,13 @@ let testify_mapper =
 
   let handle_str mapper =
     let rec aux state res = function
-      | [] -> List.rev res
+      | [] -> List.rev (run::res)
       | h::tl ->
          let state,tests = update state h.pstr_desc in
          let h' = mapper.structure_item mapper h in
          aux state (tests@(h'::res)) tl
     in
-    aux initial_rs []
+    aux initial_rs [declare_test_suite]
   in
   {default_mapper with structure = handle_str}
 
