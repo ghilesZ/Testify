@@ -11,11 +11,13 @@ module Conv = Convert (OCaml_408) (OCaml_current)
 (* Helpers for ast building *)
 (****************************)
 
-let lid ?loc:(loc=Location.none) id =
-  {txt = Longident.parse id; loc}
-
-let s_loc ?loc:(loc=Location.none) s =
+(* same as mkloc but with optional argument; default is Location.none*)
+let none_loc ?loc:(loc=Location.none) s =
   Location.mkloc s loc
+
+(* builds a Longident.t Location.t for a string *)
+let lid ?loc:(loc=Location.none) id =
+  none_loc ~loc (Longident.parse id)
 
 (* given a string [name], builds the identifier [name] *)
 let exp_id ?loc:(loc=Location.none) name =
@@ -36,7 +38,7 @@ let add new_test =
 
 let declare_test_suite =
   let ref_empty = apply_nolbl (exp_id "ref") [Exp.construct (lid "[]") None] in
-  Str.value Nonrecursive [Vb.mk (Pat.var (s_loc test_suite_name)) ref_empty]
+  Str.value Nonrecursive [Vb.mk (Pat.var (none_loc test_suite_name)) ref_empty]
 
 let run =
   apply_nolbl (exp_id "QCheck_base_runner.run_tests_main")
@@ -74,14 +76,14 @@ let generate inputs funname satisfy =
     | h::tl ->
        let gen = apply_nolbl (exp_id "QCheck.pair") [gen; h] in
        let name = get_name () in
-       let pat = Pat.tuple [pat; Pat.var (s_loc name)] in
+       let pat = Pat.tuple [pat; Pat.var (none_loc name)] in
        let args = (exp_id name)::args in
        aux gen pat args tl
   in
   match inputs with
   | h::tl ->
      let name = get_name () in
-     let pat = Pat.var (s_loc name) in
+     let pat = Pat.var (none_loc name) in
      let gen,pat,args = aux h pat [exp_id name] tl in
      let f = exp_id funname in
      let f = Exp.fun_ Nolabel None pat (apply_nolbl satisfy [apply_nolbl f args]) in
