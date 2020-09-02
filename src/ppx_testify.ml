@@ -111,7 +111,8 @@ let generate inputs funname satisfy =
      let f = exp_id funname in
      let f = Exp.fun_ Nolabel None pat (apply_nolbl satisfy [apply_nolbl f args]) in
      let testname = Format.asprintf "Test : %s according to %a" funname
-                      Pprintast.expression (Conv.copy_expression satisfy) in
+                      Pprintast.expression (Conv.copy_expression satisfy)
+     in
      test testname [gen;f]
   | [] -> assert false
 
@@ -164,7 +165,6 @@ let rec get_generator rs (typ:core_type) =
             | _ -> rs,None)
   |	Ptyp_poly ([],ct)   -> get_generator rs ct
   | _ -> rs,None
-
 and add_to_rs rs t g =
   {rs with generators = Types.add t g rs.generators},Some g
 
@@ -179,9 +179,10 @@ let rec get_property (t:typ) (rs:rewritting_state) : expression option =
 let initial_rs =
   let generators =
     Types.empty
+    |> add_gen "unit"  "QCheck.unit"
+    |> add_gen "bool"  "QCheck.bool"
     |> add_gen "int"   "QCheck.int"
     |> add_gen "float" "QCheck.float"
-    |> add_gen "bool"  "QCheck.bool"
   in
   {filename=""; declarations=Decl.empty; generators; properties=Types.empty}
 
@@ -190,7 +191,7 @@ let declare_type state td =
   match td.ptype_manifest with
   | Some {ptyp_attributes;_} ->
      (match List.filter (fun a -> a.attr_name.txt = "satisfying") ptyp_attributes with
-      | [] -> state
+      | [] -> {state with declarations = Decl.add td state.declarations}
       | _::_::_ -> failwith "only one satisfying attribute accepted"
       | [{attr_payload=PStr [{pstr_desc=Pstr_eval (e,_);_}];_}] ->
          (* Format.printf "adding %s to the list of dependant types w.r.t %a\n"
@@ -202,16 +203,16 @@ let declare_type state td =
       | _ -> failwith "bad satisfying attribute")
   | None -> state
 
-(* returns the generator associated to a function's argument *)
-let extract_gen state pat =
-  match pat.ppat_desc with
-  | Ppat_constraint (_,ct) -> (get_generator state ct)
-  | _ -> state,None
-
+(* returns the generators associated to a function's arguments *)
 let fun_decl_to_gen state e =
+  let helper state pat =
+    match pat.ppat_desc with
+    | Ppat_constraint (_,ct) -> (get_generator state ct)
+    | _ -> state,None
+  in
   let rec aux state res = function
     | Pexp_fun(Nolabel,None,pat,exp) ->
-       (match extract_gen state pat with
+       (match helper state pat with
         | s, Some g -> aux s (g::res) exp.pexp_desc
         | _ -> raise Exit)
     | Pexp_constraint (_,ct) -> state,(List.rev res),ct
@@ -227,7 +228,8 @@ let fun_decl_to_gen state e =
    - type declarations
    - annotated constants
    - fully annotated functions *)
-let update state = function
+let update state h =
+  match h.pstr_desc with
   | Pstr_type(_,[td]) -> declare_type state td, []
   | Pstr_value(_,[{pvb_pat={ppat_desc=Ppat_constraint(
                                           {ppat_desc=Ppat_var({txt;_});_},
@@ -252,7 +254,7 @@ let testify_mapper =
     let rec aux state res = function
       | [] -> List.rev (run::res)
       | h::tl ->
-         let state,tests = update state h.pstr_desc in
+         let state,tests = update state h in
          let h' = mapper.structure_item mapper h in
          aux state (tests@(h'::res)) tl
     in
