@@ -46,14 +46,11 @@ let test_constant name f =
   let args =
     [Labelled "count", Exp.constant (Const.int 1);
      Labelled "name", Exp.constant (Const.string name);
-     Nolabel, exp_id "unit";
+     Nolabel, exp_id "QCheck.unit";
      Nolabel, f;
     ]
   in
-  open_
-    (Opn.mk (Mod.ident (lid "QCheck")))
-    (apply (exp_id "Test.make") args)
-  |> add
+  apply (exp_id "QCheck.Test.make") args |> add
 
 (* generation of QCheck test *)
 let test name args =
