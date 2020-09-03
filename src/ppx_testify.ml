@@ -4,42 +4,10 @@ open Parsetree
 open Ast_mapper
 open Ast_helper
 open Asttypes
+open Helper
 
 let ocaml_version = Versions.ocaml_408
 module Conv = Convert (OCaml_408) (OCaml_current)
-
-(* Helpers for ast building *)
-(****************************)
-
-(* same as mkloc but with optional argument; default is Location.none*)
-let none_loc ?loc:(loc=Location.none) s =
-  Location.mkloc s loc
-
-(* builds a Longident.t Location.t for a string *)
-let lid ?loc:(loc=Location.none) id =
-  none_loc ~loc (Longident.parse id)
-
-(* given a string [name], builds the identifier [name] *)
-let exp_id ?loc:(loc=Location.none) name =
-  lid name |> Exp.ident ~loc
-
-(* same as [apply f args1@args2] where arguments in arg2 are not labelled *)
-let apply_lab_nolab f args1 args2 =
-  Exp.apply f (args1@(List.map (fun a -> Nolabel,a) args2))
-
-(* same as apply_lab_nolab but argument function name is a string  *)
-let apply_lab_nolab_s s =
-  apply_lab_nolab (exp_id s)
-
-(* same as apply but argument are not labelled *)
-let apply_nolbl f args =
-  Exp.apply f (List.map (fun a -> Nolabel,a) args)
-
-(* same as apply_nolbl but argument function name is a string *)
-let apply_nolbl_s s = apply_nolbl (exp_id s)
-
-(* application of bang *)
-let bang = apply_nolbl_s "!"
 
 (* Testify generates an empty (Test.t list ref) at the beginning of
    the ast, and each time a fully annotated function whose return type
@@ -60,19 +28,32 @@ let add new_test =
     let tuple = Exp.tuple [new_test; bang [test_suite_exp]] in
     Exp.construct (lid "::") (Some tuple)
   in
-  apply_nolbl_s ":=" [test_suite_exp; added] |> Str.eval
+  assign [test_suite_exp; added] |> Str.eval
 
 (* ast for : let _ = QCheck_base_runner.run_tests_main !__Testify__tests *)
 let run =
   apply_lab_nolab_s "QCheck_base_runner.run_tests"
-    [Labelled "colors", Exp.construct (lid "true") None] [bang [test_suite_exp]] |> Str.eval
+    [Labelled "colors", Exp.construct (lid "false") None] [bang [test_suite_exp]]
+  |> Str.eval
 
 (* number of generation per test *)
 let count = ref 1000
 
 (* let _ = assert (f a) *)
-let testify_call f a =
-  Str.eval (Exp.(assert_(apply f [Nolabel,a])))
+let test_constant name f =
+  let open Exp in
+  let f = fun_ Nolabel None (Pat.any ()) (apply_nolbl f [exp_id name]) in
+  let args =
+    [Labelled "count", Exp.constant (Const.int 1);
+     Labelled "name", Exp.constant (Const.string name);
+     Nolabel, exp_id "unit";
+     Nolabel, f;
+    ]
+  in
+  open_
+    (Opn.mk (Mod.ident (lid "QCheck")))
+    (apply (exp_id "Test.make") args)
+  |> add
 
 (* generation of QCheck test *)
 let test name args =
@@ -87,7 +68,7 @@ let test name args =
     (apply (exp_id "Test.make") args)
   |> add
 
-(* building an input from a list of generators and apply to it the
+(* builds an input from a list of generators and apply to it the
    function funname *)
 let generate inputs funname satisfy =
   let get_name =
@@ -97,7 +78,7 @@ let generate inputs funname satisfy =
   let rec aux gen pat args = function
     | [] -> gen,pat,List.rev args
     | h::tl ->
-       let gen = apply_nolbl_s "QCheck.pair" [gen; h] in
+       let gen = apply_nolbl_s "QCheck.Gen.pair" [gen; h] in
        let name = get_name () in
        let pat = Pat.tuple [pat; Pat.var (none_loc name)] in
        let args = (exp_id name)::args in
@@ -113,7 +94,7 @@ let generate inputs funname satisfy =
      let testname = Format.asprintf "Test : %s according to %a" funname
                       Pprintast.expression (Conv.copy_expression satisfy)
      in
-     test testname [gen;f]
+     test testname [apply_nolbl_s "QCheck.make" [gen];f]
   | [] -> assert false
 
 
@@ -150,23 +131,24 @@ type rewritting_state = {
 (* Given a rewritting state [rs] and and a type [t], search for the
    generator (currently) associated to [t] in [rs]. If no generator is
    attached to [t], we search for its declaration and try to derive
-   automatically a generator from it. Returns the rewritting state
-   updated with potentially new generators, and agenerator option.
-   TODO: if the declaration was itself a dependant type, adapt
-   generator *)
+   automatically a generator from it. Returns an expression of type
+   Gen.t option. *)
 let rec get_generator rs (typ:core_type) =
   match typ.ptyp_desc with
   | Ptyp_constr ({txt;_},[]) ->
-     (try Types.find txt rs.generators |> add_to_rs rs txt
+     (try Types.find_opt txt rs.generators
       with Not_found ->
             let decl = find_decl txt rs.declarations in
             match decl with
             | Some {ptype_manifest = Some t;_} -> get_generator rs t
-            | _ -> rs,None)
+            | _ -> None)
   |	Ptyp_poly ([],ct)   -> get_generator rs ct
-  | _ -> rs,None
-and add_to_rs rs t g =
-  {rs with generators = Types.add t g rs.generators},Some g
+  | Ptyp_tuple [ct1;ct2] ->
+     (match get_generator rs ct1,  get_generator rs ct2 with
+      | Some t1,Some t2 -> Some (apply_nolbl_s "QCheck.Gen.pair" [t1;t2])
+      | _ -> None
+     )
+  | _ -> None
 
 (* Checks if a property is attached to the type [t] in [rs] *)
 let rec get_property (t:typ) (rs:rewritting_state) : expression option =
@@ -179,10 +161,10 @@ let rec get_property (t:typ) (rs:rewritting_state) : expression option =
 let initial_rs =
   let generators =
     Types.empty
-    |> add_gen "unit"  "QCheck.unit"
-    |> add_gen "bool"  "QCheck.bool"
-    |> add_gen "int"   "QCheck.int"
-    |> add_gen "float" "QCheck.float"
+    |> add_gen "unit"  "QCheck.Gen.unit"
+    |> add_gen "bool"  "QCheck.Gen.bool"
+    |> add_gen "int"   "QCheck.Gen.int"
+    |> add_gen "float" "QCheck.Gen.float"
   in
   {filename=""; declarations=Decl.empty; generators; properties=Types.empty}
 
@@ -194,9 +176,16 @@ let declare_type state td =
       | [] -> {state with declarations = Decl.add td state.declarations}
       | _::_::_ -> failwith "only one satisfying attribute accepted"
       | [{attr_payload=PStr [{pstr_desc=Pstr_eval (e,_);_}];_}] ->
-         (* Format.printf "adding %s to the list of dependant types w.r.t %a\n"
-          *   td.ptype_name.txt
-          *   Pprintast.expression (Conv.copy_expression e); *)
+         let state =
+           match Option.bind td.ptype_manifest (get_generator state) with
+           | None -> state
+           | Some g -> let g = Exp.apply (exp_id "QCheck.find_example")
+                                 [Labelled "f", e; Nolabel, g]
+                       in
+                       {state with generators =
+                                     Types.add (Longident.Lident td.ptype_name.txt)
+                                       g state.generators}
+         in
          {state with
            properties = add_prop td.ptype_name.txt e state.properties;
            declarations = Decl.add td state.declarations}
@@ -208,12 +197,12 @@ let fun_decl_to_gen state e =
   let helper state pat =
     match pat.ppat_desc with
     | Ppat_constraint (_,ct) -> (get_generator state ct)
-    | _ -> state,None
+    | _ -> None
   in
   let rec aux state res = function
     | Pexp_fun(Nolabel,None,pat,exp) ->
        (match helper state pat with
-        | s, Some g -> aux s (g::res) exp.pexp_desc
+        | Some g -> aux state (g::res) exp.pexp_desc
         | _ -> raise Exit)
     | Pexp_constraint (_,ct) -> state,(List.rev res),ct
     | _ -> raise Exit
@@ -237,7 +226,7 @@ let update state h =
                             _};_}]) ->
      (match get_property typ state with
       | None -> state,[]
-      | Some p -> state, [testify_call p (exp_id txt)])
+      | Some p -> state, [test_constant txt p])
   | Pstr_value(_,[
           {pvb_pat={ppat_desc=Ppat_var({txt;_});_}; pvb_expr;_}]) ->
      (match fun_decl_to_gen state pvb_expr.pexp_desc with
