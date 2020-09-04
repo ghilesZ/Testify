@@ -3,7 +3,6 @@ open Ast_408
 open Parsetree
 open Ast_mapper
 open Ast_helper
-open Asttypes
 open Helper
 
 let ocaml_version = Versions.ocaml_408
@@ -19,7 +18,7 @@ let test_suite_exp = exp_id test_suite_name
 (* ast for : let __Testify__tests = ref [] *)
 let declare_test_suite =
   let ref_empty = apply_nolbl_s "ref" [Exp.construct (lid "[]") None] in
-  Str.value Nonrecursive [Vb.mk (Pat.var (none_loc test_suite_name)) ref_empty]
+  str_nonrec [Vb.mk (Pat.var (none_loc test_suite_name)) ref_empty]
 
 (* given x, generates the ast for :
    let _ = __Testify__tests :=  x::!__Testify__tests *)
@@ -33,8 +32,7 @@ let add new_test =
 (* ast for : let _ = QCheck_base_runner.run_tests_main !__Testify__tests *)
 let run =
   apply_lab_nolab_s "QCheck_base_runner.run_tests"
-    [Labelled "colors", Exp.construct (lid "false") None] [bang [test_suite_exp]]
-  |> Str.eval
+    ["colors", true_exp] [bang [test_suite_exp]] |> Str.eval
 
 (* number of generation per test *)
 let count = ref 1000
@@ -43,27 +41,14 @@ let count = ref 1000
 let test_constant name f =
   let open Exp in
   let f = fun_ Nolabel None (Pat.any ()) (apply_nolbl f [exp_id name]) in
-  let args =
-    [Labelled "count", Exp.constant (Const.int 1);
-     Labelled "name", Exp.constant (Const.string name);
-     Nolabel, exp_id "QCheck.unit";
-     Nolabel, f;
-    ]
-  in
-  apply (exp_id "QCheck.Test.make") args |> add
+  let labelled = ["count", int_exp 1; "name", string_exp name] in
+  let not_labelled = [exp_id "QCheck.unit"; f] in
+  apply_lab_nolab (exp_id "QCheck.Test.make") labelled not_labelled |> add
 
 (* generation of QCheck test *)
 let test name args =
-  let open Exp in
-  let args =
-    [Labelled "count", Exp.constant (Const.int (!count));
-     Labelled "name", Exp.constant (Const.string name)]
-    @(List.map (fun e -> Nolabel,e) args)
-  in
-  open_
-    (Opn.mk (Mod.ident (lid "QCheck")))
-    (apply (exp_id "Test.make") args)
-  |> add
+  let lab = ["count", int_exp (!count);"name", string_exp name] in
+  apply_lab_nolab (exp_id "QCheck.Test.make") lab args |> add
 
 (* builds an input from a list of generators and apply to it the
    function funname *)
@@ -88,7 +73,8 @@ let generate inputs funname satisfy =
      let gen,pat,args = aux h pat [exp_id name] tl in
      let f = exp_id funname in
      let f = Exp.fun_ Nolabel None pat (apply_nolbl satisfy [apply_nolbl f args]) in
-     let testname = Format.asprintf "Test : %s according to %a" funname
+     let testname = Format.asprintf "%s does not respect the prediate \
+                                     (%a) for some input" funname
                       Pprintast.expression (Conv.copy_expression satisfy)
      in
      test testname [apply_nolbl_s "QCheck.make" [gen];f]
@@ -111,12 +97,6 @@ let add_prop t_id : expression -> expression Types.t -> expression Types.t =
 (* sets for type declarations *)
 module Decl = Set.Make(struct type t = type_declaration let compare = compare end)
 
-(* search for the declaration of the type with identifier [lid]*)
-let find_decl lid decl =
-  Decl.find_first_opt (fun td ->
-      (Longident.parse td.ptype_name.txt) = lid
-    ) decl
-
 (* main type, for rewritting states *)
 type rewritting_state = {
     filename     : string;
@@ -126,25 +106,17 @@ type rewritting_state = {
   }
 
 (* Given a rewritting state [rs] and and a type [t], search for the
-   generator (currently) associated to [t] in [rs]. If no generator is
-   attached to [t], we search for its declaration and try to derive
-   automatically a generator from it. Returns an expression of type
-   Gen.t option. *)
+   generator associated to [t] in [rs]. If no generator is attached to
+   [t], we search for its declaration and try to derive automatically
+   a generator from it. Returns an expression of type Gen.t option. *)
 let rec get_generator rs (typ:core_type) =
   match typ.ptyp_desc with
-  | Ptyp_constr ({txt;_},[]) ->
-     (try Types.find_opt txt rs.generators
-      with Not_found ->
-            let decl = find_decl txt rs.declarations in
-            match decl with
-            | Some {ptype_manifest = Some t;_} -> get_generator rs t
-            | _ -> None)
+  | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.generators
   |	Ptyp_poly ([],ct)   -> get_generator rs ct
   | Ptyp_tuple [ct1;ct2] ->
      (match get_generator rs ct1,  get_generator rs ct2 with
       | Some t1,Some t2 -> Some (apply_nolbl_s "QCheck.Gen.pair" [t1;t2])
-      | _ -> None
-     )
+      | _ -> None)
   | _ -> None
 
 (* Checks if a property is attached to the type [t] in [rs] *)
@@ -160,6 +132,7 @@ let initial_rs =
     Types.empty
     |> add_gen "unit"  "QCheck.Gen.unit"
     |> add_gen "bool"  "QCheck.Gen.bool"
+    |> add_gen "char"  "QCheck.Gen.char"
     |> add_gen "int"   "QCheck.Gen.int"
     |> add_gen "float" "QCheck.Gen.float"
   in

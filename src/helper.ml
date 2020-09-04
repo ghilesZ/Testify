@@ -26,7 +26,9 @@ let apply_nolbl_s s = apply_nolbl (exp_id s)
 
 (* same as [apply f args1@args2] where arguments in arg2 are not labelled *)
 let apply_lab_nolab f args1 args2 =
-  Exp.apply f (args1@(List.map (fun a -> Nolabel,a) args2))
+  let labs = List.map (fun (s,e) -> Labelled s,e) args1 in
+  let no_labs = List.map (fun a -> Nolabel,a) args2 in
+  Exp.apply f (labs@no_labs)
 
 (* same as apply_lab_nolab but argument function name is a string  *)
 let apply_lab_nolab_s s =
@@ -37,3 +39,12 @@ let bang = apply_nolbl_s "!"
 
 (* application of := *)
 let assign = apply_nolbl_s ":="
+
+(* boolean expressions *)
+let true_exp = Exp.construct (lid "true") None
+let false_exp = Exp.construct (lid "false") None
+
+(* useful constructors *)
+let int_exp x = Exp.constant (Const.int x)
+let string_exp x = Exp.constant (Const.string x)
+let str_nonrec vb = Str.value Nonrecursive vb
