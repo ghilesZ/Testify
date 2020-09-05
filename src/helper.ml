@@ -41,8 +41,8 @@ let bang = apply_nolbl_s "!"
 let assign = apply_nolbl_s ":="
 
 (* boolean expressions *)
-let true_exp = Exp.construct (lid "true") None
-let false_exp = Exp.construct (lid "false") None
+let true_ = Exp.construct (lid "true") None
+let false_ = Exp.construct (lid "false") None
 
 (* useful constructors *)
 let int_exp x = Exp.constant (Const.int x)

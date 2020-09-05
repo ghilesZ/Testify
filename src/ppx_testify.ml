@@ -32,7 +32,7 @@ let add new_test =
 (* ast for : let _ = QCheck_base_runner.run_tests_main !__Testify__tests *)
 let run =
   apply_lab_nolab_s "QCheck_base_runner.run_tests"
-    ["colors", true_exp] [bang [test_suite_exp]] |> Str.eval
+    ["colors", true_] [bang [test_suite_exp]] |> Str.eval
 
 (* number of generation per test *)
 let count = ref 1000
@@ -149,12 +149,11 @@ let declare_type state td =
          let state =
            match Option.bind td.ptype_manifest (get_generator state) with
            | None -> state
-           | Some g -> let g = Exp.apply (exp_id "QCheck.find_example")
-                                 [Labelled "f", e; Nolabel, g]
-                       in
-                       {state with generators =
-                                     Types.add (Longident.Lident td.ptype_name.txt)
-                                       g state.generators}
+           | Some g ->
+              let g = apply_lab_nolab_s "QCheck.find_example" ["f", e] [g] in
+              {state with generators =
+                            Types.add (Longident.Lident td.ptype_name.txt)
+                              g state.generators}
          in
          {state with
            properties = add_prop td.ptype_name.txt e state.properties;
@@ -180,42 +179,34 @@ let fun_decl_to_gen state e =
   try Some (aux state [] e)
   with Exit -> None
 
-(* compute a list of structure item to be added to the AST. also
-   compute a rewritting where more generator are potentially
-   added.
+(* compute a list of structure item to be added to the AST.
    handles:
-   - type declarations
    - annotated constants
    - fully annotated functions *)
-let update state h =
-  match h.pstr_desc with
-  | Pstr_type(_,[td]) -> declare_type state td, []
-  | Pstr_value(_,[{pvb_pat={ppat_desc=Ppat_constraint(
-                                          {ppat_desc=Ppat_var({txt;_});_},
-                                          typ);
-                            _};_}]) ->
-     (match get_property typ state with
-      | None -> state,[]
-      | Some p -> state, [test_constant txt p])
-  | Pstr_value(_,[
-          {pvb_pat={ppat_desc=Ppat_var({txt;_});_}; pvb_expr;_}]) ->
+let check state = function
+  | {pvb_pat={ppat_desc=Ppat_constraint({ppat_desc=Ppat_var({txt;_});_},typ);_};_} ->
+     get_property typ state
+     |> Option.fold ~none:[] ~some:(fun p -> [test_constant txt p])
+  | {pvb_pat={ppat_desc=Ppat_var({txt;_});_}; pvb_expr;_} ->
      (match fun_decl_to_gen state pvb_expr.pexp_desc with
-      | None -> state,[]
-      | Some (s,args,ct) ->
-         (match get_property ct state with
-          | None -> s,[]
-          | Some p -> s, [generate args txt p]))
-  | _ -> state,[]
+      | None -> []
+      | Some (_,args,ct) ->
+         get_property ct state
+         |> Option.fold ~none:[] ~some: (fun p -> [generate args txt p]))
+  | _ -> []
 
 (* actual mapper *)
 let testify_mapper =
   let handle_str mapper =
     let rec aux state res = function
       | [] -> List.rev (run::res)
-      | h::tl ->
-         let state,tests = update state h in
+      | ({pstr_desc=Pstr_type(_,[t]);_} as h)::tl ->
+         aux (declare_type state t) (h::res) tl
+      | ({pstr_desc=Pstr_value(_,[pvb]); _} as h)::tl ->
+         let tests = check state pvb in
          let h' = mapper.structure_item mapper h in
          aux state (tests@(h'::res)) tl
+      | h::tl -> aux  state (h::res) tl
     in
     aux initial_rs [declare_test_suite]
   in
