@@ -12,27 +12,27 @@ module Conv = Convert (OCaml_408) (OCaml_current)
    the ast, and each time a fully annotated function whose return type
    was attached a satisfying predicate, it adds the to the list the
    corresponding test. *)
-let test_suite_name = "__Testify__tests"
-let test_suite_exp = exp_id test_suite_name
+let test_id = "__Testify__tests"
+let test_exp = exp_id test_id
 
 (* ast for : let __Testify__tests = ref [] *)
 let declare_test_suite =
   let ref_empty = apply_nolbl_s "ref" [Exp.construct (lid "[]") None] in
-  str_nonrec [Vb.mk (Pat.var (none_loc test_suite_name)) ref_empty]
+  str_nonrec [Vb.mk (Pat.var (none_loc test_id)) ref_empty]
 
 (* given x, generates the ast for :
    let _ = __Testify__tests :=  x::!__Testify__tests *)
 let add new_test =
   let added =
-    let tuple = Exp.tuple [new_test; bang [test_suite_exp]] in
+    let tuple = Exp.tuple [new_test; bang [test_exp]] in
     Exp.construct (lid "::") (Some tuple)
   in
-  assign [test_suite_exp; added] |> Str.eval
+  assign [test_exp; added] |> Str.eval
 
 (* ast for : let _ = QCheck_base_runner.run_tests_main !__Testify__tests *)
 let run =
   apply_lab_nolab_s "QCheck_base_runner.run_tests"
-    ["colors", true_] [bang [test_suite_exp]] |> Str.eval
+    ["colors", true_] [bang [test_exp]] |> Str.eval
 
 (* number of generation per test *)
 let count = ref 1000
