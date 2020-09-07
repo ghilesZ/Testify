@@ -17,17 +17,13 @@ let test_exp = exp_id test_id
 
 (* ast for : let __Testify__tests = ref [] *)
 let declare_test_suite =
-  let ref_empty = apply_nolbl_s "ref" [Exp.construct (lid "[]") None] in
-  str_nonrec [Vb.mk (Pat.var (none_loc test_id)) ref_empty]
+  let ref_empty = apply_nolbl_s "ref" [empty_list_exp] in
+  str_nonrec [vb_s test_id ref_empty]
 
 (* given x, generates the ast for :
    let _ = __Testify__tests :=  x::!__Testify__tests *)
 let add new_test =
-  let added =
-    let tuple = Exp.tuple [new_test; bang [test_exp]] in
-    Exp.construct (lid "::") (Some tuple)
-  in
-  assign [test_exp; added] |> Str.eval
+  assign [test_exp; cons_exp new_test (bang [test_exp])] |> Str.eval
 
 (* ast for : let _ = QCheck_base_runner.run_tests_main !__Testify__tests *)
 let run =
@@ -195,9 +191,15 @@ let check_tests state = function
          |> Option.fold ~none:[] ~some: (fun p -> [generate args txt name p]))
   | _ -> []
 
+(* pre-defined dependant types.
+   TODO: find a non-hack way to do this *)
+let std_testify =
+  Pparse.parse_implementation ~tool_name:"ppx_testify"
+    "src/testify_lib.ml"
+
 (* actual mapper *)
 let testify_mapper =
-  let handle_str mapper =
+  let handle_str mapper str =
     let rec aux state res = function
       | [] -> List.rev (run::res)
       | ({pstr_desc=Pstr_type(_,[t]);_} as h)::tl ->
@@ -209,7 +211,7 @@ let testify_mapper =
          aux state (tests@(h'::res)) tl
       | h::tl -> aux  state (h::res) tl
     in
-    aux initial_rs [declare_test_suite]
+    aux initial_rs [declare_test_suite] (std_testify@str)
   in
   {default_mapper with structure = handle_str}
 

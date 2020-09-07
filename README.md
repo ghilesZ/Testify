@@ -44,12 +44,20 @@ let _ =
         (fun (x1, x2) -> (fun (x, y) -> x <= y) (add x1 x2)))
 ```
 
-As you noticed, Testify uses the wonderful QCheck library as a testing framework.
+As you noticed, Testify uses the wonderful QCheck library do the
+tests.
 
 ## How is it done?
-Testifies features an automatic derivation of QCheck’s generators for most basic types and uses those to randomly generates inputs for each function whose return type was attached a generator.
+Testifies features an automatic derivation of QCheck’s generators for
+most basic types and uses those to randomly generates inputs for each
+function whose return type was attached a generator.  It the applies
+the function to the obtained inputs and checks the ouput against the
+specified property.
 
 ### Generator derivation
 - for basic types (unit, bool, char, int, float)
 - for tuples
-- for types who are attached a predicate using ```QCheck.find_example```. However, this is less efficient than writting a specific generators.
+- for types who are attached a predicate, we proceed to a rejection
+  sampling using ```QCheck.find_example```. However, this can be
+  avoided by specifying a generator to the given type **t** using the
+  ```[@gen t]``` annotation.

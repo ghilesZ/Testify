@@ -48,3 +48,11 @@ let false_ = Exp.construct (lid "false") None
 let int_exp x = Exp.constant (Const.int x)
 let string_exp x = Exp.constant (Const.string x)
 let str_nonrec vb = Str.value Nonrecursive vb
+
+(* easy value binding with string *)
+let vb_s id exp =
+  Vb.mk (Pat.var (none_loc id)) exp
+
+(* ast for lists *)
+let empty_list_exp = Exp.construct (lid "[]") None
+let cons_exp h t = Exp.construct (lid "::") (Some (Exp.tuple [h;t]))
