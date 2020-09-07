@@ -1,4 +1,4 @@
 (test
-  (name pos)
+  (name itv)
   (preprocess (staged_pps ppx_testify))
   (libraries qcheck))

@@ -87,10 +87,6 @@ let generate inputs funname satisfy =
 (* map for type identifier *)
 module Types = Map.Make(struct type t = Longident.t let compare = compare end)
 
-(* [add_gen t g map] registers [g] as a generator for the type [t] in [map]*)
-let add_gen (t_id:string) (gen_id:string) =
-  Types.add (Longident.Lident t_id) (exp_id gen_id)
-
 let add_prop t_id : expression -> expression Types.t -> expression Types.t =
   Types.add (Longident.Lident t_id)
 
@@ -128,6 +124,9 @@ let rec get_property (t:typ) (rs:rewritting_state) : expression option =
 
 (* initial rewritting state, with a few generators by default *)
 let initial_rs =
+  let add_gen (t_id:string) (gen_id:string) =
+    Types.add (Longident.Lident t_id) (exp_id gen_id)
+  in
   let generators =
     Types.empty
     |> add_gen "unit"  "QCheck.Gen.unit"
@@ -161,6 +160,15 @@ let declare_type state td =
       | _ -> failwith "bad satisfying attribute")
   | None -> state
 
+let check_gen state pvb =
+  (match List.filter (fun a -> a.attr_name.txt = "gen") pvb.pvb_attributes with
+   | [] -> state
+   | _::_::_ -> failwith "only one gen attribute accepted"
+   | [{attr_payload=PStr [{pstr_desc=Pstr_eval ({pexp_desc=Pexp_ident l;_},_);_}];_}] ->
+      {state with generators = Types.add l.txt pvb.pvb_expr state.generators}
+   | _ -> failwith "bad gen attribute"
+  )
+
 (* returns the generators associated to a function's arguments *)
 let fun_decl_to_gen state e =
   let helper state pat =
@@ -183,7 +191,7 @@ let fun_decl_to_gen state e =
    handles:
    - annotated constants
    - fully annotated functions *)
-let check state = function
+let check_tests state = function
   | {pvb_pat={ppat_desc=Ppat_constraint({ppat_desc=Ppat_var({txt;_});_},typ);_};_} ->
      get_property typ state
      |> Option.fold ~none:[] ~some:(fun p -> [test_constant txt p])
@@ -203,7 +211,8 @@ let testify_mapper =
       | ({pstr_desc=Pstr_type(_,[t]);_} as h)::tl ->
          aux (declare_type state t) (h::res) tl
       | ({pstr_desc=Pstr_value(_,[pvb]); _} as h)::tl ->
-         let tests = check state pvb in
+         let state = check_gen state pvb in
+         let tests = check_tests state pvb in
          let h' = mapper.structure_item mapper h in
          aux state (tests@(h'::res)) tl
       | h::tl -> aux  state (h::res) tl

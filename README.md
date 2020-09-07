@@ -2,7 +2,8 @@
 Testify is a syntactic extension that features type driven code
 generation to automatically generate test for your programs. It
 allows you to attach a property to a given type **t** and use the explicit
-type annotations of your program to generate tests for the values whose return type is  **t**, as in the following example.
+type annotations of your program to generate tests for the values whose 
+return type is  **t**,  as in the following example.
 
 ```OCaml
 type itv = int * int [@satisfying (fun (x,y) -> x <= y)]
@@ -14,6 +15,7 @@ let add ((low1,high1):itv) ((low2,high2):itv) : itv =
 ```
 
 which is rewritten into:
+
 
 ```OCaml
 type itv = (((int * int))[@satisfying fun (x, y) -> x <= y])
@@ -48,5 +50,6 @@ As you noticed, Testify uses the wonderful QCheck library as a testing framework
 Testifies features an automatic derivation of QCheck’s generators for most basic types and uses those to randomly generates inputs for each function whose return type was attached a generator.
 
 ### Generator derivation
+- for basic types (unit, bool, char, int, float)
 - for tuples
 - for types who are attached a predicate using ```QCheck.find_example```. However, this is less efficient than writting a specific generators.
