@@ -1,7 +1,7 @@
 opam-version: "2.0"
-maintainer: "Ghiles Ziat <ghiles.ziat@lip6.fr>"
+maintainer: "Ghiles Ziat <ghiles.ziat@isae-supaero.fr>"
 authors: [
-  "Ghiles Ziat <ghiles.ziat@lip6.fr>"
+  "Ghiles Ziat <ghiles.ziat@isae-supaero.fr>"
 ]
 homepage: "https://github.com/ghilesZ/testify"
 bug-reports: "https://github.com/ghilesZ/testify/issues"
@@ -15,11 +15,11 @@ build: [
 depends: [
   "ocaml" {>= "4.04.0"}
   "ppx_tools_versioned"
+  "qcheck"
   "dune" {>= "1.2"}
 ]
 synopsis:"Ppx_testify syntax extension"
-description:"Wideopen is a syntax-extension that allows you to
-  annotate ..."
+description:"Ppx_testify is a syntax-extension that allows to generate automatically test for your programs with a minimum effort from your end."
 url {
   src: "https://github.com/ghilesZ/testify/archive/1.0.tar.gz"
 }
