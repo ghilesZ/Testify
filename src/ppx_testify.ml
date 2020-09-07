@@ -33,7 +33,7 @@ let run =
 (* number of generation per test *)
 let count = ref 1000
 
-(* let _ = assert (f a) *)
+(* QCheck test for constants *)
 let test_constant name f =
   let open Exp in
   let f = fun_ Nolabel None (Pat.any ()) (apply_nolbl f [exp_id name]) in

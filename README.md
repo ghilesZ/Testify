@@ -1,51 +1,35 @@
 # Testify
 Testify is a syntactic extension that features type driven code
-generation to automatically generate test for your programs. It
-allows you to attach a property to a given type **t** and use the explicit
-type annotations of your program to generate tests for the values whose 
-return type is  **t**,  as in the following example.
+generation to automatically generate test for your programs. It allows
+you to attach a property to a given type, as in the following example:
 
 ```OCaml
-type itv = int * int [@satisfying (fun (x,y) -> x <= y)]
-
-let neg ((low,high):itv) : itv = -high,-low
-
-let add ((low1,high1):itv) ((low2,high2):itv) : itv =
-  (low1 + low2), (high1 + high2)
+type p_int = int [@satisfying (fun x -> x > 0)]
 ```
 
-which is rewritten into:
-
+Which is to be understood as the type of *positive integers*. Of
+course, OCaml's type system cannot type-check this kind of property,
+however we can test them!  Testify then uses the explicit type
+annotations of your program to generate tests for the values whose
+return type is ```p_int```, as in the following example.
 
 ```OCaml
-type itv = (((int * int))[@satisfying fun (x, y) -> x <= y])
+let abs (x:int) : p_int = if x < 0 then -x else x
+```
+is now rewritten into:
 
-let neg ((low, high) : itv) = (((- high), (- low)) : itv)
+```OCaml
+let abs (x:int) : p_int = if x < 0 then -x else x
 
-(QCheck.Test.make ~count:1000
-        ~name:"neg does not respect the prediate (fun (x, y) -> x <= y) for some input"
-        (QCheck.make
-           (QCheck.find_example ~f:(fun (x, y) -> x <= y)
-              (QCheck.Gen.pair QCheck.Gen.int QCheck.Gen.int)))
-        (fun x1 -> (fun (x, y) -> x <= y) (neg x1)))
-        
-let add ((low1, high1) : itv) ((low2, high2) : itv) =
-  (((low1 + low2), (high1 + high2)) : itv)
-  
 let _ = 
-    (QCheck.Test.make ~count:1000
-        ~name:"add does not respect the prediate (fun (x, y) -> x <= y) for some input"
-        (QCheck.make
-           (QCheck.Gen.pair
-              (QCheck.find_example ~f:(fun (x, y) -> x <= y)
-                 (QCheck.Gen.pair QCheck.Gen.int QCheck.Gen.int))
-              (QCheck.find_example ~f:(fun (x, y) -> x <= y)
-                 (QCheck.Gen.pair QCheck.Gen.int QCheck.Gen.int))))
-        (fun (x1, x2) -> (fun (x, y) -> x <= y) (add x1 x2)))
+    QCheck.Test.make 
+      (QCheck.make QCheck.Gen.int) 
+      (fun x1 -> ((<) 0) (abs x1))
 ```
 
-As you noticed, Testify uses the wonderful QCheck library do the
-tests.
+As you noticed, a test has been added after the declaration of
+```abs``` the test-check the dependency property. As you also noticed,
+Testify uses the wonderful QCheck library do the tests.
 
 ## How is it done?
 Testifies features an automatic derivation of QCheck’s generators for
