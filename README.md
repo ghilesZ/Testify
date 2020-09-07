@@ -33,7 +33,7 @@ directory.
 ## How is it done?
 Testify features an automatic derivation of QCheck’s generators for
 [most](#derivation) basic types and uses those to randomly generates
-inputs for each function whose return type was attached a generator.
+inputs for each function whose return type was attached a validity property.
 It then applies the function to the obtained inputs and checks the
 ouput against the specified property. Note that we also provide a
 ```[@gen t]``` annotation that allows the programmer to explicitly
