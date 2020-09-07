@@ -31,12 +31,12 @@ library do the tests.
 
 ## How is it done?
 Testifies features an automatic derivation of QCheck’s generators for
-[most](#Generator derivation)   basic types and uses those to randomly generates inputs for each
+[most](#derivation)   basic types and uses those to randomly generates inputs for each
 function whose return type was attached a generator.  It then applies
 the function to the obtained inputs and checks the ouput against the
 specified property.
 
-### Generator derivation
+### derivation
 - for basic types (unit, bool, char, int, float)
 - for tuples
 - for types who are attached a predicate, we proceed to a rejection
