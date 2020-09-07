@@ -28,13 +28,14 @@ let _ =
 ```
 
 As you noticed, a test has been added after the declaration of
-```abs``` the test-check the dependency property. As you also noticed,
-Testify uses the wonderful QCheck library do the tests.
+```abs``` to check that its return values are indeed positive
+integers. As you also noticed, Testify uses the wonderful QCheck
+library do the tests.
 
 ## How is it done?
 Testifies features an automatic derivation of QCheck’s generators for
 most basic types and uses those to randomly generates inputs for each
-function whose return type was attached a generator.  It the applies
+function whose return type was attached a generator.  It then applies
 the function to the obtained inputs and checks the ouput against the
 specified property.
 
