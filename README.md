@@ -21,10 +21,7 @@ is now rewritten into:
 ```OCaml
 let abs (x:int) : p_int = if x < 0 then -x else x
 
-let _ = 
-    QCheck.Test.make 
-      (QCheck.make QCheck.Gen.int) 
-      (fun x1 -> ((<) 0) (abs x1))
+let _ = QCheck.Test.make (QCheck.make QCheck.Gen.int) (fun x1 -> ((<) 0) (abs x1))
 ```
 
 As you noticed, a test has been added after the declaration of
@@ -34,7 +31,7 @@ library do the tests.
 
 ## How is it done?
 Testifies features an automatic derivation of QCheck’s generators for
-most basic types and uses those to randomly generates inputs for each
+[most](#Generator derivation)   basic types and uses those to randomly generates inputs for each
 function whose return type was attached a generator.  It then applies
 the function to the obtained inputs and checks the ouput against the
 specified property.
