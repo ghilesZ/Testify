@@ -52,7 +52,7 @@ let test name args =
 
 (* builds an input from a list of generators and apply to it the
    function funname *)
-let generate inputs funname satisfy =
+let generate inputs fn testname satisfy =
   let get_name =
     let cpt = ref 0 in
     fun () -> incr cpt; "x"^(string_of_int !cpt)
@@ -71,10 +71,10 @@ let generate inputs funname satisfy =
      let name = get_name () in
      let pat = Pat.var (none_loc name) in
      let gen,pat,args = aux h pat [exp_id name] tl in
-     let f = exp_id funname in
+     let f = exp_id fn in
      let f = Exp.fun_ Nolabel None pat (apply_nolbl satisfy [apply_nolbl f args]) in
-     let testname = Format.asprintf "%s does not respect the prediate \
-                                     (%a) for some input" funname
+     let testname = Format.asprintf "the return value of %s violates \
+                                     the predicate%a\nfor some input" testname
                       Pprintast.expression (Conv.copy_expression satisfy)
      in
      test testname [apply_nolbl_s "QCheck.make" [gen];f]
@@ -90,21 +90,14 @@ module Types = Map.Make(struct type t = Longident.t let compare = compare end)
 let add_prop t_id : expression -> expression Types.t -> expression Types.t =
   Types.add (Longident.Lident t_id)
 
-(* sets for type declarations *)
-module Decl = Set.Make(struct type t = type_declaration let compare = compare end)
-
 (* main type, for rewritting states *)
 type rewritting_state = {
-    filename     : string;
-    declarations : Decl.t;
     generators   : expression Types.t;
     properties   : expression Types.t
   }
 
 (* Given a rewritting state [rs] and and a type [t], search for the
-   generator associated to [t] in [rs]. If no generator is attached to
-   [t], we search for its declaration and try to derive automatically
-   a generator from it. Returns an expression of type Gen.t option. *)
+   generator associated to [t] in [rs]. Returns a Gen.t option. *)
 let rec get_generator rs (typ:core_type) =
   match typ.ptyp_desc with
   | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.generators
@@ -135,14 +128,14 @@ let initial_rs =
     |> add_gen "int"   "QCheck.Gen.int"
     |> add_gen "float" "QCheck.Gen.float"
   in
-  {filename=""; declarations=Decl.empty; generators; properties=Types.empty}
+  {generators; properties=Types.empty}
 
 (* update the rewritting state according to a type declaration *)
 let declare_type state td =
   match td.ptype_manifest with
   | Some {ptyp_attributes;_} ->
      (match List.filter (fun a -> a.attr_name.txt = "satisfying") ptyp_attributes with
-      | [] -> {state with declarations = Decl.add td state.declarations}
+      | [] -> state
       | _::_::_ -> failwith "only one satisfying attribute accepted"
       | [{attr_payload=PStr [{pstr_desc=Pstr_eval (e,_);_}];_}] ->
          let state =
@@ -154,9 +147,7 @@ let declare_type state td =
                             Types.add (Longident.Lident td.ptype_name.txt)
                               g state.generators}
          in
-         {state with
-           properties = add_prop td.ptype_name.txt e state.properties;
-           declarations = Decl.add td state.declarations}
+         {state with properties = add_prop td.ptype_name.txt e state.properties}
       | _ -> failwith "bad satisfying attribute")
   | None -> state
 
@@ -195,12 +186,13 @@ let check_tests state = function
   | {pvb_pat={ppat_desc=Ppat_constraint({ppat_desc=Ppat_var({txt;_});_},typ);_};_} ->
      get_property typ state
      |> Option.fold ~none:[] ~some:(fun p -> [test_constant txt p])
-  | {pvb_pat={ppat_desc=Ppat_var({txt;_});_}; pvb_expr;_} ->
+  | {pvb_pat={ppat_desc=Ppat_var({txt;_});_}; pvb_expr;pvb_loc;_} ->
      (match fun_decl_to_gen state pvb_expr.pexp_desc with
       | None -> []
       | Some (_,args,ct) ->
+         let name = Format.asprintf "'%s' in %a" txt Location.print_loc pvb_loc in
          get_property ct state
-         |> Option.fold ~none:[] ~some: (fun p -> [generate args txt p]))
+         |> Option.fold ~none:[] ~some: (fun p -> [generate args txt name p]))
   | _ -> []
 
 (* actual mapper *)
