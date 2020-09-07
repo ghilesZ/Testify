@@ -1,4 +1,0 @@
-(library
-  (name testify)
-  (public_name testify)
-  (libraries qcheck))
