@@ -111,6 +111,11 @@ let rec get_property (t:typ) (rs:rewritting_state) : expression option =
   |	Ptyp_poly ([],ct)   -> get_property ct rs
   | _ -> None
 
+(* let get_property t rs =
+ *   match get_property t rs with
+ *   | None -> Format.printf "property not found for %a\n%!" Pprintast.core_type t; None
+ *   | x -> Format.printf "property found for %a\n%!" Pprintast.core_type t; x *)
+
 (* initial rewritting state, with a few generators by default *)
 let initial_rs =
   let add_gen (t_id:string) (gen_id:string) =
@@ -131,7 +136,12 @@ let declare_type state td =
   match td.ptype_manifest with
   | Some {ptyp_attributes;_} ->
      (match List.filter (fun a -> a.attr_name.txt = "satisfying") ptyp_attributes with
-      | [] -> state
+      | [] ->
+         (match Option.bind td.ptype_manifest (get_generator state) with
+          | None -> state
+          | Some g -> {state with generators =
+                                    Types.add (Longident.Lident td.ptype_name.txt)
+                                      g state.generators})
       | _::_::_ -> failwith "only one satisfying attribute accepted"
       | [{attr_payload=PStr [{pstr_desc=Pstr_eval (e,_);_}];_}] ->
          let state =
@@ -139,6 +149,7 @@ let declare_type state td =
            | None -> state
            | Some g ->
               let g = apply_lab_nolab_s "QCheck.find_example" ["f", e] [g] in
+              (* Format.printf "registering %s\n" td.ptype_name.txt; *)
               {state with generators =
                             Types.add (Longident.Lident td.ptype_name.txt)
                               g state.generators}
@@ -189,7 +200,7 @@ let check_tests state = function
          let name = Format.asprintf "'%s' in %a" txt Location.print_loc pvb_loc in
          get_property ct state
          |> Option.fold ~none:[] ~some: (fun p -> [generate args txt name p]))
-  | _ -> []
+  | {pvb_pat;_} -> Format.printf "no tests for %a\n%!" Pprintast.pattern pvb_pat; []
 
 (* pre-defined dependant types.
    TODO: find a non-hack way to do this *)
@@ -205,11 +216,11 @@ let testify_mapper =
       | ({pstr_desc=Pstr_type(_,[t]);_} as h)::tl ->
          aux (declare_type state t) (h::res) tl
       | ({pstr_desc=Pstr_value(_,[pvb]); _} as h)::tl ->
-         let state = check_gen state pvb in
          let tests = check_tests state pvb in
+         let state = check_gen state pvb in
          let h' = mapper.structure_item mapper h in
          aux state (tests@(h'::res)) tl
-      | h::tl -> aux  state (h::res) tl
+      | h::tl -> aux state (h::res) tl
     in
     aux initial_rs [declare_test_suite] (std_testify@str)
   in

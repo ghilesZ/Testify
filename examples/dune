@@ -1,4 +1,17 @@
 (test
+  (name dist)
+  (modules dist)
+  (preprocess (pps ppx_testify))
+  (libraries testify_lib qcheck))
+  
+(test
+  (name positive)
+  (modules positive)
+  (preprocess (pps ppx_testify))
+  (libraries testify_lib qcheck))
+  
+(test
   (name itv)
-  (preprocess (staged_pps ppx_testify))
-  (libraries qcheck))
+  (modules itv)
+  (preprocess (pps ppx_testify))
+  (libraries testify_lib qcheck))
