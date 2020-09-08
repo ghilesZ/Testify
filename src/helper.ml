@@ -9,13 +9,16 @@ open Ast_helper
 let none_loc ?loc:(loc=Location.none) s =
   Location.mkloc s loc
 
+(* builds a Longident.t *)
+let lid id = Longident.Lident id
+
 (* builds a Longident.t Location.t for a string *)
-let lid ?loc:(loc=Location.none) id =
+let lid_loc ?loc:(loc=Location.none) id =
   none_loc ~loc (Longident.parse id)
 
 (* given a string [name], builds the identifier [name] *)
 let exp_id ?loc:(loc=Location.none) name =
-  lid name |> Exp.ident ~loc
+  lid_loc name |> Exp.ident ~loc
 
 (* same as apply but argument are not labelled *)
 let apply_nolbl f args =
@@ -41,8 +44,8 @@ let bang = apply_nolbl_s "!"
 let assign = apply_nolbl_s ":="
 
 (* boolean expressions *)
-let true_ = Exp.construct (lid "true") None
-let false_ = Exp.construct (lid "false") None
+let true_ = Exp.construct (lid_loc "true") None
+let false_ = Exp.construct (lid_loc "false") None
 
 (* useful constructors *)
 let int_exp x = Exp.constant (Const.int x)
@@ -54,5 +57,5 @@ let vb_s id exp =
   Vb.mk (Pat.var (none_loc id)) exp
 
 (* ast for lists *)
-let empty_list_exp = Exp.construct (lid "[]") None
-let cons_exp h t = Exp.construct (lid "::") (Some (Exp.tuple [h;t]))
+let empty_list_exp = Exp.construct (lid_loc "[]") None
+let cons_exp h t = Exp.construct (lid_loc "::") (Some (Exp.tuple [h;t]))

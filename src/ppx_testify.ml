@@ -88,9 +88,16 @@ let add_prop t_id : expression -> expression Types.t -> expression Types.t =
 
 (* main type, for rewritting states *)
 type rewritting_state = {
-    generators   : expression Types.t;
-    properties   : expression Types.t
+    generators : expression Types.t;
+    properties : expression Types.t;
+    printers   : expression Types.t;
   }
+
+let register_printer rs lid p =
+  {rs with printers = Types.add lid p rs.printers}
+
+let register_generator rs lid g =
+  {rs with generators = Types.add lid g rs.generators}
 
 (* Given a rewritting state [rs] and and a type [t], search for the
    generator associated to [t] in [rs]. Returns a Gen.t option. *)
@@ -104,6 +111,18 @@ let rec get_generator rs (typ:core_type) =
       | _ -> None)
   | _ -> None
 
+(* Given a rewritting state [rs] and and a type [t], search for the
+   printer associated to [t] in [rs]. Returns a printer option. *)
+let rec get_printer rs (typ:core_type) =
+  match typ.ptyp_desc with
+  | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.generators
+  |	Ptyp_poly ([],ct)   -> get_printer rs ct
+  | Ptyp_tuple [ct1;ct2] ->
+     (match get_printer rs ct1,  get_printer rs ct2 with
+      | Some t1,Some t2 -> Some (apply_nolbl_s "QCheck.Print.pair" [t1;t2])
+      | _ -> None)
+  | _ -> None
+
 (* Checks if a property is attached to the type [t] in [rs] *)
 let rec get_property (t:typ) (rs:rewritting_state) : expression option =
   match t.ptyp_desc with
@@ -111,37 +130,42 @@ let rec get_property (t:typ) (rs:rewritting_state) : expression option =
   |	Ptyp_poly ([],ct)   -> get_property ct rs
   | _ -> None
 
-(* let get_property t rs =
- *   match get_property t rs with
- *   | None -> Format.printf "property not found for %a\n%!" Pprintast.core_type t; None
- *   | x -> Format.printf "property found for %a\n%!" Pprintast.core_type t; x *)
-
 (* initial rewritting state, with a few generators by default *)
 let initial_rs =
-  let add_gen (t_id:string) (gen_id:string) =
-    Types.add (Longident.Lident t_id) (exp_id gen_id)
+  let add_id (t_id:string) (id:string) =
+    Types.add (Longident.Lident t_id) (exp_id id)
   in
   let generators =
     Types.empty
-    |> add_gen "unit"  "QCheck.Gen.unit"
-    |> add_gen "bool"  "QCheck.Gen.bool"
-    |> add_gen "char"  "QCheck.Gen.char"
-    |> add_gen "int"   "QCheck.Gen.int"
-    |> add_gen "float" "QCheck.Gen.float"
+    |> add_id "unit"  "QCheck.Gen.unit"
+    |> add_id "bool"  "QCheck.Gen.bool"
+    |> add_id "char"  "QCheck.Gen.char"
+    |> add_id "int"   "QCheck.Gen.int"
+    |> add_id "float" "QCheck.Gen.float"
   in
-  {generators; properties=Types.empty}
+  let printers =
+    Types.empty
+    |> add_id "int" "Int.to_string"
+  in
+  {generators; properties=Types.empty; printers}
+
+let derive s td =
+  match td.ptype_manifest with
+  | None -> s
+  | Some m ->
+     let id = lid td.ptype_name.txt in
+     let s =
+       Option.fold ~none:s ~some:(register_generator s id) (get_generator s m)
+     in
+     Option.fold ~none:s ~some:(register_printer s id) (get_printer s m)
 
 (* update the rewritting state according to a type declaration *)
 let declare_type state td =
+  let state = derive state td in
   match td.ptype_manifest with
   | Some {ptyp_attributes;_} ->
      (match List.filter (fun a -> a.attr_name.txt = "satisfying") ptyp_attributes with
-      | [] ->
-         (match Option.bind td.ptype_manifest (get_generator state) with
-          | None -> state
-          | Some g -> {state with generators =
-                                    Types.add (Longident.Lident td.ptype_name.txt)
-                                      g state.generators})
+      | [] -> state
       | _::_::_ -> failwith "only one satisfying attribute accepted"
       | [{attr_payload=PStr [{pstr_desc=Pstr_eval (e,_);_}];_}] ->
          let state =
@@ -149,10 +173,7 @@ let declare_type state td =
            | None -> state
            | Some g ->
               let g = apply_lab_nolab_s "QCheck.find_example" ["f", e] [g] in
-              (* Format.printf "registering %s\n" td.ptype_name.txt; *)
-              {state with generators =
-                            Types.add (Longident.Lident td.ptype_name.txt)
-                              g state.generators}
+              register_generator state (lid td.ptype_name.txt) g
          in
          {state with properties = add_prop td.ptype_name.txt e state.properties}
       | _ -> failwith "bad satisfying attribute")
@@ -165,6 +186,15 @@ let check_gen state pvb =
    | [{attr_payload=PStr [{pstr_desc=Pstr_eval ({pexp_desc=Pexp_ident l;_},_);_}];_}] ->
       {state with generators = Types.add l.txt pvb.pvb_expr state.generators}
    | _ -> failwith "bad gen attribute"
+  )
+
+let check_print state pvb =
+  (match List.filter (fun a -> a.attr_name.txt = "print") pvb.pvb_attributes with
+   | [] -> state
+   | _::_::_ -> failwith "only one print attribute accepted"
+   | [{attr_payload=PStr [{pstr_desc=Pstr_eval ({pexp_desc=Pexp_ident l;_},_);_}];_}] ->
+      {state with printers = Types.add l.txt pvb.pvb_expr state.printers}
+   | _ -> failwith "bad print attribute"
   )
 
 (* returns the generators associated to a function's arguments *)
@@ -218,6 +248,7 @@ let testify_mapper =
       | ({pstr_desc=Pstr_value(_,[pvb]); _} as h)::tl ->
          let tests = check_tests state pvb in
          let state = check_gen state pvb in
+         let state = check_print state pvb in
          let h' = mapper.structure_item mapper h in
          aux state (tests@(h'::res)) tl
       | h::tl -> aux state (h::res) tl
