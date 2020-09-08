@@ -52,3 +52,9 @@ Automatic derivation of generators is made for the following types:
   ```QCheck.find_example```. However, this can be avoided by
   specifying a generator to the given type **t** using the ```[@gen
   t]``` annotation.
+
+
+##### Things tha are yet to be done
+- replace the current (generator + printer) implementation with QCheck's arbitrary
+- handling of parametric types
+- provide the user with a *standard library* of predifined types (positive integers, non-empty lists ...)
