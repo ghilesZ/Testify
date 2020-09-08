@@ -30,6 +30,10 @@ integers. As you also noticed, Testify uses the wonderful QCheck
 library do the tests. Other examples are available in the examples
 directory.
 
+### Why a PPX for test generations?
+- because no one likes writting tests.
+- because of the 0 runtime overhead, as the *real* program and the tested one can be compiled separately.
+
 ## How is it done?
 Testify features an automatic derivation of QCheck’s generators for
 [most](#derivation) basic types and uses those to randomly generates
@@ -53,8 +57,11 @@ Automatic derivation of generators is made for the following types:
   specifying a generator to the given type **t** using the ```[@gen
   t]``` annotation.
 
+### Current
+Testify is still at a very (very) early stage of developpement and is
+still very (very) unstable.
 
-##### Things tha are yet to be done
+##### Things that are yet to be done
 - replace the current (generator + printer) implementation with QCheck's arbitrary
 - handling of parametric types
 - provide the user with a *standard library* of predifined types (positive integers, non-empty lists ...)
