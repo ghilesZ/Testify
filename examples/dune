@@ -14,4 +14,4 @@
   (name itv)
   (modules itv)
   (preprocess (pps ppx_testify))
-  (libraries testify_lib qcheck))
+  (libraries testify_lib qcheck zarith))

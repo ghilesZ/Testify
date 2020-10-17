@@ -1,7 +1,7 @@
 (* This module provides helpers for ast building *)
 
 open Migrate_parsetree
-open Ast_408
+open Ast_410
 open Asttypes
 open Ast_helper
 

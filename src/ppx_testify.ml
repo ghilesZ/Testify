@@ -1,12 +1,12 @@
 open Migrate_parsetree
-open Ast_408
+open Ast_410
 open Parsetree
 open Ast_mapper
 open Ast_helper
 open Helper
 
-let ocaml_version = Versions.ocaml_408
-module Conv = Convert (OCaml_408) (OCaml_current)
+let ocaml_version = Versions.ocaml_410
+module Conv = Convert (OCaml_410) (OCaml_current)
 
 (* Testify generates an empty (Test.t list ref) at the beginning of
    the ast, and each time a fully annotated function whose return type
@@ -124,7 +124,7 @@ let rec get_printer rs (typ:core_type) =
   | _ -> None
 
 (* Checks if a property is attached to the type [t] in [rs] *)
-let rec get_property (t:typ) (rs:rewritting_state) : expression option =
+let rec get_property (t:core_type) (rs:rewritting_state) : expression option =
   match t.ptyp_desc with
   | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.properties
   |	Ptyp_poly ([],ct)   -> get_property ct rs
@@ -135,6 +135,9 @@ let initial_rs =
   let add_id (t_id:string) (id:string) =
     Types.add (Longident.Lident t_id) (exp_id id)
   in
+  (* TODO: add entries for int32, int64, nativeint, string, bytes,
+     aliases Mod.t *)
+  (* TODO: add entries for parametric types ref, list, array, option, lazy_t *)
   let generators =
     Types.empty
     |> add_id "unit"  "QCheck.Gen.unit"
@@ -230,7 +233,7 @@ let check_tests state = function
          let name = Format.asprintf "'%s' in %a" txt Location.print_loc pvb_loc in
          get_property ct state
          |> Option.fold ~none:[] ~some: (fun p -> [generate args txt name p]))
-  | {pvb_pat;_} -> Format.printf "no tests for %a\n%!" Pprintast.pattern pvb_pat; []
+  | _ -> []
 
 (* pre-defined dependant types.
    TODO: find a non-hack way to do this *)
@@ -253,7 +256,7 @@ let testify_mapper =
          aux state (tests@(h'::res)) tl
       | h::tl -> aux state (h::res) tl
     in
-    aux initial_rs [declare_test_suite] (std_testify@str)
+    aux initial_rs [declare_test_suite] (str)
   in
   {default_mapper with structure = handle_str}
 
@@ -261,4 +264,4 @@ let testify_mapper =
 let () =
   let open Migrate_parsetree in
   Driver.register ~name:"ppx_testify" ~args:[]
-    Versions.ocaml_408 (fun _config _cookies -> testify_mapper)
+    Versions.ocaml_410 (fun _config _cookies -> testify_mapper)
