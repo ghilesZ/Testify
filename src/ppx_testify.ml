@@ -46,27 +46,28 @@ let test name args =
   let lab = ["count", int_exp (!count);"name", string_exp name] in
   apply_lab_nolab (exp_id "QCheck.Test.make") lab args |> add
 
-(* builds an input from a list of generators and apply to it the
-   function funname *)
+(* builds an input from a list of generators and printers and apply
+   to it the function funname *)
 let generate inputs fn testname satisfy =
   let get_name =
     let cpt = ref 0 in
     fun () -> incr cpt; "x"^(string_of_int !cpt)
   in
-  let rec aux gen pat args = function
-    | [] -> gen,pat,List.rev args
-    | h::tl ->
-       let gen = apply_nolbl_s "QCheck.Gen.pair" [gen; h] in
+  let rec aux gen print pat args = function
+    | [] -> gen,print,pat,List.rev args
+    | (g,p)::tl ->
+       let print = apply_nolbl_s "QCheck.Print.pair" [print; p] in
+       let gen = apply_nolbl_s "QCheck.Gen.pair" [gen; g] in
        let name = get_name () in
        let pat = Pat.tuple [pat; Pat.var (none_loc name)] in
        let args = (exp_id name)::args in
-       aux gen pat args tl
+       aux gen print pat args tl
   in
   match inputs with
-  | h::tl ->
+  | (g,p)::tl ->
      let name = get_name () in
      let pat = Pat.var (none_loc name) in
-     let gen,pat,args = aux h pat [exp_id name] tl in
+     let gen,print,pat,args = aux g p pat [exp_id name] tl in
      let f = exp_id fn in
      let f = Exp.fun_ Nolabel None pat (apply_nolbl satisfy [apply_nolbl f args]) in
      let testname = Format.asprintf "the return value of %s violates \
@@ -75,7 +76,7 @@ let generate inputs fn testname satisfy =
                       testname
                       Pprintast.expression (Conv.copy_expression satisfy)
      in
-     test testname [apply_nolbl_s "QCheck.make" [gen];f]
+     test testname [apply_lab_nolab_s "QCheck.make" ["print",print] [gen];f]
   | [] -> assert false
 
 
@@ -208,16 +209,16 @@ let check_print state pvb =
       {state with printers = Types.add l.txt pvb.pvb_expr state.printers}
    | _ -> failwith "bad print attribute")
 
-let get_info get state e =
+let get_infos state e =
   let helper state pat =
     match pat.ppat_desc with
-    | Ppat_constraint (_,ct) -> (get state ct)
-    | _ -> None
+    | Ppat_constraint (_,ct) -> (get_generator state ct),(get_printer state ct)
+    | _ -> None,None
   in
   let rec aux state res = function
     | Pexp_fun(Nolabel,None,pat,exp) ->
        (match helper state pat with
-        | Some g -> aux state (g::res) exp.pexp_desc
+        | Some g,Some p -> aux state ((g,p)::res) exp.pexp_desc
         | _ -> raise Exit)
     | Pexp_constraint (_,ct) -> state,(List.rev res),ct
     | _ -> raise Exit
@@ -225,13 +226,7 @@ let get_info get state e =
   try Some (aux state [] e)
   with Exit -> None
 
-(* returns the generators associated to a function's arguments *)
-let fun_decl_to_gen = get_info get_generator
-
-(* returns the printer associated to a function's arguments *)
-let fun_decl_to_print = get_info get_printer
-
-(* compute a list of structure item to be added to the AST.
+(* compute a list of tests to be added to the AST.
    handles:
    - annotated constants
    - fully annotated functions *)
@@ -242,7 +237,7 @@ let check_tests state = function
      |> Option.fold ~none:[] ~some:(fun p -> [test_constant txt p])
     (* let fn (arg1:typ1) (arg2:typ2) ... : return_typ = body *)
   | {pvb_pat={ppat_desc=Ppat_var({txt;_});_}; pvb_expr;pvb_loc;_} ->
-     (match fun_decl_to_gen state pvb_expr.pexp_desc with
+     (match get_infos state pvb_expr.pexp_desc with
       | None -> []
       | Some (_,args,ct) ->
          let name = Format.asprintf "'%s' in %a" txt Location.print_loc pvb_loc in
