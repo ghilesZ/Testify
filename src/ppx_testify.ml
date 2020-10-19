@@ -70,7 +70,9 @@ let generate inputs fn testname satisfy =
      let f = exp_id fn in
      let f = Exp.fun_ Nolabel None pat (apply_nolbl satisfy [apply_nolbl f args]) in
      let testname = Format.asprintf "the return value of %s violates \
-                                     the predicate%a\nfor some input" testname
+                                     the predicate%a\nfor the \
+                                     following input"
+                      testname
                       Pprintast.expression (Conv.copy_expression satisfy)
      in
      test testname [apply_nolbl_s "QCheck.make" [gen];f]
@@ -100,7 +102,8 @@ let register_generator rs lid g =
   {rs with generators = Types.add lid g rs.generators}
 
 (* Given a rewritting state [rs] and and a type [t], search for the
-   generator associated to [t] in [rs]. Returns a Gen.t option. *)
+   generator associated to [t] in [rs]. Returns a parsetree expression
+   corresponding to a Gen.t option. *)
 let rec get_generator rs (typ:core_type) =
   match typ.ptyp_desc with
   | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.generators
@@ -112,7 +115,8 @@ let rec get_generator rs (typ:core_type) =
   | _ -> None
 
 (* Given a rewritting state [rs] and and a type [t], search for the
-   printer associated to [t] in [rs]. Returns a printer option. *)
+   printer associated to [t] in [rs]. Returns a parsetree expression
+   corresponding to a printer option. *)
 let rec get_printer rs (typ:core_type) =
   match typ.ptyp_desc with
   | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.generators
@@ -123,14 +127,14 @@ let rec get_printer rs (typ:core_type) =
       | _ -> None)
   | _ -> None
 
-(* Checks if a property is attached to the type [t] in [rs] *)
+(* gets the property attached to the type [t] in [rs] (or None) *)
 let rec get_property (t:core_type) (rs:rewritting_state) : expression option =
   match t.ptyp_desc with
   | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.properties
   |	Ptyp_poly ([],ct)   -> get_property ct rs
   | _ -> None
 
-(* initial rewritting state, with a few generators by default *)
+(* initial rewritting state, with a few generators/printers by default *)
 let initial_rs =
   let add_id (t_id:string) (id:string) =
     Types.add (Longident.Lident t_id) (exp_id id)
@@ -146,11 +150,13 @@ let initial_rs =
     |> add_id "int"   "QCheck.Gen.int"
     |> add_id "float" "QCheck.Gen.float"
   in
+  (* todo fix compatibility *)
   let printers =
     Types.empty
     |> add_id "int" "Int.to_string"
+    |> add_id "float" "Float.to_string"
   in
-  {generators; properties=Types.empty; printers}
+  {generators; printers; properties=Types.empty}
 
 let derive s td =
   match td.ptype_manifest with
@@ -175,15 +181,18 @@ let declare_type state td =
            match Option.bind td.ptype_manifest (get_generator state) with
            | None -> state
            | Some g ->
-              let g = apply_lab_nolab_s "QCheck.find_example" ["f", e] [g] in
+              let g = apply_lab_nolab_s "QCheck.find_example"
+                        ["f", e; "count", int_exp (!count)] [g] in
               register_generator state (lid td.ptype_name.txt) g
          in
          {state with properties = add_prop td.ptype_name.txt e state.properties}
       | _ -> failwith "bad satisfying attribute")
   | None -> state
 
+(* annotation handling *)
+(***********************)
 let check_gen state pvb =
-  (match List.filter (fun a -> a.attr_name.txt = "gen") pvb.pvb_attributes with
+  (match List.filter (fun a -> a.attr_name.txt="gen") pvb.pvb_attributes with
    | [] -> state
    | _::_::_ -> failwith "only one gen attribute accepted"
    | [{attr_payload=PStr [{pstr_desc=Pstr_eval ({pexp_desc=Pexp_ident l;_},_);_}];_}] ->
@@ -192,19 +201,17 @@ let check_gen state pvb =
   )
 
 let check_print state pvb =
-  (match List.filter (fun a -> a.attr_name.txt = "print") pvb.pvb_attributes with
+  (match List.filter (fun a -> a.attr_name.txt="print") pvb.pvb_attributes with
    | [] -> state
    | _::_::_ -> failwith "only one print attribute accepted"
    | [{attr_payload=PStr [{pstr_desc=Pstr_eval ({pexp_desc=Pexp_ident l;_},_);_}];_}] ->
       {state with printers = Types.add l.txt pvb.pvb_expr state.printers}
-   | _ -> failwith "bad print attribute"
-  )
+   | _ -> failwith "bad print attribute")
 
-(* returns the generators associated to a function's arguments *)
-let fun_decl_to_gen state e =
+let get_info get state e =
   let helper state pat =
     match pat.ppat_desc with
-    | Ppat_constraint (_,ct) -> (get_generator state ct)
+    | Ppat_constraint (_,ct) -> (get state ct)
     | _ -> None
   in
   let rec aux state res = function
@@ -218,14 +225,22 @@ let fun_decl_to_gen state e =
   try Some (aux state [] e)
   with Exit -> None
 
+(* returns the generators associated to a function's arguments *)
+let fun_decl_to_gen = get_info get_generator
+
+(* returns the printer associated to a function's arguments *)
+let fun_decl_to_print = get_info get_printer
+
 (* compute a list of structure item to be added to the AST.
    handles:
    - annotated constants
    - fully annotated functions *)
 let check_tests state = function
+    (* let constant:typ = val*)
   | {pvb_pat={ppat_desc=Ppat_constraint({ppat_desc=Ppat_var({txt;_});_},typ);_};_} ->
      get_property typ state
      |> Option.fold ~none:[] ~some:(fun p -> [test_constant txt p])
+    (* let fn (arg1:typ1) (arg2:typ2) ... : return_typ = body *)
   | {pvb_pat={ppat_desc=Ppat_var({txt;_});_}; pvb_expr;pvb_loc;_} ->
      (match fun_decl_to_gen state pvb_expr.pexp_desc with
       | None -> []
@@ -234,12 +249,6 @@ let check_tests state = function
          get_property ct state
          |> Option.fold ~none:[] ~some: (fun p -> [generate args txt name p]))
   | _ -> []
-
-(* pre-defined dependant types.
-   TODO: find a non-hack way to do this *)
-let std_testify =
-  Pparse.parse_implementation ~tool_name:"ppx_testify"
-    "src/testify_lib.ml"
 
 (* actual mapper *)
 let testify_mapper =

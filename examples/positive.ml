@@ -1,5 +1,8 @@
-type p_int = int [@satisfying ((<) 0)]
+type p_int = int [@satisfying (fun x -> x >= 0)]
 
-let abs (x:int) : p_int = if x < 0 then -x else x
-
-let[@gen p_int] spawn = QCheck.Gen.pint
+let fact (n:p_int) : p_int =
+  let rec aux acc = function
+    | 0 | 1 -> acc
+    | n -> aux (n*acc) (n-1)
+  in
+  aux 1 n
