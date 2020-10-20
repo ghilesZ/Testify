@@ -28,7 +28,7 @@ let add new_test =
 (* ast for : let _ = QCheck_base_runner.run_tests_main !__Testify__tests *)
 let run =
   apply_lab_nolab_s "QCheck_base_runner.run_tests"
-    ["colors", false_] [bang [test_exp]] |> Str.eval
+    ["colors", true_; "verbose", false_] [bang [test_exp]] |> Str.eval
 
 (* number of generation per test *)
 let count = ref 1000
@@ -45,6 +45,14 @@ let test_constant name f =
 let test name args =
   let lab = ["count", int_exp (!count);"name", string_exp name] in
   apply_lab_nolab (exp_id "QCheck.Test.make") lab args |> add
+
+(* same as [pp], but in bold blue] *)
+  let bold_blue x =
+    Format.asprintf "\x1b[34;1m%s\x1b[0m" x
+
+(* same as [pp], but in blue *)
+  let blue x =
+    Format.asprintf "\x1b[36m%s\x1b[0m" x
 
 (* builds an input from a list of generators and printers and apply
    to it the function funname *)
@@ -240,7 +248,8 @@ let check_tests state = function
      (match get_infos state pvb_expr.pexp_desc with
       | None -> []
       | Some (_,args,ct) ->
-         let name = Format.asprintf "'%s' in %a" txt Location.print_loc pvb_loc in
+         let loc = Format.asprintf "%a" Location.print_loc pvb_loc in
+         let name = Format.asprintf "%s in %s" (bold_blue txt) (blue loc) in
          get_property ct state
          |> Option.fold ~none:[] ~some: (fun p -> [generate args txt name p]))
   | _ -> []
