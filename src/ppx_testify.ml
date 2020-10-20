@@ -28,7 +28,7 @@ let add new_test =
 (* ast for : let _ = QCheck_base_runner.run_tests_main !__Testify__tests *)
 let run =
   apply_lab_nolab_s "QCheck_base_runner.run_tests"
-    ["colors", true_] [bang [test_exp]] |> Str.eval
+    ["colors", false_] [bang [test_exp]] |> Str.eval
 
 (* number of generation per test *)
 let count = ref 1000
@@ -72,7 +72,7 @@ let generate inputs fn testname satisfy =
      let f = Exp.fun_ Nolabel None pat (apply_nolbl satisfy [apply_nolbl f args]) in
      let testname = Format.asprintf "the return value of %s violates \
                                      the predicate%a\nfor the \
-                                     following input"
+                                     following input:\n"
                       testname
                       Pprintast.expression (Conv.copy_expression satisfy)
      in
@@ -120,7 +120,7 @@ let rec get_generator rs (typ:core_type) =
    corresponding to a printer option. *)
 let rec get_printer rs (typ:core_type) =
   match typ.ptyp_desc with
-  | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.generators
+  | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.printers
   |	Ptyp_poly ([],ct)   -> get_printer rs ct
   | Ptyp_tuple [ct1;ct2] ->
      (match get_printer rs ct1,  get_printer rs ct2 with

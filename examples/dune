@@ -1,17 +1,11 @@
 (test
-  (name dist)
-  (modules dist)
-  (preprocess (pps ppx_testify))
-  (libraries testify_lib qcheck))
-  
-(test
   (name positive)
   (modules positive)
   (preprocess (pps ppx_testify))
-  (libraries testify_lib qcheck))
+  (libraries qcheck))
   
 (test
   (name itv)
   (modules itv)
   (preprocess (pps ppx_testify))
-  (libraries testify_lib qcheck zarith))
+  (libraries qcheck zarith))

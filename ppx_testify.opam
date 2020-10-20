@@ -13,7 +13,7 @@ build: [
   ["dune" "runtest" "-p" name] {with-test}
 ]
 depends: [
-  "ocaml" {>= "4.04.0"}
+  "ocaml" {>= "4.08"}
   "ppx_tools_versioned"
   "qcheck"
   "dune" {>= "1.2"}
