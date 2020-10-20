@@ -1,10 +1,10 @@
-(test
+(executable
   (name positive)
   (modules positive)
   (preprocess (pps ppx_testify))
   (libraries qcheck))
   
-(test
+(executable
   (name itv)
   (modules itv)
   (preprocess (pps ppx_testify))
