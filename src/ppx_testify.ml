@@ -91,16 +91,18 @@ let generate inputs fn testname satisfy =
 (* Utilities for state rewritting *)
 (**********************************)
 
-(* map for type identifier *)
+(* map for type identifiers *)
 module Types = Map.Make(struct type t = Longident.t let compare = compare end)
 
 let add_prop t_id : expression -> expression Types.t -> expression Types.t =
   Types.add (Longident.Lident t_id)
 
-(* main type, for rewritting states *)
+(* main type, for rewritting state. keeps tracks of :
+  - test properties attached to a type.
+  - current generators and printers *)
 type rewritting_state = {
-    generators : expression Types.t;
     properties : expression Types.t;
+    generators : expression Types.t;
     printers   : expression Types.t;
   }
 
@@ -111,8 +113,8 @@ let register_generator rs lid g =
   {rs with generators = Types.add lid g rs.generators}
 
 (* Given a rewritting state [rs] and and a type [t], search for the
-   generator associated to [t] in [rs]. Returns a parsetree expression
-   corresponding to a Gen.t option. *)
+   generator associated to [t] in [rs]. Returns a Parsetree.expression
+   (corresponding to a Gen.t) option. *)
 let rec get_generator rs (typ:core_type) =
   match typ.ptyp_desc with
   | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.generators
@@ -124,15 +126,15 @@ let rec get_generator rs (typ:core_type) =
   | _ -> None
 
 (* Given a rewritting state [rs] and and a type [t], search for the
-   printer associated to [t] in [rs]. Returns a parsetree expression
-   corresponding to a printer option. *)
+   printer associated to [t] in [rs]. Returns a Parsetree.expression
+   (corresponding to a printer) option. *)
 let rec get_printer rs (typ:core_type) =
   match typ.ptyp_desc with
-  | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.printers
-  |	Ptyp_poly ([],ct)   -> get_printer rs ct
+  | Ptyp_constr({txt;_},[]) -> Types.find_opt txt rs.printers
+  |	Ptyp_poly([],ct)   -> get_printer rs ct
   | Ptyp_tuple [ct1;ct2] ->
      (match get_printer rs ct1,  get_printer rs ct2 with
-      | Some t1,Some t2 -> Some (apply_nolbl_s "QCheck.Print.pair" [t1;t2])
+      | Some t1,Some t2 -> Some(apply_nolbl_s "QCheck.Print.pair" [t1;t2])
       | _ -> None)
   | _ -> None
 
@@ -162,8 +164,8 @@ let initial_rs =
   (* todo fix compatibility *)
   let printers =
     Types.empty
-    |> add_id "int" "Int.to_string"
-    |> add_id "float" "Float.to_string"
+    |> add_id "int" "string_of_int"
+    |> add_id "float" "string_of_float"
   in
   {generators; printers; properties=Types.empty}
 
@@ -184,8 +186,7 @@ let declare_type state td =
   | Some {ptyp_attributes;_} ->
      (match List.filter (fun a -> a.attr_name.txt = "satisfying") ptyp_attributes with
       | [] -> state
-      | _::_::_ -> failwith "only one satisfying attribute accepted"
-      | [{attr_payload=PStr [{pstr_desc=Pstr_eval (e,_);_}];_}] ->
+      | [{attr_payload=PStr[{pstr_desc=Pstr_eval (e,_);_}];_}] ->
          let state =
            match Option.bind td.ptype_manifest (get_generator state) with
            | None -> state
@@ -195,6 +196,7 @@ let declare_type state td =
               register_generator state (lid td.ptype_name.txt) g
          in
          {state with properties = add_prop td.ptype_name.txt e state.properties}
+      | _::_::_ -> failwith "only one satisfying attribute accepted"
       | _ -> failwith "bad satisfying attribute")
   | None -> state
 
@@ -236,15 +238,15 @@ let get_infos state e =
 
 (* compute a list of tests to be added to the AST.
    handles:
-   - annotated constants
-   - fully annotated functions *)
+   - explicitly typed constants
+   - (fully) explicitly typed functions *)
 let check_tests state = function
-    (* let constant:typ = val*)
+  (* let constant:typ = val*)
   | {pvb_pat={ppat_desc=Ppat_constraint({ppat_desc=Ppat_var({txt;_});_},typ);_};_} ->
      get_property typ state
      |> Option.fold ~none:[] ~some:(fun p -> [test_constant txt p])
-    (* let fn (arg1:typ1) (arg2:typ2) ... : return_typ = body *)
-  | {pvb_pat={ppat_desc=Ppat_var({txt;_});_}; pvb_expr;pvb_loc;_} ->
+  (* let fn (arg1:typ1) (arg2:typ2) ... : return_typ = body *)
+  | {pvb_pat={ppat_desc=Ppat_var({txt;_});_};pvb_expr;pvb_loc;_} ->
      (match get_infos state pvb_expr.pexp_desc with
       | None -> []
       | Some (_,args,ct) ->
@@ -255,7 +257,7 @@ let check_tests state = function
   | _ -> []
 
 (* actual mapper *)
-let testify_mapper =
+let satisfying_mapper =
   let handle_str mapper str =
     let rec aux state res = function
       | [] -> List.rev (run::res)
@@ -277,4 +279,4 @@ let testify_mapper =
 let () =
   let open Migrate_parsetree in
   Driver.register ~name:"ppx_testify" ~args:[]
-    Versions.ocaml_410 (fun _config _cookies -> testify_mapper)
+    Versions.ocaml_410 (fun _config _cookies -> satisfying_mapper)

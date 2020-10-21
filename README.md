@@ -62,6 +62,8 @@ Testify is still at a very (very) early stage of developpement and is
 still very (very) unstable.
 
 ##### Things that are yet to be done
-- replace the current (generator + printer) implementation with QCheck's arbitrary
+- handling of ADTs
 - handling of parametric types
+- handling of module path for type annotations (e.g : `Int.t`)
 - provide the user with a *standard library* of predifined types (positive integers, non-empty lists ...)
+
