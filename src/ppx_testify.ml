@@ -112,31 +112,42 @@ let register_printer rs lid p =
 let register_generator rs lid g =
   {rs with generators = Types.add lid g rs.generators}
 
+let get_expr_core_type map compose ct =
+  let rec aux ct =
+    match ct.ptyp_desc with
+    | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt map
+    |	Ptyp_poly ([],ct)   -> aux ct
+    | Ptyp_tuple [ct1;ct2] ->
+       (match aux ct1,  aux ct2 with
+        | Some t1,Some t2 -> Some (apply_nolbl_s compose [t1;t2])
+        | _ -> None)
+    (* todo : handle all tuples, not just pairs *)
+    | _ -> None
+  in
+  aux ct
+
+let get_generator_ct rs = get_expr_core_type rs.generators "QCheck.Gen.pair"
+let get_printer_ct rs = get_expr_core_type rs.printers "QCheck.Print.pair"
+
+let get_expr map compose t =
+  match t.ptype_kind with
+  |	Ptype_abstract ->
+     (match t.ptype_manifest with
+     | None -> None
+     | Some m -> get_expr_core_type map compose m)
+  |	Ptype_variant _ -> None
+  |	Ptype_record _labels -> None
+  |	Ptype_open -> None
+
 (* Given a rewritting state [rs] and and a type [t], search for the
    generator associated to [t] in [rs]. Returns a Parsetree.expression
    (corresponding to a Gen.t) option. *)
-let rec get_generator rs (typ:core_type) =
-  match typ.ptyp_desc with
-  | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.generators
-  |	Ptyp_poly ([],ct)   -> get_generator rs ct
-  | Ptyp_tuple [ct1;ct2] ->
-     (match get_generator rs ct1,  get_generator rs ct2 with
-      | Some t1,Some t2 -> Some (apply_nolbl_s "QCheck.Gen.pair" [t1;t2])
-      | _ -> None)
-  | _ -> None
+let get_generator rs = get_expr rs.generators "QCheck.Gen.pair"
 
 (* Given a rewritting state [rs] and and a type [t], search for the
    printer associated to [t] in [rs]. Returns a Parsetree.expression
    (corresponding to a printer) option. *)
-let rec get_printer rs (typ:core_type) =
-  match typ.ptyp_desc with
-  | Ptyp_constr({txt;_},[]) -> Types.find_opt txt rs.printers
-  |	Ptyp_poly([],ct)   -> get_printer rs ct
-  | Ptyp_tuple [ct1;ct2] ->
-     (match get_printer rs ct1,  get_printer rs ct2 with
-      | Some t1,Some t2 -> Some(apply_nolbl_s "QCheck.Print.pair" [t1;t2])
-      | _ -> None)
-  | _ -> None
+let get_printer rs = get_expr rs.printers "QCheck.Print.pair"
 
 (* gets the property attached to the type [t] in [rs] (or None) *)
 let rec get_property (t:core_type) (rs:rewritting_state) : expression option =
@@ -170,35 +181,29 @@ let initial_rs =
   {generators; printers; properties=Types.empty}
 
 let derive s td =
-  match td.ptype_manifest with
-  | None -> s
-  | Some m ->
-     let id = lid td.ptype_name.txt in
-     let s =
-       Option.fold ~none:s ~some:(register_generator s id) (get_generator s m)
-     in
-     Option.fold ~none:s ~some:(register_printer s id) (get_printer s m)
+  let id = lid td.ptype_name.txt in
+  let s =
+    Option.fold ~none:s ~some:(register_generator s id) (get_generator s td)
+  in
+  Option.fold ~none:s ~some:(register_printer s id) (get_printer s td)
 
 (* update the rewritting state according to a type declaration *)
 let declare_type state td =
   let state = derive state td in
-  match td.ptype_manifest with
-  | Some {ptyp_attributes;_} ->
-     (match List.filter (fun a -> a.attr_name.txt = "satisfying") ptyp_attributes with
-      | [] -> state
-      | [{attr_payload=PStr[{pstr_desc=Pstr_eval (e,_);_}];_}] ->
-         let state =
-           match Option.bind td.ptype_manifest (get_generator state) with
-           | None -> state
-           | Some g ->
-              let g = apply_lab_nolab_s "QCheck.find_example"
-                        ["f", e; "count", int_exp (!count)] [g] in
-              register_generator state (lid td.ptype_name.txt) g
-         in
-         {state with properties = add_prop td.ptype_name.txt e state.properties}
-      | _::_::_ -> failwith "only one satisfying attribute accepted"
-      | _ -> failwith "bad satisfying attribute")
-  | None -> state
+  (match List.filter (fun a -> a.attr_name.txt = "satisfying") td.ptype_attributes with
+   | [] -> state
+   | [{attr_payload=PStr[{pstr_desc=Pstr_eval (e,_);_}];_}] ->
+      let state =
+        match get_generator state td with
+        | None -> state
+        | Some g ->
+           let g = apply_lab_nolab_s "QCheck.find_example"
+                     ["f", e; "count", int_exp (!count)] [g] in
+           register_generator state (lid td.ptype_name.txt) g
+      in
+      {state with properties = add_prop td.ptype_name.txt e state.properties}
+   | _::_::_ -> failwith "only one satisfying attribute accepted"
+   | _ -> failwith "bad satisfying attribute")
 
 (* annotation handling *)
 (***********************)
@@ -222,7 +227,7 @@ let check_print state pvb =
 let get_infos state e =
   let helper state pat =
     match pat.ppat_desc with
-    | Ppat_constraint (_,ct) -> (get_generator state ct),(get_printer state ct)
+    | Ppat_constraint (_,ct) -> (get_generator_ct state ct),(get_printer_ct state ct)
     | _ -> None,None
   in
   let rec aux state res = function
@@ -278,5 +283,7 @@ let satisfying_mapper =
 (* registering the mapper *)
 let () =
   let open Migrate_parsetree in
+  Driver.register ~name:"ppx_such_that" ~args:[]
+    Versions.ocaml_410 (fun _config _cookies -> Such_that.such_that_mapper);
   Driver.register ~name:"ppx_testify" ~args:[]
     Versions.ocaml_410 (fun _config _cookies -> satisfying_mapper)

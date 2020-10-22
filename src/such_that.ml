@@ -10,19 +10,29 @@ module Conv = Convert (OCaml_410) (OCaml_current)
 
 (* given a label list '{x:int; y: float; ...}' and a boolean expression
    '(float x) < y', builds the predicate : 'fun {x;y;_} -> (float x) < y'*)
-let handle_record labels _e =
-  let _names = List.map (fun l -> l.pld_name.txt) labels in
-  assert false
+(* TODO: annotate the generated code to disable warning 27 locally *)
+let handle_record labels e =
+  let open Exp in
+  let names = List.map (fun l ->
+                  Location.mkloc (Longident.parse l.pld_name.txt) l.pld_loc,
+                  Pat.var l.pld_name
+                ) labels
+  in
+  fun_ Nolabel None (Pat.record names Closed) e
 
 let unsugarize kind (attrs:attributes) =
   match kind with
   | Ptype_record records ->
-     (match List.filter (fun a -> a.attr_name.txt = "s.t") attrs with
-      | [] -> attrs
-      | [{attr_payload=PStr[{pstr_desc=Pstr_eval (e,_);_}];_}] ->
-         (handle_record records e)::attrs
-      | _::_::_ -> failwith "only one s.t attribute accepted"
-      | _ -> failwith "bad s.t attribute")
+     List.map (fun a ->
+         if a.attr_name.txt = "s.t" then
+           match a with
+           |{attr_payload=PStr[{pstr_desc=Pstr_eval (e,_);_}];_} ->
+             let pred = handle_record records e in
+             let payload = PStr[Str.eval pred] in
+             Attr.mk (none_loc "satisfying") payload
+           | _ -> failwith "bad s.t attribute"
+         else a
+       ) attrs
   | _ -> attrs
 
 let such_that_mapper =

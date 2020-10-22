@@ -1,4 +1,4 @@
-type itv = int * int [@satisfying (fun (x,y) -> x <= y)]
+type itv = int * int [@@satisfying (fun (x,y) -> x <= y)]
 
 let neg ((low,high):itv) : itv = -high,-low
 

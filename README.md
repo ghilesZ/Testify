@@ -47,7 +47,7 @@ associate a generator to a type as below:
 let[@gen p_int] spawn = QCheck.Gen.pint
 ```
 
-### derivation
+### Derivation
 Automatic derivation of generators is made for the following types:
 - for basic types (unit, bool, char, int, float)
 - for tuples
@@ -56,6 +56,9 @@ Automatic derivation of generators is made for the following types:
   ```QCheck.find_example```. However, this can be avoided by
   specifying a generator to the given type **t** using the ```[@gen
   t]``` annotation.
+
+When one or more generator can not be derived for a given function, no
+test is generated.
 
 ### Current
 Testify is still at a very (very) early stage of developpement and is

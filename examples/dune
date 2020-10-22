@@ -9,3 +9,9 @@
   (modules itv)
   (preprocess (pps ppx_testify))
   (libraries qcheck zarith))
+
+(executable
+  (name itv_record)
+  (modules itv_record)
+  (preprocess (pps ppx_testify))
+  (libraries qcheck zarith))

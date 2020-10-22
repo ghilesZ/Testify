@@ -2,7 +2,7 @@
   (public_name ppx_testify)
   (name ppx_testify)
   (kind ppx_rewriter)
-  (modules helper ppx_testify)
+  (modules helper ppx_testify such_that)
   (preprocess (pps ppx_tools_versioned.metaquot_408))
   (libraries ppx_tools_versioned
              ppx_tools_versioned.metaquot_408
