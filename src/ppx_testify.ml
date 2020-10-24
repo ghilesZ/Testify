@@ -63,14 +63,14 @@ let generate inputs fn testname satisfy =
        let print = apply_nolbl_s "QCheck.Print.pair" [print; p] in
        let gen = apply_nolbl_s "QCheck.Gen.pair" [gen; g] in
        let name = get_name () in
-       let pat = Pat.tuple [pat; Pat.var (none_loc name)] in
+       let pat = Pat.tuple [pat; pat_s name] in
        let args = (exp_id name)::args in
        aux gen print pat args tl
   in
   match inputs with
   | (g,p)::tl ->
      let name = get_name () in
-     let pat = Pat.var (none_loc name) in
+     let pat = pat_s name in
      let gen,print,pat,args = aux g p pat [exp_id name] tl in
      let f = exp_id fn in
      let f = Exp.fun_ Nolabel None pat (apply_nolbl satisfy [apply_nolbl f args]) in
@@ -122,7 +122,7 @@ let get_gen_core_type rs =
            |> List.map (fun g -> apply_nolbl g [exp_id "x"])
            |> Exp.tuple
          in
-         Some (Exp.fun_ Nolabel None (Pat.var (none_loc "x")) tup)
+         Some (Exp.fun_ Nolabel None (pat_s "x") tup)
     | _ -> None
   in aux
 
@@ -134,38 +134,61 @@ let get_printer_core_type rs =
     | Ptyp_tuple tup ->
        let prints = List.map aux tup in
        (try
-          let names = List.map (fun p ->
-                          let n = get_name() in
-                          apply_nolbl (Option.get p) [exp_id n],
-                          Pat.var (none_loc n)
-                        ) prints in
-         let names,pats = List.split names in
-         let body = string_concat (string_exp ", ") names in
-         let body = string_concat (string_exp "") [string_exp "(";body;string_exp ")"] in
-         Some (Exp.fun_ Nolabel None (Pat.tuple pats) body)
+          let np p =
+            let n = get_name() in
+            apply_nolbl (Option.get p) [exp_id n], pat_s n
+          in
+          let names,pats = List.split (List.map np prints) in
+          let b = string_concat ~sep:", " names in
+          let b' = string_concat [string_exp "("; b; string_exp ")"] in
+          Some (Exp.fun_ Nolabel None (Pat.tuple pats) b')
         with Invalid_argument _ -> None)
     | _ -> None
   in aux
 
-let get_expr get rs t =
+(* Given a rewritting state [rs] and and a type [t], search for the
+   generator associated to [t] in [rs]. Returns a Parsetree.expression
+   (corresponding to a Gen.t) option. *)
+let get_generator rs t =
   match t.ptype_kind with
   |	Ptype_abstract ->
      (match t.ptype_manifest with
      | None -> None
-     | Some m -> get rs m)
+     | Some m -> get_gen_core_type rs m)
   |	Ptype_variant _ -> None
-  |	Ptype_record _labels -> None
+  |	Ptype_record labs ->
+     (try
+        let handle_field f =
+          let gen = get_gen_core_type rs f.pld_type |> Option.get in
+          lid_loc f.pld_name.txt, apply_nolbl gen [exp_id "rs"]
+        in
+        let app = Exp.record (List.map handle_field labs) None in
+        Some (Exp.fun_ Nolabel None (pat_s "rs") app)
+      with Invalid_argument _ -> None
+     )
   |	Ptype_open -> None
-
-(* Given a rewritting state [rs] and and a type [t], search for the
-   generator associated to [t] in [rs]. Returns a Parsetree.expression
-   (corresponding to a Gen.t) option. *)
-let get_generator = get_expr get_gen_core_type
 
 (* Given a rewritting state [rs] and and a type [t], search for the
    printer associated to [t] in [rs]. Returns a Parsetree.expression
    (corresponding to a printer) option. *)
-let get_printer = get_expr get_printer_core_type
+let get_printer rs t =
+  match t.ptype_kind with
+  |	Ptype_abstract ->
+     (match t.ptype_manifest with
+     | None -> None
+     | Some m -> get_printer_core_type rs m)
+  |	Ptype_variant _ -> None
+  |	Ptype_record labs ->
+     (try
+        let handle_field f =
+          let print = get_printer_core_type rs f.pld_type |> Option.get in
+          apply_nolbl print [exp_id f.pld_name.txt]
+        in
+        let app = string_concat ~sep:"; " (List.map handle_field labs) in
+        let pat = List.map (fun l -> lid_loc l.pld_name.txt,pat_s l.pld_name.txt) labs in
+        Some (Exp.fun_ Nolabel None (Pat.record pat Closed) app)
+      with Invalid_argument _ -> None
+     )  |	Ptype_open -> None
 
 (* gets the property attached to the type [t] in [rs] (or None) *)
 let rec get_property (t:core_type) (rs:rewritting_state) : expression option =

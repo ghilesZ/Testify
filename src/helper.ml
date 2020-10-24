@@ -9,10 +9,10 @@ open Ast_helper
 let none_loc ?loc:(loc=Location.none) s =
   Location.mkloc s loc
 
-(* builds a Longident.t *)
-let lid id = Longident.Lident id
+(* builds a Longident.t from a string *)
+let lid (id:string) = Longident.Lident id
 
-(* builds a Longident.t Location.t for a string *)
+(* builds a Longident.t Location.t from a string *)
 let lid_loc ?loc:(loc=Location.none) id =
   none_loc ~loc (Longident.parse id)
 
@@ -24,7 +24,7 @@ let exp_id ?loc:(loc=Location.none) name =
 let apply_nolbl f args =
   Exp.apply f (List.map (fun a -> Nolabel,a) args)
 
-(* same as apply_nolbl but argument function name is a string *)
+(* same as apply_nolbl but function name is a string *)
 let apply_nolbl_s s = apply_nolbl (exp_id s)
 
 (* same as [apply f args1@args2] where arguments in arg2 are not labelled *)
@@ -51,10 +51,11 @@ let false_ = Exp.construct (lid_loc "false") None
 let int_exp x = Exp.constant (Const.int x)
 let string_exp x = Exp.constant (Const.string x)
 let str_nonrec vb = Str.value Nonrecursive vb
+let pat_s s = Pat.var (none_loc s)
 
 (* easy value binding with string *)
 let vb_s id exp =
-  Vb.mk (Pat.var (none_loc id)) exp
+  Vb.mk (pat_s id) exp
 
 (* ast for lists *)
 let empty_list_exp = Exp.construct (lid_loc "[]") None
@@ -66,7 +67,11 @@ let get_name =
   fun () -> incr cpt; "x"^(string_of_int !cpt)
 
 (* string concat with separator over ast expressions *)
-let string_concat sep l =
+let string_concat ?sep l =
+  let sep = match sep with
+    | None -> (string_exp "")
+    | Some s -> string_exp s
+  in
   let rec aux acc = function
     | [] -> acc
     | [last] -> apply_nolbl_s "^" [acc;last]
