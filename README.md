@@ -4,7 +4,7 @@ generation to automatically generate test for your programs. It allows
 you to attach a property to a given type, as in the following example:
 
 ```OCaml
-type p_int = int [@satisfying (fun x -> x > 0)]
+type p_int = int [@@satisfying (fun x -> x > 0)]
 ```
 
 Which is to be understood as the type of *positive integers*. Of
@@ -47,11 +47,25 @@ associate a generator to a type as below:
 let[@gen p_int] spawn = QCheck.Gen.pint
 ```
 
+### *Such that* annotation
+For record types, we use the fact that filed are already named in the
+type definition to provide the convenient writing:
+
+```OCaml
+type itv = {inf:int; sup:int} [@@s.t inf <= sup]
+```
+which is syntactic sugar for:
+
+```OCaml
+type itv = {inf:int; sup:int} [@@satisfyning (fun {inf;sup} -> inf <= sup)]
+```
+
 ### Derivation
 Automatic derivation of generators is made for the following types:
 - for basic types (unit, bool, char, int, float)
 - for tuples
-- for types who are attached a ```[@satisying pred]``` annotation, we
+- for records
+- for types who are attached a ```[@@satisying pred]``` annotation, we
   proceed to a rejection sampling using
   ```QCheck.find_example```. However, this can be avoided by
   specifying a generator to the given type **t** using the ```[@gen
