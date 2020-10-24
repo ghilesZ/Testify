@@ -57,10 +57,6 @@ let test name args =
 (* builds an input from a list of generators and printers and apply
    to it the function funname *)
 let generate inputs fn testname satisfy =
-  let get_name =
-    let cpt = ref 0 in
-    fun () -> incr cpt; "x"^(string_of_int !cpt)
-  in
   let rec aux gen print pat args = function
     | [] -> gen,print,pat,List.rev args
     | (g,p)::tl ->
@@ -112,29 +108,51 @@ let register_printer rs lid p =
 let register_generator rs lid g =
   {rs with generators = Types.add lid g rs.generators}
 
-let get_expr_core_type map compose ct =
+let get_gen_core_type rs =
   let rec aux ct =
     match ct.ptyp_desc with
-    | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt map
+    | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.generators
     |	Ptyp_poly ([],ct)   -> aux ct
-    | Ptyp_tuple [ct1;ct2] ->
-       (match aux ct1,  aux ct2 with
-        | Some t1,Some t2 -> Some (apply_nolbl_s compose [t1;t2])
-        | _ -> None)
-    (* todo : handle all tuples, not just pairs *)
+    | Ptyp_tuple tup ->
+       let gens = List.map aux tup in
+       if List.mem None gens then None
+       else
+         let tup =
+           List.map Option.get gens
+           |> List.map (fun g -> apply_nolbl g [exp_id "x"])
+           |> Exp.tuple
+         in
+         Some (Exp.fun_ Nolabel None (Pat.var (none_loc "x")) tup)
     | _ -> None
-  in
-  aux ct
+  in aux
 
-let get_generator_ct rs = get_expr_core_type rs.generators "QCheck.Gen.pair"
-let get_printer_ct rs = get_expr_core_type rs.printers "QCheck.Print.pair"
+let get_printer_core_type rs =
+  let rec aux ct =
+    match ct.ptyp_desc with
+    | Ptyp_constr ({txt;_},[]) -> Types.find_opt txt rs.printers
+    |	Ptyp_poly ([],ct)   -> aux ct
+    | Ptyp_tuple tup ->
+       let prints = List.map aux tup in
+       (try
+          let names = List.map (fun p ->
+                          let n = get_name() in
+                          apply_nolbl (Option.get p) [exp_id n],
+                          Pat.var (none_loc n)
+                        ) prints in
+         let names,pats = List.split names in
+         let body = string_concat (string_exp ", ") names in
+         let body = string_concat (string_exp "") [string_exp "(";body;string_exp ")"] in
+         Some (Exp.fun_ Nolabel None (Pat.tuple pats) body)
+        with Invalid_argument _ -> None)
+    | _ -> None
+  in aux
 
-let get_expr map compose t =
+let get_expr get rs t =
   match t.ptype_kind with
   |	Ptype_abstract ->
      (match t.ptype_manifest with
      | None -> None
-     | Some m -> get_expr_core_type map compose m)
+     | Some m -> get rs m)
   |	Ptype_variant _ -> None
   |	Ptype_record _labels -> None
   |	Ptype_open -> None
@@ -142,12 +160,12 @@ let get_expr map compose t =
 (* Given a rewritting state [rs] and and a type [t], search for the
    generator associated to [t] in [rs]. Returns a Parsetree.expression
    (corresponding to a Gen.t) option. *)
-let get_generator rs = get_expr rs.generators "QCheck.Gen.pair"
+let get_generator = get_expr get_gen_core_type
 
 (* Given a rewritting state [rs] and and a type [t], search for the
    printer associated to [t] in [rs]. Returns a Parsetree.expression
    (corresponding to a printer) option. *)
-let get_printer rs = get_expr rs.printers "QCheck.Print.pair"
+let get_printer = get_expr get_printer_core_type
 
 (* gets the property attached to the type [t] in [rs] (or None) *)
 let rec get_property (t:core_type) (rs:rewritting_state) : expression option =
@@ -227,7 +245,8 @@ let check_print state pvb =
 let get_infos state e =
   let helper state pat =
     match pat.ppat_desc with
-    | Ppat_constraint (_,ct) -> (get_generator_ct state ct),(get_printer_ct state ct)
+    | Ppat_constraint (_,ct) ->
+       (get_gen_core_type state ct),(get_printer_core_type state ct)
     | _ -> None,None
   in
   let rec aux state res = function

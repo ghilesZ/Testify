@@ -59,3 +59,18 @@ let vb_s id exp =
 (* ast for lists *)
 let empty_list_exp = Exp.construct (lid_loc "[]") None
 let cons_exp h t = Exp.construct (lid_loc "::") (Some (Exp.tuple [h;t]))
+
+(* fresh identifier generator *)
+let get_name =
+  let cpt = ref 0 in
+  fun () -> incr cpt; "x"^(string_of_int !cpt)
+
+(* string concat with separator over ast expressions *)
+let string_concat sep l =
+  let rec aux acc = function
+    | [] -> acc
+    | [last] -> apply_nolbl_s "^" [acc;last]
+    | h::tl ->
+       let acc = apply_nolbl_s "^" [acc;h] in
+       aux (apply_nolbl_s "^" [acc;sep]) tl
+  in aux (string_exp "") l

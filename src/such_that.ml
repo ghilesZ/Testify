@@ -8,8 +8,9 @@ open Helper
 let ocaml_version = Versions.ocaml_410
 module Conv = Convert (OCaml_410) (OCaml_current)
 
-(* given a label list '{x:int; y: float; ...}' and a boolean expression
-   '(float x) < y', builds the predicate : 'fun {x;y;_} -> (float x) < y'*)
+(* given a label list '{x:int; y: float; ...}' and a boolean
+   expression '(float x) < y', builds the predicate : 'fun {x;y;_} ->
+   (float x) < y' *)
 (* TODO: annotate the generated code to disable warning 27 locally *)
 let handle_record labels e =
   let open Exp in
