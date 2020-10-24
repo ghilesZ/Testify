@@ -48,7 +48,7 @@ let[@gen p_int] spawn = QCheck.Gen.pint
 ```
 
 ### *Such that* annotation
-For record types, we use the fact that filed are already named in the
+For record types, we use the fact that fields are already named in the
 type definition to provide the convenient writing:
 
 ```OCaml
