@@ -115,14 +115,12 @@ let get_gen_core_type rs =
     |	Ptyp_poly ([],ct)   -> aux ct
     | Ptyp_tuple tup ->
        let gens = List.map aux tup in
-       if List.mem None gens then None
-       else
-         let tup =
-           List.map Option.get gens
-           |> List.map (fun g -> apply_nolbl g [exp_id "x"])
-           |> Exp.tuple
-         in
-         Some (Exp.fun_ Nolabel None (pat_s "x") tup)
+       (try
+          List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
+          |> Exp.tuple
+          |> Exp.fun_ Nolabel None (pat_s "x")
+          |> Option.some
+        with Invalid_argument _ -> None)
     | _ -> None
   in aux
 
@@ -217,11 +215,13 @@ let initial_rs =
     |> add_id "int"   "QCheck.Gen.int"
     |> add_id "float" "QCheck.Gen.float"
   in
-  (* todo fix compatibility *)
   let printers =
     Types.empty
+    |> add_id "bool" "string_of_bool"
+    |> add_id "char" "string_of_char"
     |> add_id "int" "string_of_int"
     |> add_id "float" "string_of_float"
+    |> add_id "unit" "QCheck.Print.unit"
   in
   {generators; printers; properties=Types.empty}
 
@@ -233,6 +233,8 @@ let derive s td =
   Option.fold ~none:s ~some:(register_printer s id) (get_printer s td)
 
 (* update the rewritting state according to a type declaration *)
+(* TODO: if the type shadows an existing type, remove precedent
+   printers and generators *)
 let declare_type state td =
   let state = derive state td in
   (match List.filter (fun a -> a.attr_name.txt = "satisfying") td.ptype_attributes with
@@ -252,14 +254,14 @@ let declare_type state td =
 
 (* annotation handling *)
 (***********************)
+
 let check_gen state pvb =
   (match List.filter (fun a -> a.attr_name.txt="gen") pvb.pvb_attributes with
    | [] -> state
    | _::_::_ -> failwith "only one gen attribute accepted"
    | [{attr_payload=PStr [{pstr_desc=Pstr_eval ({pexp_desc=Pexp_ident l;_},_);_}];_}] ->
       {state with generators = Types.add l.txt pvb.pvb_expr state.generators}
-   | _ -> failwith "bad gen attribute"
-  )
+   | _ -> failwith "bad gen attribute")
 
 let check_print state pvb =
   (match List.filter (fun a -> a.attr_name.txt="print") pvb.pvb_attributes with
