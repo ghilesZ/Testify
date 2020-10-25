@@ -182,10 +182,14 @@ let get_printer rs t =
      (try
         let handle_field f =
           let print = get_printer_core_type rs f.pld_type |> Option.get in
-          apply_nolbl print [exp_id f.pld_name.txt]
+          let field = apply_nolbl print [exp_id f.pld_name.txt] in
+          let field_name = string_exp f.pld_name.txt in
+          string_concat ~sep:"=" [field_name;field]
         in
+        let to_s f = f.pld_name.txt in
         let app = string_concat ~sep:"; " (List.map handle_field labs) in
-        let pat = List.map (fun l -> lid_loc l.pld_name.txt,pat_s l.pld_name.txt) labs in
+        let app = string_concat [string_exp "{"; app; string_exp "}"] in
+        let pat = List.map (fun l -> lid_loc (to_s l), pat_s (to_s l)) labs in
         Some (Exp.fun_ Nolabel None (Pat.record pat Closed) app)
       with Invalid_argument _ -> None
      )  |	Ptype_open -> None
