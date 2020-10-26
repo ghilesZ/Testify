@@ -217,11 +217,11 @@ let initial_rs =
   in
   let printers =
     Types.empty
-    |> add_id "bool" "string_of_bool"
-    |> add_id "char" "string_of_char"
-    |> add_id "int" "string_of_int"
+    |> add_id "unit"  "QCheck.Print.unit"
+    |> add_id "bool"  "string_of_bool"
+    |> add_id "char"  "string_of_char"
+    |> add_id "int"   "string_of_int"
     |> add_id "float" "string_of_float"
-    |> add_id "unit" "QCheck.Print.unit"
   in
   {generators; printers; properties=Types.empty}
 
@@ -233,8 +233,6 @@ let derive s td =
   Option.fold ~none:s ~some:(register_printer s id) (get_printer s td)
 
 (* update the rewritting state according to a type declaration *)
-(* TODO: if the type shadows an existing type, remove precedent
-   printers and generators *)
 let declare_type state td =
   let state = derive state td in
   (match List.filter (fun a -> a.attr_name.txt = "satisfying") td.ptype_attributes with
@@ -245,8 +243,8 @@ let declare_type state td =
         | None -> state
         | Some g ->
            let g = apply_lab_nolab_s "QCheck.find_example"
-                     ["f", e; "count", int_exp (!count)] [g] in
-           register_generator state (lid td.ptype_name.txt) g
+                     ["f", e; "count", int_exp (!count)] [g]
+           in register_generator state (lid td.ptype_name.txt) g
       in
       {state with properties = add_prop td.ptype_name.txt e state.properties}
    | _::_::_ -> failwith "only one satisfying attribute accepted"

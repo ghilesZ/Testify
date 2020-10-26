@@ -57,7 +57,7 @@ type itv = {inf:int; sup:int} [@@s.t inf <= sup]
 which is syntactic sugar for:
 
 ```OCaml
-type itv = {inf:int; sup:int} [@@satisfyning (fun {inf;sup} -> inf <= sup)]
+type itv = {inf:int; sup:int} [@@satisfying (fun {inf;sup} -> inf <= sup)]
 ```
 
 ### Derivation
