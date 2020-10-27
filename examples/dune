@@ -8,10 +8,16 @@
   (name itv)
   (modules itv)
   (preprocess (pps ppx_testify))
-  (libraries qcheck zarith))
+  (libraries qcheck))
 
 (executable
   (name itv_record)
   (modules itv_record)
   (preprocess (pps ppx_testify))
-  (libraries qcheck zarith))
+  (libraries qcheck))
+
+(executable
+  (name circle)
+  (modules circle)
+  (preprocess (pps ppx_testify))
+  (libraries qcheck))
