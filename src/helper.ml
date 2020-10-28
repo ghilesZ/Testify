@@ -49,6 +49,7 @@ let false_ = Exp.construct (lid_loc "false") None
 
 (* useful constructors *)
 let int_exp x = Exp.constant (Const.int x)
+let float_exp x = Exp.constant (Const.float (string_of_float x))
 let string_exp x = Exp.constant (Const.string x)
 let str_nonrec vb = Str.value Nonrecursive vb
 let pat_s s = Pat.var (none_loc s)

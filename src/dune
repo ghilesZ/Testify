@@ -1,13 +1,21 @@
 (library
   (public_name ppx_testify)
   (name ppx_testify)
+  (wrapped false)
   (kind ppx_rewriter)
   (modules helper ppx_testify satisfying such_that)
-  (preprocess (pps ppx_tools_versioned.metaquot_408))
   (libraries ppx_tools_versioned
-             ppx_tools_versioned.metaquot_408
              ocaml-migrate-parsetree))
              
 (library
   (name testify_lib)
   (modules testify_lib))
+
+(executable
+  (name abstract)
+  (modules abstract)
+  (libraries ppx_testify
+             ppx_tools_versioned
+             ocaml-migrate-parsetree
+             apron)
+)
