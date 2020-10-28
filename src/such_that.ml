@@ -36,7 +36,7 @@ let unsugarize kind (attrs:attributes) =
        ) attrs
   | _ -> attrs
 
-let such_that_mapper =
+let mapper =
   let handle_td _mapper ({ptype_kind; ptype_attributes; _} as td) =
     let satisfying_attribute = unsugarize ptype_kind ptype_attributes in
     {td with ptype_attributes = satisfying_attribute}
