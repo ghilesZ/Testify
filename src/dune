@@ -17,5 +17,5 @@
   (libraries ppx_testify
              ppx_tools_versioned
              ocaml-migrate-parsetree
-             apron)
+             apron apron.boxMPQ)
 )
