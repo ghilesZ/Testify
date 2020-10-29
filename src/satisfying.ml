@@ -8,27 +8,11 @@ open Helper
 let ocaml_version = Versions.ocaml_410
 module Conv = Convert (OCaml_410) (OCaml_current)
 
-(* Testify generates an empty (Test.t list ref) at the beginning of
-   the ast, and each time a fully annotated function whose return type
-   was attached a satisfying predicate, it adds the to the list the
-   corresponding test. *)
-let test_id = "__Testify__tests"
-let test_exp = exp_id test_id
-
-(* ast for : let __Testify__tests = ref [] *)
-let declare_test_suite =
-  let ref_empty = apply_nolbl_s "ref" [empty_list_exp] in
-  str_nonrec [vb_s test_id ref_empty]
-
-(* given x, generates the ast for :
-   let _ = __Testify__tests :=  x::!__Testify__tests *)
 let add new_test =
-  assign [test_exp; cons_exp new_test (bang [test_exp])] |> Str.eval
+  apply_nolbl_s "Testify_runtime.add_test" [new_test] |> Str.eval
 
-(* ast for : let _ = QCheck_base_runner.run_tests_main !__Testify__tests *)
 let run =
-  apply_lab_nolab_s "QCheck_base_runner.run_tests"
-    ["colors", true_; "verbose", false_] [bang [test_exp]] |> Str.eval
+  apply_nolbl_s "Testify_runtime.run_test" [unit] |> Str.eval
 
 (* number of generation per test *)
 let count = ref 1000
@@ -321,6 +305,6 @@ let mapper =
          aux state (tests@(h'::res)) tl
       | h::tl -> aux state (h::res) tl
     in
-    aux initial_rs [declare_test_suite] (str)
+    aux initial_rs [] (str)
   in
   {default_mapper with structure = handle_str}

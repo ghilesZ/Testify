@@ -8,8 +8,9 @@
              ocaml-migrate-parsetree))
              
 (library
-  (name testify_lib)
-  (modules testify_lib))
+  (name testify_runtime)
+  (modules testify_runtime)
+  (libraries qcheck))
 
 (executable
   (name abstract)

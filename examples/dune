@@ -8,7 +8,7 @@
   (name itv)
   (modules itv)
   (preprocess (pps ppx_testify))
-  (libraries qcheck))
+  (libraries testify_runtime qcheck))
 
 (executable
   (name itv_record)

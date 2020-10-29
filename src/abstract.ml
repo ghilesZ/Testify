@@ -28,19 +28,19 @@ let compile_itv typ (i:Interval.t) =
      let size = size+1 in
      let inf = inf |> Mpqf.to_float |> ceil |> int_of_float in
      let body =
-       let gen = apply_nolbl_s "Gen.int_bound" [int_exp size] in
+       let gen = apply_nolbl_s "QCheck.Gen.int_bound" [int_exp size] in
        let r = apply_nolbl gen [exp_id "rand_state"] in
-       apply_nolbl_s "+" [int_exp inf; r]
+       apply_nolbl_s "mk_int" [apply_nolbl_s "+" [int_exp inf; r]]
      in
      Exp.fun_ Nolabel None (pat_s "rand_state") body
   | Environment.REAL ->
      let size = Mpqf.sub sup inf |> Mpqf.to_float in
      let inf = inf |> Mpqf.to_float in
      let body =
-       let gen = apply_nolbl_s "Gen.float_bound_exclusive" [float_exp 1.] in
+       let gen = apply_nolbl_s "QCheck.Gen.float_bound_inclusive" [float_exp 1.] in
        let value = apply_nolbl gen [exp_id "rand_state"] in
        let r = apply_nolbl_s "Float.mul" [value; float_exp size] in
-       apply_nolbl_s "Float.add" [float_exp inf; r]
+       apply_nolbl_s "mk_float" [apply_nolbl_s "Float.add" [float_exp inf; r]]
      in
      Exp.fun_ Nolabel None (pat_s "rand_state") body
 

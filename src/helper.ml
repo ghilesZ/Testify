@@ -53,6 +53,7 @@ let float_exp x = Exp.constant (Const.float (string_of_float x))
 let string_exp x = Exp.constant (Const.string x)
 let str_nonrec vb = Str.value Nonrecursive vb
 let pat_s s = Pat.var (none_loc s)
+let unit = Exp.construct (lid_loc "()") None
 
 (* easy value binding with string *)
 let vb_s id exp =
