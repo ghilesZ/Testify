@@ -44,8 +44,7 @@ let compile_itv typ (i:Interval.t) =
      in
      Exp.fun_ Nolabel None (pat_s "rand_state") body
 
-(** builds a Parsetree.expression corresponding to a generator from a
-   box *)
+(** builds a Parsetree.expression corresponding to a box generator *)
 let compile_box b =
   let box = Abstract1.to_box manager b in
   let env = box.Abstract1.box1_env in
@@ -62,6 +61,7 @@ let compile_box b =
   in
   Exp.fun_ Nolabel None (pat_s "rand_state") instance
 
+(* exemple with 2 vars : x in [-3;5] and y in [2;18]*)
 let _ =
   let vx = Var.of_string "x" in
   let vy = Var.of_string "y" in

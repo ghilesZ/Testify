@@ -70,12 +70,6 @@ let generate inputs fn testname satisfy =
 (* Utilities for state rewritting *)
 (**********************************)
 
-(* map for type identifiers *)
-module Types = Map.Make(struct type t = Longident.t let compare = compare end)
-
-let add_prop t_id : expression -> expression Types.t -> expression Types.t =
-  Types.add (Longident.Lident t_id)
-
 (* main type, for rewritting state. keeps tracks of :
   - test properties attached to a type.
   - current generators and printers *)
@@ -229,7 +223,7 @@ let declare_type state td =
                      ["f", e; "count", int_exp (!count)] [g]
            in register_generator state (lid td.ptype_name.txt) g
       in
-      {state with properties = add_prop td.ptype_name.txt e state.properties}
+      {state with properties = add_s td.ptype_name.txt e state.properties}
    | _::_::_ -> failwith "only one satisfying attribute accepted"
    | _ -> failwith "bad satisfying attribute")
 

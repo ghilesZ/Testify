@@ -81,3 +81,9 @@ let string_concat ?sep l =
        let acc = apply_nolbl_s "^" [acc;h] in
        aux (apply_nolbl_s "^" [acc;sep]) tl
   in aux (string_exp "") l
+
+(* map for type identifiers *)
+module Types = Map.Make(struct type t = Longident.t let compare = compare end)
+
+(* zagreus *)
+let add_s t_id = Types.add (Longident.Lident t_id)
