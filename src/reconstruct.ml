@@ -1,7 +1,6 @@
 open Migrate_parsetree
 open Ast_410
 open Parsetree
-open Ast_mapper
 open Ast_helper
 open Helper
 
