@@ -3,9 +3,10 @@
   (name ppx_testify)
   (wrapped false)
   (kind ppx_rewriter)
-  (modules helper ppx_testify satisfying such_that)
+  (modules helper reconstruct ppx_testify satisfying such_that)
   (libraries ppx_tools_versioned
-             ocaml-migrate-parsetree))
+             ocaml-migrate-parsetree
+             apron apronext))
              
 (library
   (name testify_runtime)
