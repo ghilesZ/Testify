@@ -19,8 +19,7 @@ let count = ref 1000
 
 (* QCheck test for constants *)
 let test_constant name f =
-  let open Exp in
-  let f = fun_ Nolabel None (Pat.any ()) (apply_nolbl f [exp_id name]) in
+  let f = lambda (Pat.any ()) (apply_nolbl f [exp_id name]) in
   let labelled = ["count", int_exp 1; "name", string_exp name] in
   let not_labelled = [exp_id "QCheck.unit"; f] in
   apply_lab_nolab (exp_id "QCheck.Test.make") labelled not_labelled |> add
@@ -57,7 +56,7 @@ let generate inputs fn testname satisfy =
      let pat = pat_s name in
      let gen,print,pat,args = aux g p pat [exp_id name] tl in
      let f = exp_id fn in
-     let f = Exp.fun_ Nolabel None pat (apply_nolbl satisfy [apply_nolbl f args]) in
+     let f = lambda pat (apply_nolbl satisfy [apply_nolbl f args]) in
      let testname = Format.asprintf "the return value of %s violates \
                                      the predicate%a\nfor the \
                                      following input:\n"
@@ -94,9 +93,7 @@ let get_gen_core_type rs =
        let gens = List.map aux tup in
        (try
           List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
-          |> Exp.tuple
-          |> Exp.fun_ Nolabel None (pat_s "x")
-          |> Option.some
+          |> Exp.tuple |> lambda_s "x" |> Option.some
         with Invalid_argument _ -> None)
     | _ -> None
   in aux
@@ -116,7 +113,7 @@ let get_printer_core_type rs =
           let names,pats = List.split (List.map np prints) in
           let b = string_concat ~sep:", " names in
           let b' = string_concat [string_exp "("; b; string_exp ")"] in
-          Some (Exp.fun_ Nolabel None (Pat.tuple pats) b')
+          Some (lambda (Pat.tuple pats) b')
         with Invalid_argument _ -> None)
     | _ -> None
   in aux
@@ -138,10 +135,18 @@ let get_generator rs t =
           lid_loc f.pld_name.txt, apply_nolbl gen [exp_id "rs"]
         in
         let app = Exp.record (List.map handle_field labs) None in
-        Some (Exp.fun_ Nolabel None (pat_s "rs") app)
+        Some (lambda_s "rs" app)
       with Invalid_argument _ -> None
      )
   |	Ptype_open -> None
+
+let get_generator rs td =
+  (match get_attribute_pstr "satisfying" td.ptype_attributes with
+   | Some e ->
+      (match get_generator rs td with
+       | None -> None
+       | Some g -> Some (apply_lab_nolab_s "QCheck.find_example" ["f", e; "count", int_exp (!count)] [g]))
+   | None -> None)
 
 (* Given a rewritting state [rs] and and a type [t], search for the
    printer associated to [t] in [rs]. Returns a Parsetree.expression
@@ -165,7 +170,7 @@ let get_printer rs t =
         let app = string_concat ~sep:"; " (List.map handle_field labs) in
         let app = string_concat [string_exp "{"; app; string_exp "}"] in
         let pat = List.map (fun l -> lid_loc (to_s l), pat_s (to_s l)) labs in
-        Some (Exp.fun_ Nolabel None (Pat.record pat Closed) app)
+        Some (lambda (Pat.record pat Closed) app)
       with Invalid_argument _ -> None
      )  |	Ptype_open -> None
 
@@ -204,45 +209,35 @@ let initial_rs =
 
 let derive s td =
   let id = lid td.ptype_name.txt in
-  let s =
-    Option.fold ~none:s ~some:(register_generator s id) (get_generator s td)
-  in
-  Option.fold ~none:s ~some:(register_printer s id) (get_printer s td)
+  option_meet s (get_generator s td) (get_printer s td)
+    (fun gen print -> register_printer (register_generator s id gen) id print)
 
 (* update the rewritting state according to a type declaration *)
 let declare_type state td =
   let state = derive state td in
-  (match List.filter (fun a -> a.attr_name.txt = "satisfying") td.ptype_attributes with
-   | [] -> state
-   | [{attr_payload=PStr[{pstr_desc=Pstr_eval (e,_);_}];_}] ->
-      let state =
-        match get_generator state td with
-        | None -> state
-        | Some g ->
-           let g = apply_lab_nolab_s "QCheck.find_example"
-                     ["f", e; "count", int_exp (!count)] [g]
-           in register_generator state (lid td.ptype_name.txt) g
-      in
-      {state with properties = add_s td.ptype_name.txt e state.properties}
-   | _::_::_ -> failwith "only one satisfying attribute accepted"
-   | _ -> failwith "bad satisfying attribute")
+  match get_attribute_pstr "satisfying" td.ptype_attributes with
+  | None -> state
+  | Some e ->
+     let state =
+       match get_generator state td with
+       | None -> state
+       | Some g -> register_generator state (lid td.ptype_name.txt) g
+     in
+     {state with properties = add_s td.ptype_name.txt e state.properties}
 
 (* annotation handling *)
 (***********************)
-
 let check_gen state pvb =
-  (match List.filter (fun a -> a.attr_name.txt="gen") pvb.pvb_attributes with
-   | [] -> state
-   | _::_::_ -> failwith "only one gen attribute accepted"
-   | [{attr_payload=PStr [{pstr_desc=Pstr_eval ({pexp_desc=Pexp_ident l;_},_);_}];_}] ->
+  (match get_attribute_pstr "gen" pvb.pvb_attributes with
+   | None -> state
+   | Some {pexp_desc=Pexp_ident l;_} ->
       {state with generators = Types.add l.txt pvb.pvb_expr state.generators}
    | _ -> failwith "bad gen attribute")
 
 let check_print state pvb =
-  (match List.filter (fun a -> a.attr_name.txt="print") pvb.pvb_attributes with
-   | [] -> state
-   | _::_::_ -> failwith "only one print attribute accepted"
-   | [{attr_payload=PStr [{pstr_desc=Pstr_eval ({pexp_desc=Pexp_ident l;_},_);_}];_}] ->
+  (match get_attribute_pstr "print" pvb.pvb_attributes with
+   | None -> state
+   | Some {pexp_desc=Pexp_ident l;_} ->
       {state with printers = Types.add l.txt pvb.pvb_expr state.printers}
    | _ -> failwith "bad print attribute")
 

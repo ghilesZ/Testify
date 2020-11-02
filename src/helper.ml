@@ -2,6 +2,7 @@
 
 open Migrate_parsetree
 open Ast_410
+open Parsetree
 open Asttypes
 open Ast_helper
 
@@ -55,6 +56,12 @@ let str_nonrec vb = Str.value Nonrecursive vb
 let pat_s s = Pat.var (none_loc s)
 let unit = Exp.construct (lid_loc "()") None
 
+(* Same as Exp.fun_ *)
+let lambda = Exp.fun_ Nolabel None
+
+(* Same as lambda with string instead of pattern *)
+let lambda_s s = lambda (pat_s s)
+
 (* easy value binding with string *)
 let vb_s id exp =
   Vb.mk (pat_s id) exp
@@ -87,3 +94,27 @@ module Types = Map.Make(struct type t = Longident.t let compare = compare end)
 
 (* zagreus *)
 let add_s t_id = Types.add (Longident.Lident t_id)
+
+let option_meet default o1 o2 f =
+  match o1,o2 with
+  | Some v1, Some v2 -> (f v1 v2)
+  | _ -> default
+
+(* keeps the attributes with name 'n'*)
+let check_attributes n attrs =
+  List.filter (fun a -> a.attr_name.txt = n) attrs
+
+(* gets the only attributes with name 'n', raises an error if more
+   than one, None if 0 *)
+let get_attribute_payload n attrs =
+  match check_attributes n attrs with
+  | [] -> None
+  | [{attr_payload;_}] -> Some attr_payload
+  | _ -> Format.asprintf "only one %s attribute accepted" n |> failwith
+
+(* gets the pstr payload attached to an attribute *)
+let get_attribute_pstr n attrs =
+  match get_attribute_payload n attrs with
+  | Some PStr[{pstr_desc=Pstr_eval (e,_);_}] -> Some e
+  | Some _ -> Format.asprintf "bad %s attribute" n |> failwith
+  | None -> None

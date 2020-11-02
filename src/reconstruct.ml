@@ -35,11 +35,11 @@ let reconstruct core_type pattern =
        r,int_set,SSet.add ptxt float_set
     | Ptyp_tuple ttup, Ppat_tuple ptup ->
        let sons,i_s,f_s = List.fold_left2 (fun (acc,i_s,f_s) tt pt ->
-                              let s',i_s,f_s = aux i_s f_s tt pt
-                              in (s'::acc),i_s,f_s
+                              let s',i_s,f_s = aux i_s f_s tt pt in
+                              (s'::acc),i_s,f_s
                             ) ([],int_set,float_set) ttup ptup in
-       let body = List.map (fun f -> apply_nolbl f [exp_id "i"]) (List.rev sons) in
-       Exp.fun_ Nolabel None (pat_s "i") (Exp.tuple body),i_s,f_s
+       let b = List.map (fun f -> apply_nolbl f [exp_id "i"]) (List.rev sons) in
+       lambda_s "i" (Exp.tuple b),i_s,f_s
     | _ -> raise OutOfSubset
   in
   aux SSet.empty SSet.empty core_type pattern
@@ -64,24 +64,22 @@ let predicate_to_constraint env expr =
         | "<"  -> Tconsext.lt
         | "="  -> Tconsext.eq
         | "<>" -> Tconsext.diseq
-        | _ -> raise OutOfSubset
-     )
+        | _ -> raise OutOfSubset)
     | _ -> raise OutOfSubset
   in
   let handle_op op =
     match op.pexp_desc with
     | Pexp_ident {txt=Lident i;_} ->
        (match i with
-        | "+" -> Texprext.add ~typ:Int
-        | "-" -> Texprext.sub ~typ:Int
+        | "+"  -> Texprext.add ~typ:Int
+        | "-"  -> Texprext.sub ~typ:Int
         | "*"  -> Texprext.mul ~typ:Int
         | "/"  -> Texprext.div ~typ:Int
         | "+." -> Texprext.add ~typ:Real
         | "-." -> Texprext.sub ~typ:Real
-        | "*."  -> Texprext.mul ~typ:Real
-        | "/."  -> Texprext.div ~typ:Real
-        | _ -> raise OutOfSubset
-     )
+        | "*." -> Texprext.mul ~typ:Real
+        | "/." -> Texprext.div ~typ:Real
+        | _ -> raise OutOfSubset)
     | _ -> raise OutOfSubset
   in
   let rec numeric e =
@@ -90,6 +88,8 @@ let predicate_to_constraint env expr =
        (handle_op op) (numeric arg1) (numeric arg2)
     | Pexp_constant(Pconst_integer (s,None)) ->
        Texprext.cst env (Coeff.s_of_int (int_of_string s))
+    | Pexp_constant(Pconst_float (s,None)) ->
+       Texprext.cst env (Coeff.s_of_float (float_of_string s))
     | _ -> raise OutOfSubset
   in
   let comparison e =
@@ -100,8 +100,7 @@ let predicate_to_constraint env expr =
   in
   comparison expr
 
-(* given a type declaration and a pattern, we build an abstract
-   element and a reconstruction function *)
+(* given a type declaration and a pattern, we build a generator *)
 let abstract td pat body =
   let pat' = fill pat in
   let r,i_s,f_s = reconstruct td pat' in
@@ -111,4 +110,5 @@ let abstract td pat body =
   let constr = predicate_to_constraint env body in
   let abs =  Abstract1.top manager env in
   let abs' = Abstractext.filter_tcons manager abs constr in
-  abs',r
+  let boxgen = Boxgen.compile_box abs' in
+  lambda_s "rs" (apply_nolbl r [apply_nolbl boxgen [exp_id "rs"]])

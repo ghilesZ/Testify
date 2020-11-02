@@ -13,13 +13,12 @@ module Conv = Convert (OCaml_410) (OCaml_current)
    (float x) < y' *)
 (* TODO: annotate the generated code to disable warning 27 locally *)
 let handle_record labels e =
-  let open Exp in
   let names = List.map (fun l ->
                   Location.mkloc (Longident.parse l.pld_name.txt) l.pld_loc,
                   Pat.var l.pld_name
                 ) labels
   in
-  fun_ Nolabel None (Pat.record names Closed) e
+  lambda (Pat.record names Closed) e
 
 let unsugarize kind (attrs:attributes) =
   match kind with

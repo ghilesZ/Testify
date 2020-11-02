@@ -2,7 +2,7 @@
   (name positive)
   (modules positive)
   (preprocess (pps ppx_testify))
-  (libraries qcheck))
+  (libraries testify_runtime qcheck))
   
 (executable
   (name itv)
@@ -14,10 +14,10 @@
   (name itv_record)
   (modules itv_record)
   (preprocess (pps ppx_testify))
-  (libraries qcheck))
+  (libraries testify_runtime qcheck))
 
 (executable
   (name circle)
   (modules circle)
   (preprocess (pps ppx_testify))
-  (libraries qcheck))
+  (libraries testify_runtime  qcheck))

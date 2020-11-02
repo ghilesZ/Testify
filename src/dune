@@ -3,21 +3,12 @@
   (name ppx_testify)
   (wrapped false)
   (kind ppx_rewriter)
-  (modules helper reconstruct ppx_testify satisfying such_that)
+  (modules helper boxgen reconstruct ppx_testify satisfying such_that)
   (libraries ppx_tools_versioned
              ocaml-migrate-parsetree
-             apron apronext))
+             apron apron.boxMPQ apronext))
              
 (library
   (name testify_runtime)
   (modules testify_runtime)
   (libraries qcheck))
-
-(executable
-  (name abstract)
-  (modules abstract)
-  (libraries ppx_testify
-             ppx_tools_versioned
-             ocaml-migrate-parsetree
-             apron apron.boxMPQ)
-)
