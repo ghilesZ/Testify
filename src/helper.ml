@@ -38,6 +38,10 @@ let apply_lab_nolab f args1 args2 =
 let apply_lab_nolab_s s =
   apply_lab_nolab (exp_id s)
 
+(* calls a function defined in the runtime *)
+let apply_runtime s =
+  apply_nolbl_s ("Testify_runtime."^s)
+
 (* application of bang *)
 let bang = apply_nolbl_s "!"
 

@@ -6,7 +6,7 @@
   (modules helper boxgen reconstruct ppx_testify satisfying such_that)
   (libraries ppx_tools_versioned
              ocaml-migrate-parsetree
-             apron apron.boxMPQ apronext))
+             apron apron.boxMPQ apron.polkaMPQ apronext))
              
 (library
   (name testify_runtime)

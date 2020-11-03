@@ -9,13 +9,17 @@ let ocaml_version = Versions.ocaml_410
 module Conv = Convert (OCaml_410) (OCaml_current)
 
 let add new_test =
-  apply_nolbl_s "Testify_runtime.add_test" [new_test] |> Str.eval
+  apply_runtime "add_test" [new_test] |> Str.eval
 
 let run =
-  apply_nolbl_s "Testify_runtime.run_test" [unit] |> Str.eval
+  apply_runtime "run_test" [unit] |> Str.eval
 
 (* number of generation per test *)
 let count = ref 1000
+
+let rejection gen pred =
+  apply_lab_nolab_s "QCheck.find_example"
+    ["f", pred; "count", int_exp (!count)] [gen]
 
 (* QCheck test for constants *)
 let test_constant name f =
@@ -55,15 +59,15 @@ let generate inputs fn testname satisfy =
      let name = get_name () in
      let pat = pat_s name in
      let gen,print,pat,args = aux g p pat [exp_id name] tl in
-     let f = exp_id fn in
-     let f = lambda pat (apply_nolbl satisfy [apply_nolbl f args]) in
-     let testname = Format.asprintf "the return value of %s violates \
-                                     the predicate%a\nfor the \
-                                     following input:\n"
-                      testname
-                      Pprintast.expression (Conv.copy_expression satisfy)
+     let f = lambda pat (apply_nolbl satisfy [apply_nolbl (exp_id fn) args]) in
+     let testname =
+       Format.asprintf "the return value of %s violates \
+                        the predicate%a\nfor the \
+                        following input:\n"
+         testname
+         Pprintast.expression (Conv.copy_expression satisfy)
      in
-     test testname [apply_lab_nolab_s "QCheck.make" ["print",print] [gen];f]
+     test testname [apply_lab_nolab_s "QCheck.make" ["print", print] [gen]; f]
   | [] -> assert false
 
 (* Utilities for state rewritting *)
@@ -83,6 +87,9 @@ let register_printer rs lid p =
 
 let register_generator rs lid g =
   {rs with generators = Types.add lid g rs.generators}
+
+let register_property rs lid p =
+  {rs with properties = Types.add lid p rs.properties}
 
 let get_gen_core_type rs =
   let rec aux ct =
@@ -136,16 +143,15 @@ let get_generator rs t =
         in
         let app = Exp.record (List.map handle_field labs) None in
         Some (lambda_s "rs" app)
-      with Invalid_argument _ -> None
-     )
+      with Invalid_argument _ -> None)
   |	Ptype_open -> None
 
 let get_generator rs td =
   (match get_attribute_pstr "satisfying" td.ptype_attributes with
    | Some e ->
-      (match get_generator rs td with
-       | None -> None
-       | Some g -> Some (apply_lab_nolab_s "QCheck.find_example" ["f", e; "count", int_exp (!count)] [g]))
+      (match Reconstruct.abstract td e with
+       | None -> Option.map (rejection e) (get_generator rs td)
+       | x -> x)
    | None -> None)
 
 (* Given a rewritting state [rs] and and a type [t], search for the
@@ -213,17 +219,11 @@ let derive s td =
     (fun gen print -> register_printer (register_generator s id gen) id print)
 
 (* update the rewritting state according to a type declaration *)
-let declare_type state td =
-  let state = derive state td in
-  match get_attribute_pstr "satisfying" td.ptype_attributes with
+let declare_type state t =
+  let state = derive state t in
+  match get_attribute_pstr "satisfying" t.ptype_attributes with
   | None -> state
-  | Some e ->
-     let state =
-       match get_generator state td with
-       | None -> state
-       | Some g -> register_generator state (lid td.ptype_name.txt) g
-     in
-     {state with properties = add_s td.ptype_name.txt e state.properties}
+  | Some e -> register_property state (lid t.ptype_name.txt) e
 
 (* annotation handling *)
 (***********************)
@@ -244,6 +244,12 @@ let check_print state pvb =
 let get_infos state e =
   let helper state pat =
     match pat.ppat_desc with
+    | Ppat_constraint (_,({ptyp_desc= Ptyp_constr ({txt;_},[]); _} as ct)) ->
+       (try
+          Some (Types.find txt state.generators),
+          Some (Types.find txt state.printers)
+        with Not_found ->
+          (get_gen_core_type state ct),(get_printer_core_type state ct))
     | Ppat_constraint (_,ct) ->
        (get_gen_core_type state ct),(get_printer_core_type state ct)
     | _ -> None,None
