@@ -57,7 +57,7 @@ let rec fill p =
   | _ -> raise (OutOfSubset "pattern")
 
 let predicate_to_constraint env expr =
-  let handle_cmp cmp =
+ let handle_cmp cmp =
     match cmp.pexp_desc with
     | Pexp_ident {txt=Lident i;_} ->
        (match i with

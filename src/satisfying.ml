@@ -17,21 +17,22 @@ let run =
 (* number of generation per test *)
 let count = ref 1000
 
-let rejection gen pred =
+let rejection name pred gen =
+  let name = "generator for "^name in
   apply_lab_nolab_s "QCheck.find_example"
-    ["f", pred; "count", int_exp (!count)] [gen]
+    ["f", pred; "count", int_exp (!count); "name", string_exp name] [gen]
 
 (* QCheck test for constants *)
 let test_constant name f =
   let f = lambda (Pat.any ()) (apply_nolbl f [exp_id name]) in
   let labelled = ["count", int_exp 1; "name", string_exp name] in
   let not_labelled = [exp_id "QCheck.unit"; f] in
-  apply_lab_nolab (exp_id "QCheck.Test.make") labelled not_labelled |> add
+  apply_lab_nolab_s "QCheck.Test.make" labelled not_labelled |> add
 
 (* generation of QCheck test *)
 let test name args =
   let lab = ["count", int_exp (!count);"name", string_exp name] in
-  apply_lab_nolab (exp_id "QCheck.Test.make") lab args |> add
+  apply_lab_nolab_s "QCheck.Test.make" lab args |> add
 
 (* same as [pp], but in bold blue] *)
   let bold_blue x =
@@ -60,13 +61,7 @@ let generate inputs fn testname satisfy =
      let pat = pat_s name in
      let gen,print,pat,args = aux g p pat [exp_id name] tl in
      let f = lambda pat (apply_nolbl satisfy [apply_nolbl (exp_id fn) args]) in
-     let testname =
-       Format.asprintf "the return value of %s violates \
-                        the predicate%a\nfor the \
-                        following input:\n"
-         testname
-         Pprintast.expression (Conv.copy_expression satisfy)
-     in
+     let testname = Format.asprintf "of %s\n" testname in
      test testname [apply_lab_nolab_s "QCheck.make" ["print", print] [gen]; f]
   | [] -> assert false
 
@@ -147,10 +142,11 @@ let get_generator rs t =
   |	Ptype_open -> None
 
 let get_generator rs td =
+  let name = td.ptype_name.txt in
   (match get_attribute_pstr "satisfying" td.ptype_attributes with
    | Some e ->
       (match Reconstruct.abstract td e with
-       | None -> Option.map (rejection e) (get_generator rs td)
+       | None -> Option.map (rejection name e) (get_generator rs td)
        | x -> x)
    | None -> None)
 

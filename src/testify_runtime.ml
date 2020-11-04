@@ -2,13 +2,13 @@
 let add_test,run_test =
   let holder = ref ([]:QCheck.Test.t list) in
   (fun t -> holder := t::(!holder)),
-  (fun () -> QCheck_base_runner.run_tests ~colors:true ~verbose:false !holder)
+  (fun () ->
+    let holder = List.rev !holder in
+    QCheck_base_runner.run_tests ~colors:true ~long:true ~verbose:true holder)
 
+(* abstract generators handling *)
 
-(* abstract generators *)
-(***********************)
-type generable = GInt of int
-               | GFloat of float
+type generable = GInt of int | GFloat of float
 
 let mk_int x = GInt x
 let mk_float x = GFloat x
