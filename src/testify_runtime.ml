@@ -1,6 +1,8 @@
+open QCheck
+
 (* test storing management *)
 let add_test,run_test =
-  let holder = ref ([]:QCheck.Test.t list) in
+  let holder = ref ([]:Test.t list) in
   (fun t -> holder := t::(!holder)),
   (fun () ->
     let holder = List.rev !holder in
@@ -32,13 +34,15 @@ let int_range a b =
     invalid_arg ("invlid int_range: "^msg)
   else if a >= 0 || b <= 0 then (
     (* range smaller than max_int *)
-    fun st -> a + (QCheck.Gen.int_bound (b-a) st)
+    fun st -> a + (Gen.int_bound (b-a) st)
   ) else (
     (* range potentially bigger than max_int: we split on 0 and
        choose the itv wrt to their size ratio *)
     fun st ->
     let f_a = float_of_int a in
     let ratio = (-.f_a) /. (float_of_int b -. f_a) in
-    if Random.float 1. < ratio then - (QCheck.Gen.int_bound (abs a) st)
-    else QCheck.Gen.int_bound b st
+    if Random.float 1. < ratio then
+      if a = min_int then QCheck.Gen.neg_int st
+      else- (Gen.int_bound (abs a) st)
+    else Gen.int_bound b st
   )
