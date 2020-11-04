@@ -5,9 +5,6 @@ open Ast_mapper
 open Ast_helper
 open Helper
 
-let ocaml_version = Versions.ocaml_410
-module Conv = Convert (OCaml_410) (OCaml_current)
-
 let add new_test =
   apply_runtime "add_test" [new_test] |> Str.eval
 
@@ -35,12 +32,23 @@ let test name args =
   apply_lab_nolab_s "QCheck.Test.make" lab args |> add
 
 (* same as [pp], but in bold blue] *)
-  let bold_blue x =
-    Format.asprintf "\x1b[34;1m%s\x1b[0m" x
+let bold_blue x =
+  Format.asprintf "\x1b[34;1m%s\x1b[0m" x
 
 (* same as [pp], but in blue *)
-  let blue x =
-    Format.asprintf "\x1b[36m%s\x1b[0m" x
+let blue x =
+  Format.asprintf "\x1b[36m%s\x1b[0m" x
+
+(* printer composition *)
+let concat_printer p1 p2 =
+  let p1_exp = (apply_nolbl_s "fst" [exp_id "x"]) in
+  let p2_exp = (apply_nolbl_s "snd" [exp_id "x"]) in
+  lambda_s "x"
+    (string_concat [string_exp "(";
+         (string_concat ~sep:", "
+            [(apply_nolbl p1 [p1_exp]); (apply_nolbl p2 [p2_exp])]);
+         string_exp ")";
+    ])
 
 (* builds an input from a list of generators and printers and apply
    to it the function funname *)
@@ -48,7 +56,7 @@ let generate inputs fn testname satisfy =
   let rec aux gen print pat args = function
     | [] -> gen,print,pat,List.rev args
     | (g,p)::tl ->
-       let print = apply_nolbl_s "QCheck.Print.pair" [print; p] in
+       let print = concat_printer print p in
        let gen = apply_nolbl_s "QCheck.Gen.pair" [gen; g] in
        let name = get_name () in
        let pat = Pat.tuple [pat; pat_s name] in

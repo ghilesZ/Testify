@@ -7,7 +7,6 @@ let add_test,run_test =
     QCheck_base_runner.run_tests ~colors:true ~long:true ~verbose:true holder)
 
 (* abstract generators handling *)
-
 type generable = GInt of int | GFloat of float
 
 let mk_int x = GInt x
@@ -26,6 +25,7 @@ let get_float name (l:instance) =
   | GFloat f -> f
   | _ -> failwith "type error"
 
+(* better int range generator *)
 let int_range a b =
   if b < a then
     let msg = Format.asprintf "[%i;%i]" a b in

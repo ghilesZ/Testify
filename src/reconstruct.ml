@@ -132,6 +132,7 @@ let abstract_core_type td sat =
   let boxgen = Boxgen.compile_box abs' in
   lambda_s "rs" (apply_nolbl r [apply_nolbl boxgen [exp_id "rs"]])
 
+(* builds a generator *)
 let abstract t sat =
   try
     match t.ptype_kind with
