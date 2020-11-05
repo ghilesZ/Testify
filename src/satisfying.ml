@@ -273,7 +273,7 @@ let get_infos state e =
    handles:
    - explicitly typed constants
    - (fully) explicitly typed functions *)
-let check_tests state = function
+let gather_tests state = function
   (* let constant:typ = val*)
   | {pvb_pat={ppat_desc=Ppat_constraint({ppat_desc=Ppat_var({txt;_});_},typ);_};_} ->
      get_property typ state
@@ -297,7 +297,7 @@ let mapper =
       | ({pstr_desc=Pstr_type(_,[t]);_} as h)::tl ->
          aux (declare_type state t) (h::res) tl
       | ({pstr_desc=Pstr_value(_,[pvb]); _} as h)::tl ->
-         let tests = check_tests state pvb in
+         let tests = gather_tests state pvb in
          let state = check_gen state pvb in
          let state = check_print state pvb in
          let h' = mapper.structure_item mapper h in
