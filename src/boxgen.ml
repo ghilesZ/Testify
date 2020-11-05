@@ -19,8 +19,8 @@ let ocaml_box =
   fun env ->
   let ivars,rvars = Environment.vars env in
   let vars = Array.concat [ivars;rvars] in
-  let map_itv v = match Environment.typ_of_var env v with INT -> i | REAL -> f in
-  let itv_arr = Array.map map_itv vars in
+  let f v = match Environment.typ_of_var env v with INT -> i | REAL -> f in
+  let itv_arr = Array.map f vars in
   Abstract1.of_box manager env vars itv_arr
 
 let scalar_to_mpqf = function
@@ -34,21 +34,17 @@ let compile_itv typ (i:Interval.t) =
   let body =
     match typ with
     | Environment.INT ->
-       let inf = inf |> Mpqf.to_float |> int_of_float in
-       let supf = sup |> Mpqf.to_float in
-       let supi = supf |> int_of_float in
-       let gen = apply_runtime "int_range" [int_exp inf; int_exp supi] in
-       let r = apply_nolbl gen [exp_id "rand_state"] in
-       apply_runtime "mk_int" [r]
+       let i = inf |> Mpqf.to_float |> int_of_float |> int_exp in
+       let s = sup |> Mpqf.to_float |> int_of_float |> int_exp in
+       [exp_id "rs"] |> apply_nolbl (apply_runtime "int_range" [i; s])
+       |> apply_runtime_1 "mk_int"
     | Environment.REAL ->
-       let size = Mpqf.sub sup inf |> Mpqf.to_float in
-       let inf = inf |> Mpqf.to_float in
-       let gen = apply_nolbl_s "QCheck.Gen.float_bound_inclusive" [float_exp 1.] in
-       let value = apply_nolbl gen [exp_id "rand_state"] in
-       let r = apply_nolbl_s "Float.mul" [value; float_exp size] in
-       apply_runtime "mk_float" [apply_nolbl_s "Float.add" [float_exp inf; r]]
+       let i = inf |> Mpqf.to_float |> float_exp in
+       let s = sup |> Mpqf.to_float |> float_exp in
+       [exp_id "rs"] |> apply_nolbl (apply_runtime "float_range" [i; s])
+       |> apply_runtime_1 "mk_float"
   in
-  lambda_s "rand_state" body
+  lambda_s "rs" body
 
 (** builds a Parsetree.expression corresponding to a box generator *)
 let compile_box b =

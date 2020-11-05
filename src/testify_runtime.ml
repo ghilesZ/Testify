@@ -43,6 +43,25 @@ let int_range a b =
     let ratio = (-.f_a) /. (float_of_int b -. f_a) in
     if Random.float 1. < ratio then
       if a = min_int then QCheck.Gen.neg_int st
-      else- (Gen.int_bound (abs a) st)
+      else - (Gen.int_bound (- a) st)
     else Gen.int_bound b st
+  )
+
+ (* float range generator *)
+let float_range a b =
+  if b < a then
+    let msg = Format.asprintf "[%f;%f]" a b in
+    invalid_arg ("invlid float_range: "^msg)
+  else if a >= 0. || b <= 0. then (
+    (* range smaller than max_int *)
+    fun st -> a +. (Gen.float_bound_inclusive (b-.a) st)
+  ) else (
+    (* range potentially bigger than max_int: we split on 0 and
+       choose the itv wrt to their size ratio *)
+    fun st ->
+    let ratio = (-.a) /. (b -. a) in
+    if Random.float 1. < ratio then
+      if a = min_float then QCheck.Gen.nfloat st
+      else -. (Gen.float_bound_inclusive (-. a) st)
+    else Gen.float_bound_inclusive b st
   )

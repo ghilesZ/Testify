@@ -42,6 +42,10 @@ let apply_lab_nolab_s s =
 let apply_runtime s =
   apply_nolbl_s ("Testify_runtime."^s)
 
+(* apply_runtime for arity one functions *)
+let apply_runtime_1 s x =
+  apply_nolbl_s ("Testify_runtime."^s) [x]
+
 (* application of bang *)
 let bang = apply_nolbl_s "!"
 
