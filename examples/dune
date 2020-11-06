@@ -21,3 +21,9 @@
   (modules circle)
   (preprocess (pps ppx_testify))
   (libraries testify_runtime  qcheck))
+
+(executable
+  (name q)
+  (modules q)
+  (preprocess (pps ppx_testify))
+  (libraries zarith testify_runtime qcheck))
