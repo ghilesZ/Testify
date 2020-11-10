@@ -83,4 +83,4 @@ still very (very) unstable.
 - handling of parametric types
 - handling of module path for type annotations (e.g : `Int.t`)
 - provide the user with a *standard library* of predifined types (positive integers, non-empty lists ...)
-
+- define a way of tagging a function as partial or total
