@@ -59,3 +59,14 @@ let float_range a b =
       if a = min_float then QCheck.Gen.nfloat st
       else -.Gen.float_bound_inclusive (-.a) st
     else Gen.float_bound_inclusive b st
+
+(* builds a geerator from a list of weighted generators *)
+let weighted (gens : (float * 'a Gen.t) list) : 'a Gen.t =
+  let total_weight = List.fold_left (fun acc (w, _) -> acc +. w) 0. gens in
+  let rec aux cpt = function
+    | [] -> invalid_arg "Testify_runtime.weighted"
+    | (w, g) :: tl -> if cpt < 0. then g else aux (cpt -. w) tl
+  in
+  fun rs ->
+    let r = (QCheck.Gen.float_bound_exclusive total_weight) rs in
+    (aux r gens) rs
