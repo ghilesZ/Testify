@@ -6,9 +6,11 @@ module Conv = Convert (OCaml_410) (OCaml_current)
 type constr =
   | Rejection of expression
   | Boolop of constr * lop * constr
-  | Comparison of arith * cmp * arith
+  | Comparison of comparison
 
 and lop = Imply | And | Or
+
+and comparison = arith * cmp * arith
 
 and cmp = Lt | Leq | Gt | Geq | Eq | Diseq
 
