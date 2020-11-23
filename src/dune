@@ -5,10 +5,12 @@
   (name ppx_testify)
   (wrapped false)
   (kind ppx_rewriter)
-  (modules helper tools boxgen lang consistency interpreter reconstruct ppx_testify satisfying such_that)
-  (libraries ppx_tools_versioned
-             ocaml-migrate-parsetree
-             apron apron.boxMPQ apron.polkaMPQ apronext))
+  (modules helper tools itv box lang consistency interpreter reconstruct ppx_testify satisfying such_that)
+  (libraries
+     zarith
+     ppx_tools_versioned
+     ocaml-migrate-parsetree
+     apron apron.boxMPQ apron.polkaMPQ apronext))
              
 (library
   (name testify_runtime)

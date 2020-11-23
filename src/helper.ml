@@ -129,3 +129,6 @@ let get_attribute_pstr n attrs =
   | Some (PStr [{pstr_desc= Pstr_eval (e, _); _}]) -> Some e
   | Some _ -> Format.asprintf "bad %s attribute" n |> failwith
   | None -> None
+
+module SSet = Set.Make(String)
+module SMap = Map.Make(String)
