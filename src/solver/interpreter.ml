@@ -54,6 +54,7 @@ module Make (D : Abs) = struct
     let vx = D.volume x in
     {r with outer= (x, vx, rej) :: r.outer}
 
+  (* TODO: put option to change this *)
   let max_depth = ref 10
 
   (* compiles a non_empty list of constraint into an OCaml expression*)
@@ -67,6 +68,11 @@ module Make (D : Abs) = struct
   (* returns a list of inner element and a list of pairs of outter elements
      and constraints *)
   let build_cover abs constr : D.t cover =
+    let open Lang in
+    let rec split_conjunction = function
+      | Boolop (c1, And, c2) -> split_conjunction c1 @ split_conjunction c2
+      | x -> [x]
+    in
     let open Consistency in
     let rec aux depth res abs =
       match propagate abs with
@@ -79,7 +85,7 @@ module Make (D : Abs) = struct
             add_outer res abs'.space reject
           else split abs' |> List.fold_left (aux (depth + 1)) res
     in
-    aux 1 empty {space= abs; constr}
+    aux 1 empty {space= abs; constr = split_conjunction constr}
 
   (* pattern is needed to recompile constraint into ocaml predicates *)
   let compile_cover {inner; outer} pattern : Parsetree.expression =
@@ -93,10 +99,13 @@ module Make (D : Abs) = struct
       List.fold_left
         (fun acc (g, w, reject) ->
           let g =
-            apply_runtime "reject" [apply_nolbl pattern [reject]; D.compile g]
+            apply_runtime "reject" [lambda pattern reject; D.compile g]
           in
           cons_exp (Exp.tuple [float_exp w; g]) acc)
         empty_list_exp outer
     in
     [apply_nolbl_s "@" [inner_gens; outer_gens]] |> apply_runtime "weighted"
+
 end
+
+module BoxInter = Make(Box)
