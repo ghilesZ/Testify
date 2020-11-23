@@ -56,7 +56,11 @@ module Make (D : Abs) = struct
 
   let max_depth = ref 10
 
-  let to_expression _ = assert false
+  let to_expression = function
+    | [] -> assert false
+    | h::t ->
+       List.fold_left (fun acc e -> apply_nolbl_s "&&" [acc; Lang.to_ocaml e])
+         (Lang.to_ocaml h) t
 
   (* returns a list of inner element and a list of pairs of outter elements
      and constraints *)
