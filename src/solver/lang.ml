@@ -20,9 +20,12 @@ and arith =
   | Float of float
   | Binop of arith * bop * arith
   | Neg of arith
+  | NegF of arith
+  | ToInt of arith
+  | ToFloat of arith
   | Var of string
 
-and bop = Add | Sub | Mul | Div | Pow
+and bop = Add | Sub | Mul | Div | Pow | AddF | SubF | MulF | DivF
 
 (* exception we raise when we try to handle a term that does not belong to
    the language subset *)
@@ -50,10 +53,10 @@ let of_ocaml (expr : expression) : constr =
       | "-" -> Sub
       | "*" -> Mul
       | "/" -> Div
-      | "+." -> Add
-      | "-." -> Sub
-      | "*." -> Mul
-      | "/." -> Div
+      | "+." -> AddF
+      | "-." -> SubF
+      | "*." -> MulF
+      | "/." -> DivF
       | "**" -> Pow
       | x -> raise (OutOfSubset ("operator " ^ x)) )
     | _ -> raise (OutOfSubset "operator not an ident")
@@ -63,9 +66,11 @@ let of_ocaml (expr : expression) : constr =
     | Pexp_apply (op, [(Nolabel, arg1); (Nolabel, arg2)]) ->
         Binop (numeric arg1, handle_op op, numeric arg2)
     | Pexp_apply
-        ( {pexp_desc= Pexp_ident {txt= Lident ("-" | "-."); _}; _}
-        , [(Nolabel, a)] ) ->
+        ({pexp_desc= Pexp_ident {txt= Lident "-"; _}; _}, [(Nolabel, a)]) ->
         Neg (numeric a)
+    | Pexp_apply
+        ({pexp_desc= Pexp_ident {txt= Lident "-."; _}; _}, [(Nolabel, a)]) ->
+        NegF (numeric a)
     | Pexp_constant (Pconst_integer (s, None)) -> Int (int_of_string s)
     | Pexp_constant (Pconst_float (s, None)) -> Float (float_of_string s)
     | Pexp_ident {txt= Lident i; _} -> Var i
@@ -97,11 +102,15 @@ let of_ocaml (expr : expression) : constr =
   in
   boolean expr
 
-let to_ocaml (c:constr) : expression =
+let to_ocaml (c : constr) : expression =
   let lop = function
     | And -> exp_id "&&"
     | Or -> exp_id "||"
-    | Imply -> lambda_s "x" (lambda_s "y" (apply_nolbl_s "||" [apply_nolbl_s "not" [exp_id "x"]; exp_id "y"]))
+    | Imply ->
+        lambda_s "x"
+          (lambda_s "y"
+             (apply_nolbl_s "||"
+                [apply_nolbl_s "not" [exp_id "x"]; exp_id "y"]))
   in
   let binop = function
     | Add -> "+"
@@ -109,14 +118,20 @@ let to_ocaml (c:constr) : expression =
     | Mul -> "*"
     | Div -> "/"
     | Pow -> "**"
+    | AddF -> "+."
+    | SubF -> "-."
+    | MulF -> "*."
+    | DivF -> "/."
   in
   let rec arith = function
     | Int i -> int_exp i
     | Float f -> float_exp f
     | Var s -> exp_id s
-    | Neg x -> (* FIXME: get the type of the underlying expression *)
-       apply_nolbl_s "-" [arith x]
-    | Binop (a1,b,a2) -> apply_nolbl_s (binop b) [arith a1; arith a2]
+    | Neg x -> apply_nolbl_s "~-" [arith x]
+    | NegF x -> apply_nolbl_s "~-." [arith x]
+    | Binop (a1, b, a2) -> apply_nolbl_s (binop b) [arith a1; arith a2]
+    | ToInt x -> apply_nolbl_s "int_of_float" [arith x]
+    | ToFloat x -> apply_nolbl_s "float" [arith x]
   in
   let cmp_to_string = function
     | Leq -> "<="
@@ -128,7 +143,8 @@ let to_ocaml (c:constr) : expression =
   in
   let rec aux = function
     | Rejection e -> e
-    | Boolop (c1,op,c2) -> apply_nolbl (lop op) [aux c1; aux c2]
-    | Comparison (a1,cmp,a2) ->  apply_nolbl_s (cmp_to_string cmp)
-                                   [arith a1; arith a2]
-  in aux c
+    | Boolop (c1, op, c2) -> apply_nolbl (lop op) [aux c1; aux c2]
+    | Comparison (a1, cmp, a2) ->
+        apply_nolbl_s (cmp_to_string cmp) [arith a1; arith a2]
+  in
+  aux c

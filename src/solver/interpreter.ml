@@ -56,11 +56,13 @@ module Make (D : Abs) = struct
 
   let max_depth = ref 10
 
+  (* compiles a non_empty list of constraint into an OCaml expression*)
   let to_expression = function
     | [] -> assert false
-    | h::t ->
-       List.fold_left (fun acc e -> apply_nolbl_s "&&" [acc; Lang.to_ocaml e])
-         (Lang.to_ocaml h) t
+    | h :: t ->
+        List.fold_left
+          (fun acc e -> apply_nolbl_s "&&" [acc; Lang.to_ocaml e])
+          (Lang.to_ocaml h) t
 
   (* returns a list of inner element and a list of pairs of outter elements
      and constraints *)
@@ -79,7 +81,8 @@ module Make (D : Abs) = struct
     in
     aux 1 empty {space= abs; constr}
 
-  let compile_cover {inner; outer} : Parsetree.expression =
+  (* pattern is needed to recompile constraint into ocaml predicates *)
+  let compile_cover {inner; outer} pattern : Parsetree.expression =
     let inner_gens =
       List.fold_left
         (fun acc (g, w) ->
@@ -89,7 +92,9 @@ module Make (D : Abs) = struct
     let outer_gens =
       List.fold_left
         (fun acc (g, w, reject) ->
-          let g = apply_runtime "reject" [reject; D.compile g] in
+          let g =
+            apply_runtime "reject" [apply_nolbl pattern [reject]; D.compile g]
+          in
           cons_exp (Exp.tuple [float_exp w; g]) acc)
         empty_list_exp outer
     in
