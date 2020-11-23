@@ -17,6 +17,7 @@ depends: [
   "ppx_tools_versioned"
   "ocaml-migrate-parsetree"
   "qcheck"
+  "zarith"
   "dune" {>= "1.2"}
   "apronext"
 ]
