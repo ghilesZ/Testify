@@ -39,7 +39,7 @@ let meet (a : t) (b : t) : t option =
 let max_range_f (a : t) : string * ItvF.t =
   SMap.fold
     (fun v i (vo, io) ->
-      if ItvF.float_size i > ItvF.float_size io then (v, i) else (vo, io))
+      if ItvF.range i > ItvF.range io then (v, i) else (vo, io))
     a.floats
     (SMap.min_binding a.floats)
 
@@ -59,7 +59,7 @@ let min_range_i (a : t) : (string * ItvI.t) option =
 
 (* TODO: compute volume for ints *)
 let volume_f (a : t) : float =
-  SMap.fold (fun _ x v -> ItvF.float_size x *. v) a.floats 1.
+  SMap.fold (fun _ x v -> ItvF.range x *. v) a.floats 1.
 
 let volume_i (a : t) : int =
   SMap.fold (fun _ x v -> ItvI.range x * v) a.ints 1
@@ -87,13 +87,18 @@ let split (a : t) : t list =
   match min_range_i a with
   | None -> split_along_f a v_f
   | Some (v_i, i_i) ->
-      let r_f = ItvF.float_size i_f in
+      let r_f = ItvF.range i_f in
       if r_f = 0. then split_along_i a v_i
       else if r_f > 1. /. (10. *. float (ItvI.range i_i)) then
         split_along_f a v_f
       else split_along_i a v_i
 
-let init _ _ = failwith "init box"
+let init =
+  let i = (Z.of_int min_int, Z.of_int max_int) in
+  let f = (Q.of_float min_float, Q.of_float max_float) in
+  fun ints floats ->
+    { ints= SSet.fold (fun v -> SMap.add v i) ints SMap.empty
+    ; floats= SSet.fold (fun v -> SMap.add v f) floats SMap.empty }
 
 (* compile an itv into a parsetree expression corresponding to a generator *)
 let compile_itv_int ((inf, sup) : ItvI.t) =
