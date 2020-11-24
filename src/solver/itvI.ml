@@ -37,3 +37,43 @@ let bwd_add i1 i2 r : (t * t) option =
 
 let bwd_sub (i1 : t) (i2 : t) (r : t) : (t * t) option =
   merge_bot2 (meet i1 (add i2 r)) (meet i2 (sub i1 r))
+
+(* Guards *)
+
+let filter_leq ((l1, h1) : t) ((l2, h2) : t) : (t * t) Consistency.t =
+  let open Consistency in
+  if Z.leq h1 l2 then Sat
+  else if Z.gt l1 h2 then Unsat
+  else Filtered (((l1, Z.min h1 h2), (Z.max l1 l2, h2)), false)
+
+let filter_lt ((l1, h1) : t) ((l2, h2) : t) : (t * t) Consistency.t =
+  let open Consistency in
+  if Z.lt h1 l2 then Sat
+  else if Z.geq l1 h2 then Unsat
+  else
+    Filtered
+      ( ((l1, Z.min h1 (Z.sub h2 Z.one)), (Z.max (Z.add l1 Z.one) l2, h2))
+      , false )
+
+let filter_eq ((l1, h1) : t) ((l2, h2) : t) : t Consistency.t =
+  let open Consistency in
+  if l1 = h1 && l2 = h2 && l1 = l2 then Sat
+  else
+    let l = max l1 l2 and h = min h1 h2 in
+    if l <= h then Filtered ((l, h), false) else Unsat
+
+let filter_diseq ((l1, h1) as i1 : t) ((l2, h2) as i2 : t) :
+    (t * t) Consistency.t =
+  let open Consistency in
+  if l1 = h1 && l2 = h2 && l1 = l2 then Unsat
+  else if Option.is_some (meet i1 i2) then Filtered ((i1, i2), false)
+  else Sat
+
+(* compilation *)
+let compile ((inf, sup) : t) =
+  let open Helper in
+  let i = inf |> Z.to_float |> int_of_float |> int_exp in
+  let s = sup |> Z.to_float |> int_of_float |> int_exp in
+  [exp_id "rs"]
+  |> apply_nolbl (apply_runtime "int_range" [i; s])
+  |> apply_runtime_1 "mk_int" |> lambda_s "rs"
