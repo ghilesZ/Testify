@@ -38,6 +38,8 @@ let bwd_add i1 i2 r : (t * t) option =
 let bwd_sub (i1 : t) (i2 : t) (r : t) : (t * t) option =
   merge_bot2 (meet i1 (add i2 r)) (meet i2 (sub i1 r))
 
+let bwd_neg (i : t) (r : t) : t option = meet i (neg r)
+
 (* Guards *)
 
 let filter_leq ((l1, h1) : t) ((l2, h2) : t) : (t * t) Consistency.t =

@@ -27,6 +27,17 @@ let coerce_float = function
   | F f -> f
   | I _ -> invalid_arg "found int but was expected of type float"
 
+let meet x y =
+  match (x, y) with
+  | I x, I y -> Option.map eval_int (ItvI.meet x y)
+  | F x, F y -> Option.map eval_float (ItvF.meet x y)
+  | _ -> invalid_arg "type error, should not occur"
+
+let filter_neg x r =
+  match x with
+  | I x -> Option.map eval_int (ItvI.bwd_neg x (coerce_int r))
+  | F x -> Option.map eval_float (ItvF.bwd_neg x (coerce_float r))
+
 let filter i_f r_f (x1 : eval) (x2 : eval) : (eval * eval) Consistency.t =
   match (x1, x2) with
   | I x1, I x2 -> Consistency.map int2 (i_f x1 x2)
@@ -47,33 +58,6 @@ let filter_diseq = filter ItvI.filter_diseq ItvF.filter_diseq
 
 (* maps each variable to a (non-empty) interval *)
 type t = {ints: ItvI.t SMap.t; floats: ItvF.t SMap.t}
-
-let join (a : t) (b : t) : t =
-  let join_opt_i a b =
-    match (a, b) with Some a, Some b -> Some (ItvI.join a b) | _ -> None
-  in
-  let join_opt_f a b =
-    match (a, b) with Some a, Some b -> Some (ItvF.join a b) | _ -> None
-  in
-  { ints= SMap.merge (fun _ -> join_opt_i) a.ints b.ints
-  ; floats= SMap.merge (fun _ -> join_opt_f) a.floats b.floats }
-
-let meet (a : t) (b : t) : t option =
-  let meet_opt_i a b =
-    match (a, b) with
-    | Some a, Some b -> Some (Option.get (ItvI.meet a b))
-    | _ -> None
-  in
-  let meet_opt_f a b =
-    match (a, b) with
-    | Some a, Some b -> Some (Option.get (ItvF.meet a b))
-    | _ -> None
-  in
-  try
-    Some
-      { ints= SMap.merge (fun _ -> meet_opt_i) a.ints b.ints
-      ; floats= SMap.merge (fun _ -> meet_opt_f) a.floats b.floats }
-  with Invalid_argument _ -> None
 
 (* mesure *)
 (* ------ *)
@@ -112,6 +96,13 @@ let find v a =
   try SMap.find v a.ints |> eval_int
   with Not_found -> SMap.find v a.floats |> eval_float
 
+let update key value a =
+  try
+    SMap.find key a.ints |> ignore ;
+    {a with ints= SMap.add key (coerce_int value) a.ints}
+  with Not_found ->
+    {a with floats= SMap.add key (coerce_float value) a.floats}
+
 type arith2 =
   | AInt of eval
   | AFloat of eval
@@ -143,10 +134,27 @@ let rec eval (a : t) : arith -> arith_annot = function
         | _ -> failwith "not implemented yet"
       in
       (ABinop (b1, o, b2), r)
+  | Neg e ->
+      let ((_, i) as b) = eval a e in
+      let r = ItvI.neg (coerce_int i) |> eval_int in
+      (ANeg b, r)
+  | NegF e ->
+      let ((_, i) as b) = eval a e in
+      let r = ItvF.neg (coerce_float i) |> eval_float in
+      (ANeg b, r)
   | _ -> failwith "not implemented yet"
 
-let refine (_a : t) _e (_x : eval) : t =
-  failwith "refine not implemented yet"
+let rec refine (a : t) e (x : eval) : t =
+  match e with
+  | AVar v -> update v (Option.get (meet x (find v a))) a
+  | ANeg (e1, i1) ->
+      refine a e1
+        (eval_int (Option.get (ItvI.bwd_neg (coerce_int i1) (coerce_int x))))
+  | ANegF (e1, i1) ->
+      refine a e1
+        (eval_float
+           (Option.get (ItvF.bwd_neg (coerce_float i1) (coerce_float x))))
+  | _ -> failwith "refine not implemented yet"
 
 (* test transfer function. It reduces the domain of the variables in `a`
    according to the constraint `e1 o e2`. *)
@@ -165,7 +173,7 @@ let guard (a : t) (e1 : arith) (o : cmp) (e2 : arith) : t Consistency.t =
   in
   Consistency.map (fun (j1, j2) -> refine (refine a b1 j1) b2 j2) res
 
-let filter (_a : t) _constr = failwith "filter box.ml"
+let filter (a : t) constr = failwith "filter box.ml"
 
 let split_along_f (a : t) (v : string) : t list =
   let i = SMap.find v a.floats in
@@ -180,6 +188,33 @@ let split_along_i (a : t) (v : string) : t list =
   List.fold_left
     (fun acc b -> {a with ints= SMap.add v b a.ints} :: acc)
     [] i_list
+
+let join (a : t) (b : t) : t =
+  let join_opt_i a b =
+    match (a, b) with Some a, Some b -> Some (ItvI.join a b) | _ -> None
+  in
+  let join_opt_f a b =
+    match (a, b) with Some a, Some b -> Some (ItvF.join a b) | _ -> None
+  in
+  { ints= SMap.merge (fun _ -> join_opt_i) a.ints b.ints
+  ; floats= SMap.merge (fun _ -> join_opt_f) a.floats b.floats }
+
+let meet (a : t) (b : t) : t option =
+  let meet_opt_i a b =
+    match (a, b) with
+    | Some a, Some b -> Some (Option.get (ItvI.meet a b))
+    | _ -> None
+  in
+  let meet_opt_f a b =
+    match (a, b) with
+    | Some a, Some b -> Some (Option.get (ItvF.meet a b))
+    | _ -> None
+  in
+  try
+    Some
+      { ints= SMap.merge (fun _ -> meet_opt_i) a.ints b.ints
+      ; floats= SMap.merge (fun _ -> meet_opt_f) a.floats b.floats }
+  with Invalid_argument _ -> None
 
 let split (a : t) : t list =
   let v_f, i_f = max_range_f a in
