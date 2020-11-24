@@ -5,7 +5,7 @@
   (name ppx_testify)
   (wrapped false)
   (kind ppx_rewriter)
-  (modules helper tools itv box lang consistency interpreter reconstruct ppx_testify satisfying such_that)
+  (modules helper tools itvI itvF box lang consistency interpreter reconstruct ppx_testify satisfying such_that)
   (libraries
      zarith
      ppx_tools_versioned
