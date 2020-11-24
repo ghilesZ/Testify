@@ -1,6 +1,7 @@
 open Migrate_parsetree
 open Ast_410
 open Helper
+open Lang
 
 type eval = I of ItvI.t | F of ItvF.t
 
@@ -12,13 +13,20 @@ let real2 (x, y) = (F x, F y)
 
 let int2 (x, y) = (I x, I y)
 
-(* integer itv conversion to float itv *)
+let swap_pair (a, b) = (b, a)
+
 let to_float ((l, h) : ItvI.t) = (Q.of_bigint l, Q.of_bigint h)
 
-(* float itv conversion to integer itv *)
-let to_int ((l, h) : ItvF.t) = (Q.to_bigint l, Q.to_bigint h)
+let to_int ((l, h) : ItvF.t) = (Z.add (Q.to_bigint l) Z.one, Q.to_bigint h)
 
-(* resolution of (<,<=, ...) *)
+let coerce_int = function
+  | I i -> i
+  | F _ -> invalid_arg "found float but was expected of type int"
+
+let coerce_float = function
+  | F f -> f
+  | I _ -> invalid_arg "found int but was expected of type float"
+
 let filter i_f r_f (x1 : eval) (x2 : eval) : (eval * eval) Consistency.t =
   match (x1, x2) with
   | I x1, I x2 -> Consistency.map int2 (i_f x1 x2)
@@ -100,18 +108,49 @@ let volume_i (a : t) : int =
 
 let volume a = volume_f a *. float (volume_i a)
 
-let eval _a _arith = failwith ""
+let find v a =
+  try SMap.find v a.ints |> eval_int
+  with Not_found -> SMap.find v a.floats |> eval_float
 
-let swap_pair (a, b) = (b, a)
+type arith2 =
+  | AInt of eval
+  | AFloat of eval
+  | ABinop of arith_annot * bop * arith_annot
+  | ANeg of arith_annot
+  | ANegF of arith_annot
+  | AToInt of arith_annot
+  | AToFloat of arith_annot
+  | AVar of string
+
+and arith_annot = arith2 * eval
+
+let rec eval (a : t) : arith -> arith_annot = function
+  | Var v ->
+      let r = find v a in
+      (AVar v, r)
+  | Int i ->
+      let zi = Z.of_int i in
+      let zizi = (zi, zi) |> eval_int in
+      (AInt zizi, zizi)
+  | Binop (e1, o, e2) ->
+      let ((_, i1) as b1) = eval a e1 and ((_, i2) as b2) = eval a e2 in
+      let r =
+        match o with
+        | Add -> ItvI.add (coerce_int i1) (coerce_int i2) |> eval_int
+        | Sub -> ItvI.sub (coerce_int i1) (coerce_int i2) |> eval_int
+        | AddF -> ItvF.add (coerce_float i1) (coerce_float i2) |> eval_float
+        | SubF -> ItvF.sub (coerce_float i1) (coerce_float i2) |> eval_float
+        | _ -> failwith "not implemented yet"
+      in
+      (ABinop (b1, o, b2), r)
+  | _ -> failwith "not implemented yet"
 
 let refine (_a : t) _e (_x : eval) : t =
   failwith "refine not implemented yet"
 
-(* test transfer function. Apply the evaluation followed by the refine step
-   of the HC4-revise algorithm. It reduces the domain of the variables in `a`
+(* test transfer function. It reduces the domain of the variables in `a`
    according to the constraint `e1 o e2`. *)
-let guard (a : t) (e1 : Lang.arith) (o : Lang.cmp) (e2 : Lang.arith) :
-    t Consistency.t =
+let guard (a : t) (e1 : arith) (o : cmp) (e2 : arith) : t Consistency.t =
   let open Lang in
   let (b1, i1), (b2, i2) = (eval a e1, eval a e2) in
   let res =
