@@ -10,7 +10,7 @@ let meet (l1, h1) (l2, h2) : t option =
   let high = Z.min h1 h2 in
   if Z.gt low high then None else Some (low, high)
 
-let range (a, b) = Z.sub b a |> Z.to_int
+let range (a, b) = Z.sub b a
 
 let split (l, h) =
   if l = h then invalid_arg "split"

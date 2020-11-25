@@ -55,7 +55,7 @@ module Make (D : Abs) = struct
     {r with outer= (x, vx, rej) :: r.outer}
 
   (* TODO: put option to change this *)
-  let max_depth = ref 10
+  let max_depth = ref 2
 
   (* compiles a non_empty list of constraint into an OCaml expression*)
   let to_expression = function
@@ -68,6 +68,7 @@ module Make (D : Abs) = struct
   (* returns a list of inner element and a list of pairs of outter elements
      and constraints *)
   let build_cover abs constr : D.t cover =
+    Format.printf "computing cover\n%!" ;
     let open Lang in
     let rec split_conjunction = function
       | Boolop (c1, And, c2) -> split_conjunction c1 @ split_conjunction c2

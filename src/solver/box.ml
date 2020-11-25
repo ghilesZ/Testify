@@ -67,12 +67,15 @@ let filter_eq x1 x2 =
 type t = {ints: ItvI.t SMap.t; floats: ItvF.t SMap.t}
 
 (* float variable with maximal range *)
-let max_range_f (a : t) : string * ItvF.t =
-  SMap.fold
-    (fun v i (vo, io) ->
-      if ItvF.range i > ItvF.range io then (v, i) else (vo, io))
-    a.floats
-    (SMap.min_binding a.floats)
+let max_range_f (a : t) : (string * ItvF.t) option =
+  match SMap.min_binding a.floats with
+  | e ->
+      Some
+        (SMap.fold
+           (fun v i (vo, io) ->
+             if ItvF.range i > ItvF.range io then (v, i) else (vo, io))
+           a.floats e)
+  | exception Not_found -> None
 
 (* integer variable with minimal (non-nul) range *)
 let min_range_i (a : t) : (string * ItvI.t) option =
@@ -82,19 +85,19 @@ let min_range_i (a : t) : (string * ItvI.t) option =
         SMap.fold
           (fun v i (vo, io) ->
             let o_r = ItvI.range io in
-            if ItvI.range i < o_r || o_r = 0 then (v, i) else (vo, io))
+            if ItvI.range i < o_r || o_r = Z.zero then (v, i) else (vo, io))
           a.ints bind
       in
-      if ItvI.range v = 0 then None else Some (k, v)
+      if ItvI.range v = Z.zero then None else Some (k, v)
   | exception Not_found -> None
 
 let volume_f (a : t) : float =
   SMap.fold (fun _ x v -> ItvF.range x *. v) a.floats 1.
 
-let volume_i (a : t) : int =
-  SMap.fold (fun _ x v -> ItvI.range x * v) a.ints 1
+let volume_i (a : t) : Z.t =
+  SMap.fold (fun _ x v -> Z.mul (ItvI.range x) v) a.ints Z.one
 
-let volume a = volume_f a *. float (volume_i a)
+let volume a = volume_f a *. Z.to_float (volume_i a)
 
 let find v a =
   try SMap.find v a.ints |> eval_int
@@ -262,22 +265,33 @@ let meet (a : t) (b : t) : t option =
   with Invalid_argument _ -> None
 
 let split (a : t) : t list =
-  let v_f, i_f = max_range_f a in
-  match min_range_i a with
-  | None -> split_along_f a v_f
-  | Some (v_i, i_i) ->
+  match (max_range_f a, min_range_i a) with
+  | Some (v_f, _), None -> split_along_f a v_f
+  | None, Some (v_i, _) -> split_along_i a v_i
+  | Some (v_f, i_f), Some (v_i, i_i) ->
       let r_f = ItvF.range i_f in
       if r_f = 0. then split_along_i a v_i
-      else if r_f > 1. /. (10. *. float (ItvI.range i_i)) then
+      else if r_f > 1. /. (10. *. Z.to_float (ItvI.range i_i)) then
         split_along_f a v_f
       else split_along_i a v_i
+  | None, None -> failwith "cannot split anymore"
 
 let init =
   let i = (Z.of_int min_int, Z.of_int max_int) in
   let f = (Q.of_float min_float, Q.of_float max_float) in
   fun ints floats ->
-    { ints= SSet.fold (fun v -> SMap.add v i) ints SMap.empty
-    ; floats= SSet.fold (fun v -> SMap.add v f) floats SMap.empty }
+    { ints=
+        SSet.fold
+          (fun v ->
+            Format.printf "%s : int\n" v ;
+            SMap.add v i)
+          ints SMap.empty
+    ; floats=
+        SSet.fold
+          (fun v ->
+            Format.printf "%s : float\n" v ;
+            SMap.add v f)
+          floats SMap.empty }
 
 let compile (a : t) =
   let instance = ref empty_list_exp in
