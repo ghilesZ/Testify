@@ -13,7 +13,7 @@ module type Abs = sig
 
   val split : t -> t list
 
-  val filter : t -> Lang.constr -> t Consistency.t
+  val filter : t -> Lang.constr -> (t * Lang.constr) Consistency.t
 
   val volume : t -> float
 end
@@ -39,8 +39,8 @@ module Make (D : Abs) = struct
         match D.filter abs c with
         | Sat -> loop sat acc abs tl
         | Unsat -> Unsat
-        | Filtered (abs', true) -> loop sat acc abs' tl
-        | Filtered (abs', false) -> loop false (c :: acc) abs' tl )
+        | Filtered ((abs', _), true) -> loop sat acc abs' tl
+        | Filtered ((abs', c'), false) -> loop false (c' :: acc) abs' tl )
     in
     loop true [] space constr
 
@@ -85,7 +85,7 @@ module Make (D : Abs) = struct
             add_outer res abs'.space reject
           else split abs' |> List.fold_left (aux (depth + 1)) res
     in
-    aux 1 empty {space= abs; constr = split_conjunction constr}
+    aux 1 empty {space= abs; constr= split_conjunction constr}
 
   (* pattern is needed to recompile constraint into ocaml predicates *)
   let compile_cover {inner; outer} pattern : Parsetree.expression =
@@ -105,7 +105,6 @@ module Make (D : Abs) = struct
         empty_list_exp outer
     in
     [apply_nolbl_s "@" [inner_gens; outer_gens]] |> apply_runtime "weighted"
-
 end
 
-module BoxInter = Make(Box)
+module BoxInter = Make (Boolean.Make (Box))

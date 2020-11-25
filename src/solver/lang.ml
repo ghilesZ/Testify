@@ -27,6 +27,21 @@ and arith =
 
 and bop = Add | Sub | Mul | Div | Pow | AddF | SubF | MulF | DivF
 
+let neg_cmp = function
+  | Lt -> Geq
+  | Leq -> Gt
+  | Gt -> Leq
+  | Geq -> Lt
+  | Eq -> Diseq
+  | Diseq -> Eq
+
+let rec negation = function
+  | Comparison (a, cmp, b) -> Comparison (a, neg_cmp cmp, b)
+  | Boolop (a, Or, b) -> Boolop (negation a, And, negation b)
+  | Boolop (a, And, b) -> Boolop (negation a, Or, negation b)
+  | Boolop (a, Imply, b) -> Boolop (a, And, negation b)
+  | Rejection _ -> assert false
+
 (* exception we raise when we try to handle a term that does not belong to
    the language subset *)
 exception OutOfSubset of string

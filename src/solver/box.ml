@@ -9,7 +9,7 @@ let eval_int i = I i
 
 let eval_float f = F f
 
-let real2 (x, y) = (F x, F y)
+let float2 (x, y) = (F x, F y)
 
 let int2 (x, y) = (I x, I y)
 
@@ -44,17 +44,18 @@ let filter_neg x r =
   | I x -> Option.map eval_int (ItvI.bwd_neg x (coerce_int r))
   | F x -> Option.map eval_float (ItvF.bwd_neg x (coerce_float r))
 
-let filter i_f r_f (x1 : eval) (x2 : eval) : (eval * eval) Consistency.t =
+let filter_i_f i_f r_f (x1 : eval) (x2 : eval) : (eval * eval) Consistency.t
+    =
   match (x1, x2) with
   | I x1, I x2 -> Consistency.map int2 (i_f x1 x2)
-  | F x1, F x2 -> Consistency.map real2 (r_f x1 x2)
+  | F x1, F x2 -> Consistency.map float2 (r_f x1 x2)
   | _ -> invalid_arg "type error, should not occur"
 
-let filter_leq = filter ItvI.filter_leq ItvF.filter_leq
+let filter_leq = filter_i_f ItvI.filter_leq ItvF.filter_leq
 
-let filter_lt = filter ItvI.filter_lt ItvF.filter_lt
+let filter_lt = filter_i_f ItvI.filter_lt ItvF.filter_lt
 
-let filter_diseq = filter ItvI.filter_diseq ItvF.filter_diseq
+let filter_diseq = filter_i_f ItvI.filter_diseq ItvF.filter_diseq
 
 let filter_eq x1 x2 =
   match (x1, x2) with
@@ -204,7 +205,7 @@ let rec refine (a : t) e (x : eval) : t =
 
 (* test transfer function. It reduces the domain of the variables in `a`
    according to the constraint `e1 o e2`. *)
-let guard (a : t) (e1 : arith) (o : cmp) (e2 : arith) : t Consistency.t =
+let filter (a : t) (e1 : arith) (o : cmp) (e2 : arith) : t Consistency.t =
   let open Lang in
   let (b1, i1), (b2, i2) = (eval a e1, eval a e2) in
   let res =
@@ -218,8 +219,6 @@ let guard (a : t) (e1 : arith) (o : cmp) (e2 : arith) : t Consistency.t =
     | Eq -> Consistency.map (fun x -> (x, x)) (filter_eq i1 i2)
   in
   Consistency.map (fun (j1, j2) -> refine (refine a b1 j1) b2 j2) res
-
-let filter (_a : t) _constr = failwith "filter box.ml"
 
 let split_along_f (a : t) (v : string) : t list =
   let i = SMap.find v a.floats in
