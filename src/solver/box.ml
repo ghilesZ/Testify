@@ -15,6 +15,8 @@ let int2 (x, y) = (I x, I y)
 
 let swap_pair (a, b) = (b, a)
 
+let map_pair f (a, b) = (f a, f b)
+
 let to_float ((l, h) : ItvI.t) = (Q.of_bigint l, Q.of_bigint h)
 
 let to_int ((l, h) : ItvF.t) = (Z.add (Q.to_bigint l) Z.one, Q.to_bigint h)
@@ -26,6 +28,10 @@ let coerce_int = function
 let coerce_float = function
   | F f -> f
   | I _ -> invalid_arg "found int but was expected of type float"
+
+let bwd_to_float x r = ItvI.meet (coerce_int x) (to_int (coerce_float r))
+
+let bwd_to_int x r = ItvF.meet (coerce_float x) (to_float (coerce_int r))
 
 let meet x y =
   match (x, y) with
@@ -48,19 +54,16 @@ let filter_leq = filter ItvI.filter_leq ItvF.filter_leq
 
 let filter_lt = filter ItvI.filter_lt ItvF.filter_lt
 
+let filter_diseq = filter ItvI.filter_diseq ItvF.filter_diseq
+
 let filter_eq x1 x2 =
   match (x1, x2) with
   | I x1, I x2 -> Consistency.map eval_int (ItvI.filter_eq x1 x2)
   | F x1, F x2 -> Consistency.map eval_float (ItvF.filter_eq x1 x2)
   | _ -> invalid_arg "type error, should not occur"
 
-let filter_diseq = filter ItvI.filter_diseq ItvF.filter_diseq
-
 (* maps each variable to a (non-empty) interval *)
 type t = {ints: ItvI.t SMap.t; floats: ItvF.t SMap.t}
-
-(* mesure *)
-(* ------ *)
 
 (* float variable with maximal range *)
 let max_range_f (a : t) : string * ItvF.t =
@@ -123,6 +126,10 @@ let rec eval (a : t) : arith -> arith_annot = function
       let zi = Z.of_int i in
       let zizi = (zi, zi) |> eval_int in
       (AInt zizi, zizi)
+  | Float f ->
+      let qf = Q.of_float f in
+      let qfqf = (qf, qf) |> eval_float in
+      (AFloat qfqf, qfqf)
   | Binop (e1, o, e2) ->
       let ((_, i1) as b1) = eval a e1 and ((_, i2) as b2) = eval a e2 in
       let r =
@@ -131,7 +138,7 @@ let rec eval (a : t) : arith -> arith_annot = function
         | Sub -> ItvI.sub (coerce_int i1) (coerce_int i2) |> eval_int
         | AddF -> ItvF.add (coerce_float i1) (coerce_float i2) |> eval_float
         | SubF -> ItvF.sub (coerce_float i1) (coerce_float i2) |> eval_float
-        | _ -> failwith "not implemented yet"
+        | _ -> failwith " mul div pow not implemented yet"
       in
       (ABinop (b1, o, b2), r)
   | Neg e ->
@@ -142,11 +149,27 @@ let rec eval (a : t) : arith -> arith_annot = function
       let ((_, i) as b) = eval a e in
       let r = ItvF.neg (coerce_float i) |> eval_float in
       (ANeg b, r)
-  | _ -> failwith "not implemented yet"
+  | ToInt e ->
+      let ((_, i) as b) = eval a e in
+      let r = coerce_float i |> to_int |> eval_int in
+      (AToInt b, r)
+  | ToFloat e ->
+      let ((_, i) as b) = eval a e in
+      let r = coerce_int i |> to_float |> eval_float in
+      (AToFloat b, r)
 
 let rec refine (a : t) e (x : eval) : t =
   match e with
   | AVar v -> update v (Option.get (meet x (find v a))) a
+  | AFloat f ->
+      ignore
+        (eval_float
+           (Option.get (ItvF.meet (coerce_float x) (coerce_float f)))) ;
+      a
+  | AInt i ->
+      ignore
+        (eval_int (Option.get (ItvI.meet (coerce_int x) (coerce_int i)))) ;
+      a
   | ANeg (e1, i1) ->
       refine a e1
         (eval_int (Option.get (ItvI.bwd_neg (coerce_int i1) (coerce_int x))))
@@ -154,7 +177,30 @@ let rec refine (a : t) e (x : eval) : t =
       refine a e1
         (eval_float
            (Option.get (ItvF.bwd_neg (coerce_float i1) (coerce_float x))))
-  | _ -> failwith "refine not implemented yet"
+  | ABinop ((e1, i1), o, (e2, i2)) ->
+      let j1, j2 =
+        match o with
+        | Add ->
+            ItvI.bwd_add (coerce_int i1) (coerce_int i2) (coerce_int x)
+            |> Option.get |> map_pair eval_int
+        | Sub ->
+            ItvI.bwd_sub (coerce_int i1) (coerce_int i2) (coerce_int x)
+            |> Option.get |> map_pair eval_int
+        | AddF ->
+            ItvF.bwd_add (coerce_float i1) (coerce_float i2) (coerce_float x)
+            |> Option.get |> map_pair eval_float
+        | SubF ->
+            ItvF.bwd_sub (coerce_float i1) (coerce_float i2) (coerce_float x)
+            |> Option.get |> map_pair eval_float
+        | _ -> failwith "mul div pow not implemented yet"
+      in
+      refine (refine a e1 j1) e2 j2
+  | AToInt (e, i) ->
+      let j = bwd_to_int i x |> Option.get |> eval_float in
+      refine a e j
+  | AToFloat (e, i) ->
+      let j = bwd_to_float i x |> Option.get |> eval_int in
+      refine a e j
 
 (* test transfer function. It reduces the domain of the variables in `a`
    according to the constraint `e1 o e2`. *)
@@ -173,7 +219,7 @@ let guard (a : t) (e1 : arith) (o : cmp) (e2 : arith) : t Consistency.t =
   in
   Consistency.map (fun (j1, j2) -> refine (refine a b1 j1) b2 j2) res
 
-let filter (a : t) constr = failwith "filter box.ml"
+let filter (_a : t) _constr = failwith "filter box.ml"
 
 let split_along_f (a : t) (v : string) : t list =
   let i = SMap.find v a.floats in

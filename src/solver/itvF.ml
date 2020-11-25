@@ -1,3 +1,5 @@
+(* float interval with rational bounds *)
+
 type t = Q.t * Q.t
 
 let q2 = Q.of_int 2

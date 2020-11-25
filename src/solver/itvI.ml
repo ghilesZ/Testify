@@ -1,3 +1,4 @@
+(* integer intervals *)
 type t = Z.t * Z.t
 
 let z2 = Z.of_int 2
