@@ -25,7 +25,7 @@ let get_int name (l : instance) =
 let get_float name (l : instance) =
   match List.assoc name l with GFloat f -> f | _ -> failwith "type error"
 
-(* better int range generator *)
+(* int range generator *)
 let int_range a b =
   if b < a then invalid_arg "Gen.int_range" ;
   if a >= 0 || b < 0 then fun st -> a + Gen.int_bound (b - a) st
@@ -51,12 +51,11 @@ let float_range a b =
            the itv wrt to their size ratio *)
           st ->
     let ratio = -.a /. (b -. a) in
-    if Random.float 1. < ratio then
-      if a = min_float then QCheck.Gen.nfloat st
-      else -.Gen.float_bound_inclusive (-.a) st
+    if Random.State.float st 1. < ratio then
+      -.Gen.float_bound_inclusive (-.a) st
     else Gen.float_bound_inclusive b st
 
-(* builds a geerator from a list of weighted generators *)
+(* builds a generator from a list of weighted generators *)
 let weighted (gens : (float * 'a Gen.t) list) : 'a Gen.t =
   let total_weight = List.fold_left (fun acc (w, _) -> acc +. w) 0. gens in
   let rec aux cpt = function
@@ -66,7 +65,7 @@ let weighted (gens : (float * 'a Gen.t) list) : 'a Gen.t =
         if cpt < 0. then g else aux cpt tl
   in
   fun rs ->
-    let r = (QCheck.Gen.float_bound_exclusive total_weight) rs in
+    let r = QCheck.Gen.float_bound_exclusive total_weight rs in
     (aux r gens) rs
 
 let count = ref 1000

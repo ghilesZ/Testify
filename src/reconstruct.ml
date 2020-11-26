@@ -4,7 +4,6 @@ open Parsetree
 open Ast_helper
 open Helper
 module Conv = Convert (OCaml_410) (OCaml_current)
-
 module Solve = Interpreter.BoxInter
 
 (* exception we raise when we try to handle a term that does not belong to
@@ -24,23 +23,23 @@ let reconstruct core_type pattern =
   let rec aux int_set float_set ct pat =
     match (ct.ptyp_desc, pat.ppat_desc) with
     | Ptyp_constr ({txt= Lident "int"; _}, []), Ppat_var {txt= ptxt; _} ->
-       let r = apply_runtime "get_int" [string_exp ptxt] in
-       (r, SSet.add ptxt int_set, float_set)
+        let r = apply_runtime "get_int" [string_exp ptxt] in
+        (r, SSet.add ptxt int_set, float_set)
     | Ptyp_constr ({txt= Lident "float"; _}, []), Ppat_var {txt= ptxt; _} ->
-       let r = apply_runtime "get_float" [string_exp ptxt] in
-       (r, int_set, SSet.add ptxt float_set)
+        let r = apply_runtime "get_float" [string_exp ptxt] in
+        (r, int_set, SSet.add ptxt float_set)
     | Ptyp_tuple ttup, Ppat_tuple ptup ->
-       let sons, i_s, f_s =
-         List.fold_left2
-           (fun (acc, i_s, f_s) tt pt ->
-             let s', i_s, f_s = aux i_s f_s tt pt in
-             (s' :: acc, i_s, f_s))
-           ([], int_set, float_set) ttup ptup
-       in
-       let b =
-         List.map (fun f -> apply_nolbl f [exp_id "i"]) (List.rev sons)
-       in
-       (lambda_s "i" (Exp.tuple b), i_s, f_s)
+        let sons, i_s, f_s =
+          List.fold_left2
+            (fun (acc, i_s, f_s) tt pt ->
+              let s', i_s, f_s = aux i_s f_s tt pt in
+              (s' :: acc, i_s, f_s))
+            ([], int_set, float_set) ttup ptup
+        in
+        let b =
+          List.map (fun f -> apply_nolbl f [exp_id "i"]) (List.rev sons)
+        in
+        (lambda_s "i" (Exp.tuple b), i_s, f_s)
     | _ -> raise (OutOfSubset "core_type or pattern")
   in
   aux SSet.empty SSet.empty core_type pattern
@@ -58,9 +57,31 @@ let split_fun f =
   match f.pexp_desc with
   | Pexp_fun (Nolabel, None, pat, body) -> (pat, body)
   | _ ->
-     Format.asprintf "was expecting a function but got %a"
-       Pprintast.expression (Conv.copy_expression f)
-     |> failwith
+      Format.asprintf "was expecting a function but got %a"
+        Pprintast.expression (Conv.copy_expression f)
+      |> failwith
+
+let craft_generator inner outer pattern r =
+  let inner_gens =
+    List.fold_left
+      (fun acc (w, g) ->
+        let g =
+          lambda_s "rs" (apply_nolbl r [apply_nolbl g [exp_id "rs"]])
+        in
+        cons_exp (Exp.tuple [float_exp w; g]) acc)
+      empty_list_exp inner
+  in
+  let inner_outer_gens =
+    List.fold_left
+      (fun acc (w, reject, g) ->
+        let g =
+          lambda_s "rs" (apply_nolbl r [apply_nolbl g [exp_id "rs"]])
+        in
+        let g = apply_runtime "reject" [lambda pattern reject; g] in
+        cons_exp (Exp.tuple [float_exp w; g]) acc)
+      inner_gens outer
+  in
+  apply_runtime "weighted" [inner_outer_gens]
 
 (* given a type declaration and a pattern, we build a generator *)
 let abstract_core_type td sat =
@@ -69,9 +90,8 @@ let abstract_core_type td sat =
   let r, i_s, f_s = reconstruct td pat' in
   let constr = Lang.of_ocaml body in
   let abs = Box.init i_s f_s in
-  let cover = Solve.build_cover abs constr in
-  let gen = Solve.compile_cover cover pat in
-  lambda_s "rs" (apply_nolbl r [apply_nolbl gen [exp_id "rs"]])
+  let inner, outer = Solve.get_generators abs constr in
+  craft_generator inner outer pat' r
 
 (* builds a generator *)
 let abstract t sat =

@@ -280,18 +280,8 @@ let init =
   let i = (Z.of_int min_int, Z.of_int max_int) in
   let f = (Q.of_float min_float, Q.of_float max_float) in
   fun ints floats ->
-    { ints=
-        SSet.fold
-          (fun v ->
-            Format.printf "%s : int\n" v ;
-            SMap.add v i)
-          ints SMap.empty
-    ; floats=
-        SSet.fold
-          (fun v ->
-            Format.printf "%s : float\n" v ;
-            SMap.add v f)
-          floats SMap.empty }
+    { ints= SSet.fold (fun v -> SMap.add v i) ints SMap.empty
+    ; floats= SSet.fold (fun v -> SMap.add v f) floats SMap.empty }
 
 let compile (a : t) =
   let instance = ref empty_list_exp in

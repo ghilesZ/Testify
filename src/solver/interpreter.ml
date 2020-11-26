@@ -1,7 +1,6 @@
 open Migrate_parsetree
 open Ast_410
 open Helper
-open Ast_helper
 open Tools
 
 module type Abs = sig
@@ -55,7 +54,7 @@ module Make (D : Abs) = struct
     {r with outer= (x, vx, rej) :: r.outer}
 
   (* TODO: put option to change this *)
-  let max_depth = ref 2
+  let max_depth = ref 8
 
   (* compiles a non_empty list of constraint into an OCaml expression*)
   let to_expression = function
@@ -68,7 +67,6 @@ module Make (D : Abs) = struct
   (* returns a list of inner element and a list of pairs of outter elements
      and constraints *)
   let build_cover abs constr : D.t cover =
-    Format.printf "computing cover\n%!" ;
     let open Lang in
     let rec split_conjunction = function
       | Boolop (c1, And, c2) -> split_conjunction c1 @ split_conjunction c2
@@ -89,23 +87,14 @@ module Make (D : Abs) = struct
     aux 1 empty {space= abs; constr= split_conjunction constr}
 
   (* pattern is needed to recompile constraint into ocaml predicates *)
-  let compile_cover {inner; outer} pattern : Parsetree.expression =
-    let inner_gens =
-      List.fold_left
-        (fun acc (g, w) ->
-          cons_exp (Exp.tuple [float_exp w; D.compile g]) acc)
-        empty_list_exp inner
-    in
+  let compile_cover {inner; outer} =
+    let inner_gens = List.map (fun (g, w) -> (w, D.compile g)) inner in
     let outer_gens =
-      List.fold_left
-        (fun acc (g, w, reject) ->
-          let g =
-            apply_runtime "reject" [lambda pattern reject; D.compile g]
-          in
-          cons_exp (Exp.tuple [float_exp w; g]) acc)
-        empty_list_exp outer
+      List.map (fun (g, w, reject) -> (w, reject, D.compile g)) outer
     in
-    [apply_nolbl_s "@" [inner_gens; outer_gens]] |> apply_runtime "weighted"
+    (inner_gens, outer_gens)
+
+  let get_generators abs constr = build_cover abs constr |> compile_cover
 end
 
 module BoxInter = Make (Boolean.Make (Box))
