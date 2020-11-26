@@ -1,3 +1,5 @@
+(* Generator generation *)
+
 open Migrate_parsetree
 open Ast_410
 open Parsetree
@@ -94,7 +96,7 @@ let abstract_core_type td sat =
   craft_generator inner outer pat' r
 
 (* builds a generator *)
-let abstract t sat =
+let generate t sat =
   try
     match t.ptype_kind with
     | Ptype_abstract -> (

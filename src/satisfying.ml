@@ -159,7 +159,7 @@ let get_generator rs td =
   let name = td.ptype_name.txt in
   match get_attribute_pstr "satisfying" td.ptype_attributes with
   | Some e -> (
-    match Reconstruct.abstract td e with
+    match Gegen.generate td e with
     | None -> Option.map (rejection name e) (get_generator rs td)
     | x -> x )
   | None -> None

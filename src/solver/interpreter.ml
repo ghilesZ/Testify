@@ -68,23 +68,23 @@ module Make (D : Abs) = struct
      and constraints *)
   let build_cover abs constr : D.t cover =
     let open Lang in
-    let rec split_conjunction = function
-      | Boolop (c1, And, c2) -> split_conjunction c1 @ split_conjunction c2
-      | x -> [x]
-    in
     let open Consistency in
     let rec aux depth res abs =
-      match propagate abs with
-      | Unsat -> res
-      | Sat -> add_inner res abs.space
-      | Filtered (abs', true) -> add_inner res abs'.space
-      | Filtered (abs', false) ->
-          if depth >= !max_depth then
-            let reject = to_expression abs'.constr in
-            add_outer res abs'.space reject
-          else split abs' |> List.fold_left (aux (depth + 1)) res
+      if
+        List.for_all (function Rejection _ -> true | _ -> false) abs.constr
+        || depth >= !max_depth
+      then
+        let reject = to_expression abs.constr in
+        add_outer res abs.space reject
+      else
+        match propagate abs with
+        | Unsat -> res
+        | Sat -> add_inner res abs.space
+        | Filtered (abs', true) -> add_inner res abs'.space
+        | Filtered (abs', false) ->
+            split abs' |> List.fold_left (aux (depth + 1)) res
     in
-    aux 1 empty {space= abs; constr= split_conjunction constr}
+    aux 1 empty {space= abs; constr= [constr]}
 
   (* pattern is needed to recompile constraint into ocaml predicates *)
   let compile_cover {inner; outer} =
