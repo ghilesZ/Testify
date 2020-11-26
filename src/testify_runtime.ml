@@ -61,7 +61,9 @@ let weighted (gens : (float * 'a Gen.t) list) : 'a Gen.t =
   let total_weight = List.fold_left (fun acc (w, _) -> acc +. w) 0. gens in
   let rec aux cpt = function
     | [] -> assert false
-    | (w, g) :: tl -> if cpt < 0. then g else aux (cpt -. w) tl
+    | (w, g) :: tl ->
+        let cpt = cpt -. w in
+        if cpt < 0. then g else aux cpt tl
   in
   fun rs ->
     let r = (QCheck.Gen.float_bound_exclusive total_weight) rs in
