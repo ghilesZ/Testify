@@ -5,30 +5,21 @@ open Ast_mapper
 open Ast_helper
 open Helper
 
-let add new_test = apply_runtime "add_test" [new_test] |> Str.eval
-
-let run = apply_runtime "run_test" [unit] |> Str.eval
-
 (* number of generation per test *)
 let count = ref 1000
 
-let rejection name pred gen =
-  let name = "generator for " ^ name in
-  apply_lab_nolab_s "QCheck.find_example"
-    [("f", pred); ("count", int_exp !count); ("name", string_exp name)]
-    [gen]
+let add_test args = apply_runtime "add_test" args |> Str.eval
+
+let run = apply_runtime "run_test" [unit] |> Str.eval
 
 (* QCheck test for constants *)
-let test_constant name f =
+let test_constant (name : string) (f : expression) =
   let f = lambda (Pat.any ()) (apply_nolbl f [exp_id name]) in
-  let labelled = [("count", int_exp 1); ("name", string_exp name)] in
-  let not_labelled = [exp_id "QCheck.unit"; f] in
-  apply_lab_nolab_s "QCheck.Test.make" labelled not_labelled |> add
+  add_test [one; string_exp name; exp_id "QCheck.unit"; f]
 
 (* generation of QCheck test *)
-let test name args =
-  let lab = [("count", int_exp !count); ("name", string_exp name)] in
-  apply_lab_nolab_s "QCheck.Test.make" lab args |> add
+let test (name : string) (args : expression list) =
+  add_test ([int_exp !count; string_exp name] @ args)
 
 (* same as [pp], but in bold blue] *)
 let bold_blue x = Format.asprintf "\x1b[34;1m%s\x1b[0m" x
@@ -53,12 +44,12 @@ let generate inputs fn testname satisfy =
   let rec aux gen print pat args = function
     | [] -> (gen, print, pat, List.rev args)
     | (g, p) :: tl ->
-        let print = concat_printer print p in
-        let gen = apply_nolbl_s "QCheck.Gen.pair" [gen; g] in
         let name = get_name () in
-        let pat = Pat.tuple [pat; pat_s name] in
-        let args = exp_id name :: args in
-        aux gen print pat args tl
+        aux
+          (apply_nolbl_s "QCheck.Gen.pair" [gen; g])
+          (concat_printer print p)
+          (Pat.tuple [pat; pat_s name])
+          (exp_id name :: args) tl
   in
   match inputs with
   | (g, p) :: tl ->
@@ -148,6 +139,10 @@ let get_generator rs t =
   | Ptype_open -> None
 
 let get_generator rs td =
+  let rejection name pred gen =
+    let name = "generator for " ^ name in
+    apply_runtime "add_test" [int_exp !count; string_exp name; gen; pred]
+  in
   let name = td.ptype_name.txt in
   match get_attribute_pstr "satisfying" td.ptype_attributes with
   | Some e -> (

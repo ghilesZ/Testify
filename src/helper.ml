@@ -67,6 +67,8 @@ let false_ = Exp.construct (lid_loc "false") None
 (* useful constructors *)
 let int_exp x = Exp.constant (Const.int x)
 
+let one = int_exp 1
+
 let float_exp x = Exp.constant (Const.float (string_of_float x))
 
 let string_exp x = Exp.constant (Const.string x)

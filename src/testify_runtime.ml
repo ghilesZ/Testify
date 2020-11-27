@@ -1,13 +1,16 @@
 open QCheck
 
+let holder = ref ([] : Test.t list)
+
 (* test storing management *)
-let add_test, run_test =
-  let holder = ref ([] : Test.t list) in
-  ( (fun t -> holder := t :: !holder)
-  , fun () ->
-      let holder = List.rev !holder in
-      QCheck_base_runner.run_tests ~colors:true ~long:true ~verbose:true
-        holder )
+let add_test count name gen pred =
+  let t = QCheck.Test.make ~count ~name gen pred in
+  holder := t :: !holder
+
+let run_test () =
+  Format.printf "Running %i tests with Testify\n%!" (List.length !holder) ;
+  let holder = List.rev !holder in
+  QCheck_base_runner.run_tests ~colors:true ~long:true ~verbose:true holder
 
 (* abstract generators handling *)
 type generable = GInt of int | GFloat of float
