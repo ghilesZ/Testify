@@ -15,6 +15,8 @@ let lid (id : string) = Longident.Lident id
 (* builds a Longident.t Location.t from a string *)
 let lid_loc ?(loc = Location.none) id = none_loc ~loc (Longident.parse id)
 
+let pat_s s = Pat.var (none_loc s)
+
 (* given a string [name], builds the identifier [name] *)
 let exp_id ?(loc = Location.none) name = lid_loc name |> Exp.ident ~loc
 
@@ -39,6 +41,18 @@ let apply_runtime s = apply_nolbl_s ("Testify_runtime." ^ s)
 (* apply_runtime for arity one functions *)
 let apply_runtime_1 s x = apply_nolbl_s ("Testify_runtime." ^ s) [x]
 
+(* Same as Exp.fun_ *)
+let lambda = Exp.fun_ Nolabel None
+
+(* Same as lambda with string instead of pattern *)
+let lambda_s s = lambda (pat_s s)
+
+(* function composition at ast level *)
+let ( |><| ) f g = lambda_s "x" (apply_nolbl f [apply_nolbl g [exp_id "x"]])
+
+(* doouble application *)
+let ( @@@ ) f g e = apply_nolbl f [apply_nolbl g e]
+
 (* application of bang *)
 let bang = apply_nolbl_s "!"
 
@@ -59,15 +73,7 @@ let string_exp x = Exp.constant (Const.string x)
 
 let str_nonrec vb = Str.value Nonrecursive vb
 
-let pat_s s = Pat.var (none_loc s)
-
 let unit = Exp.construct (lid_loc "()") None
-
-(* Same as Exp.fun_ *)
-let lambda = Exp.fun_ Nolabel None
-
-(* Same as lambda with string instead of pattern *)
-let lambda_s s = lambda (pat_s s)
 
 (* easy value binding with string *)
 let vb_s id exp = Vb.mk (pat_s id) exp
@@ -130,5 +136,5 @@ let get_attribute_pstr n attrs =
   | Some _ -> Format.asprintf "bad %s attribute" n |> failwith
   | None -> None
 
-module SSet = Set.Make(String)
-module SMap = Map.Make(String)
+module SSet = Set.Make (String)
+module SMap = Map.Make (String)

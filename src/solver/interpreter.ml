@@ -86,7 +86,6 @@ module Make (D : Abs) = struct
     in
     aux 1 empty {space= abs; constr= [constr]}
 
-  (* pattern is needed to recompile constraint into ocaml predicates *)
   let compile_cover {inner; outer} =
     let inner_gens = List.map (fun (g, w) -> (w, D.compile g)) inner in
     let outer_gens =
@@ -94,7 +93,9 @@ module Make (D : Abs) = struct
     in
     (inner_gens, outer_gens)
 
-  let get_generators abs constr = build_cover abs constr |> compile_cover
+  let get_generators i_s f_s constr =
+    let abs = D.init i_s f_s in
+    build_cover abs constr |> compile_cover
 end
 
 module BoxInter = Make (Boolean.Make (Box))

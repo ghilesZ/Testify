@@ -66,20 +66,13 @@ let split_fun f =
 let craft_generator inner outer pattern r =
   let inner_gens =
     List.fold_left
-      (fun acc (w, g) ->
-        let g =
-          lambda_s "rs" (apply_nolbl r [apply_nolbl g [exp_id "rs"]])
-        in
-        cons_exp (Exp.tuple [float_exp w; g]) acc)
+      (fun acc (w, g) -> cons_exp (Exp.tuple [float_exp w; r |><| g]) acc)
       empty_list_exp inner
   in
   let inner_outer_gens =
     List.fold_left
       (fun acc (w, reject, g) ->
-        let g =
-          lambda_s "rs" (apply_nolbl r [apply_nolbl g [exp_id "rs"]])
-        in
-        let g = apply_runtime "reject" [lambda pattern reject; g] in
+        let g = apply_runtime "reject" [lambda pattern reject; r |><| g] in
         cons_exp (Exp.tuple [float_exp w; g]) acc)
       inner_gens outer
   in
@@ -91,8 +84,7 @@ let abstract_core_type td sat =
   let pat' = fill pat in
   let r, i_s, f_s = reconstruct td pat' in
   let constr = Lang.of_ocaml body in
-  let abs = Box.init i_s f_s in
-  let inner, outer = Solve.get_generators abs constr in
+  let inner, outer = Solve.get_generators i_s f_s constr in
   craft_generator inner outer pat' r
 
 (* builds a generator *)

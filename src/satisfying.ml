@@ -54,13 +54,7 @@ let generate inputs fn testname satisfy =
     | [] -> (gen, print, pat, List.rev args)
     | (g, p) :: tl ->
         let print = concat_printer print p in
-        let gen =
-          if gen = g then
-            Exp.let_ Nonrecursive [vb_s "pairgen" g]
-              (apply_nolbl_s "QCheck.Gen.pair"
-                 [exp_id "pairgen"; exp_id "pairgen"])
-          else apply_nolbl_s "QCheck.Gen.pair" [gen; g]
-        in
+        let gen = apply_nolbl_s "QCheck.Gen.pair" [gen; g] in
         let name = get_name () in
         let pat = Pat.tuple [pat; pat_s name] in
         let args = exp_id name :: args in
@@ -71,9 +65,7 @@ let generate inputs fn testname satisfy =
       let name = get_name () in
       let pat = pat_s name in
       let gen, print, pat, args = aux g p pat [exp_id name] tl in
-      let f =
-        lambda pat (apply_nolbl satisfy [apply_nolbl (exp_id fn) args])
-      in
+      let f = lambda pat ((satisfy @@@ exp_id fn) args) in
       let testname = Format.asprintf "of %s\n" testname in
       test testname
         [apply_lab_nolab_s "QCheck.make" [("print", print)] [gen]; f]

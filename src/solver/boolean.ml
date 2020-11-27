@@ -1,5 +1,4 @@
-open Migrate_parsetree
-open Ast_410
+(* lift numeric operation to boolean ones *)
 open Tools
 
 module type Numeric = sig
@@ -13,7 +12,7 @@ module type Numeric = sig
 
   val init : SSet.t -> SSet.t -> t
 
-  val compile : t -> Parsetree.expression
+  val compile : t -> Migrate_parsetree.Ast_410.Parsetree.expression
 
   val split : t -> t list
 
