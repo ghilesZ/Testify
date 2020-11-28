@@ -8,8 +8,6 @@ module type Numeric = sig
 
   val join : t -> t -> t
 
-  val meet : t -> t -> t option
-
   val init : SSet.t -> SSet.t -> t
 
   val compile : t -> Migrate_parsetree.Ast_410.Parsetree.expression

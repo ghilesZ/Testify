@@ -44,9 +44,8 @@ let filter_neg x r =
   | I x -> Option.map eval_int (ItvI.bwd_neg x (coerce_int r))
   | F x -> Option.map eval_float (ItvF.bwd_neg x (coerce_float r))
 
-let filter_i_f i_f r_f (x1 : eval) (x2 : eval) : (eval * eval) Consistency.t
-    =
-  match (x1, x2) with
+let filter_i_f i_f r_f (a : eval) (b : eval) : (eval * eval) Consistency.t =
+  match (a, b) with
   | I x1, I x2 -> Consistency.map int2 (i_f x1 x2)
   | F x1, F x2 -> Consistency.map float2 (r_f x1 x2)
   | _ -> invalid_arg "type error, should not occur"
@@ -66,30 +65,21 @@ let filter_eq x1 x2 =
 (* maps each variable to a (non-empty) interval *)
 type t = {ints: ItvI.t SMap.t; floats: ItvF.t SMap.t}
 
+let max_range map range_f =
+  Option.map
+    (SMap.fold
+       (fun v i (vo, io) ->
+         if range_f i > range_f io then (v, i) else (vo, io))
+       map)
+    (SMap.min_binding_opt map)
+
 (* float variable with maximal range *)
 let max_range_f (a : t) : (string * ItvF.t) option =
-  match SMap.min_binding a.floats with
-  | e ->
-      Some
-        (SMap.fold
-           (fun v i (vo, io) ->
-             if ItvF.range i > ItvF.range io then (v, i) else (vo, io))
-           a.floats e)
-  | exception Not_found -> None
+  max_range a.floats ItvF.range
 
-(* integer variable with minimal (non-nul) range *)
-let min_range_i (a : t) : (string * ItvI.t) option =
-  match SMap.min_binding a.ints with
-  | bind ->
-      let k, v =
-        SMap.fold
-          (fun v i (vo, io) ->
-            let o_r = ItvI.range io in
-            if ItvI.range i < o_r || o_r = Z.zero then (v, i) else (vo, io))
-          a.ints bind
-      in
-      if ItvI.range v = Z.zero then None else Some (k, v)
-  | exception Not_found -> None
+(* integer variable with maximal range *)
+let max_range_i (a : t) : (string * ItvI.t) option =
+  max_range a.ints ItvI.range
 
 let volume_f (a : t) : float =
   SMap.fold (fun _ x v -> ItvF.range x *. v) a.floats 1.
@@ -223,20 +213,6 @@ let filter (a : t) (e1 : arith) (o : cmp) (e2 : arith) : t Consistency.t =
   in
   Consistency.map (fun (j1, j2) -> refine (refine a b1 j1) b2 j2) res
 
-let split_along_f (a : t) (v : string) : t list =
-  let i = SMap.find v a.floats in
-  let i_list = ItvF.split i in
-  List.fold_left
-    (fun acc b -> {a with floats= SMap.add v b a.floats} :: acc)
-    [] i_list
-
-let split_along_i (a : t) (v : string) : t list =
-  let i = SMap.find v a.ints in
-  let i_list = ItvI.split i in
-  List.fold_left
-    (fun acc b -> {a with ints= SMap.add v b a.ints} :: acc)
-    [] i_list
-
 let join (a : t) (b : t) : t =
   let join_opt_i a b =
     match (a, b) with Some a, Some b -> Some (ItvI.join a b) | _ -> None
@@ -247,33 +223,30 @@ let join (a : t) (b : t) : t =
   { ints= SMap.merge (fun _ -> join_opt_i) a.ints b.ints
   ; floats= SMap.merge (fun _ -> join_opt_f) a.floats b.floats }
 
-let meet (a : t) (b : t) : t option =
-  let meet_opt_i a b =
-    match (a, b) with
-    | Some a, Some b -> Some (Option.get (ItvI.meet a b))
-    | _ -> None
-  in
-  let meet_opt_f a b =
-    match (a, b) with
-    | Some a, Some b -> Some (Option.get (ItvF.meet a b))
-    | _ -> None
-  in
-  try
-    Some
-      { ints= SMap.merge (fun _ -> meet_opt_i) a.ints b.ints
-      ; floats= SMap.merge (fun _ -> meet_opt_f) a.floats b.floats }
-  with Invalid_argument _ -> None
+let split_along_f (a : t) (v : string) itv : t list =
+  if ItvF.range itv = 0. then failwith "cannot split atom" ;
+  let i_list = ItvF.split itv in
+  List.fold_left
+    (fun acc b -> {a with floats= SMap.add v b a.floats} :: acc)
+    [] i_list
+
+let split_along_i (a : t) (v : string) itv : t list =
+  if ItvI.range itv = Z.zero then failwith "cannot split atom" ;
+  let i = SMap.find v a.ints in
+  let i_list = ItvI.split i in
+  List.fold_left
+    (fun acc b -> {a with ints= SMap.add v b a.ints} :: acc)
+    [] i_list
 
 let split (a : t) : t list =
-  match (max_range_f a, min_range_i a) with
-  | Some (v_f, _), None -> split_along_f a v_f
-  | None, Some (v_i, _) -> split_along_i a v_i
+  match (max_range_f a, max_range_i a) with
+  | Some (v_f, itv), None -> split_along_f a v_f itv
+  | None, Some (v_i, itv) -> split_along_i a v_i itv
   | Some (v_f, i_f), Some (v_i, i_i) ->
       let r_f = ItvF.range i_f in
-      if r_f = 0. then split_along_i a v_i
-      else if r_f > 1. /. (10. *. Z.to_float (ItvI.range i_i)) then
-        split_along_f a v_f
-      else split_along_i a v_i
+      let r_i = ItvI.range i_i in
+      if Q.of_float r_f > Q.of_bigint r_i then split_along_f a v_f i_f
+      else split_along_i a v_i i_i
   | None, None -> failwith "cannot split anymore"
 
 let init =
