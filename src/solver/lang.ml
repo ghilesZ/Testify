@@ -42,6 +42,8 @@ let rec negation = function
   | Boolop (a, Imply, b) -> Boolop (a, And, negation b)
   | Rejection _ -> assert false
 
+let is_rejection = function Rejection _ -> true | _ -> false
+
 (* exception we raise when we try to handle a term that does not belong to
    the language subset *)
 exception OutOfSubset of string

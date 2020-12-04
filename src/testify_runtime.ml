@@ -8,7 +8,6 @@ let add_test count name gen pred =
   holder := t :: !holder
 
 let run_test () =
-  Format.printf "Running %i tests with Testify\n%!" (List.length !holder) ;
   let holder = List.rev !holder in
   QCheck_base_runner.run_tests ~colors:true ~long:true ~verbose:true holder
 
