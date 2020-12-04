@@ -45,12 +45,42 @@ module Make (D : Signatures.Abs) = struct
     Format.printf "%f/%f = %f\n%!" inner_volume total_volume ratio ;
     ratio
 
-  let compile compile_f cover =
-    let inner_gens = List.map (fun (g, w) -> (w, compile_f g)) cover.inner in
+  let compile cover =
+    let inner_gens = List.map (fun (g, w) -> (w, D.compile g)) cover.inner in
     let outer_gens =
       List.map
-        (fun (g, w, r) -> (w, Lang.to_ocaml r, compile_f g))
+        (fun (g, w, r) -> (w, Lang.to_ocaml r, D.compile g))
         cover.outer
     in
     (inner_gens, outer_gens)
+
+  let threshold = ref 0.9
+
+  let solve abs constr : t =
+    let open Consistency in
+    let rec aux cover =
+      if ratio cover > !threshold || is_partition cover then cover
+      else
+        let (biggest, _, constr), cover' = pop_outer cover in
+        if Lang.is_rejection constr then cover
+        else
+          let new_cover =
+            match D.filter biggest constr with
+            | Unsat -> cover
+            | Sat -> add_inner cover' abs
+            | Filtered ((abs', _), true) -> add_inner cover' abs'
+            | Filtered ((abs', c), false) ->
+                List.fold_left
+                  (fun acc elm -> add_outer acc elm c)
+                  cover (D.split abs')
+          in
+          aux new_cover
+    in
+    aux (add_outer empty abs constr)
+
+  let get_generators i_s f_s constr =
+    let abs = D.init i_s f_s in
+    solve abs constr |> compile
 end
+
+module BoxCover = Make (Boolean.Make (Box))

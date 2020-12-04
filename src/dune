@@ -5,7 +5,7 @@
   (name ppx_testify)
   (wrapped false)
   (kind ppx_rewriter)
-  (modules helper tools itvI itvF box boolean lang signatures consistency cover interpreter gegen ppx_testify satisfying such_that)
+  (modules helper tools itvI itvF box boolean lang signatures consistency cover gegen ppx_testify satisfying such_that)
   (libraries
      zarith
      ppx_tools_versioned

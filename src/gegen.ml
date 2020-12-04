@@ -6,7 +6,7 @@ open Parsetree
 open Ast_helper
 open Helper
 module Conv = Convert (OCaml_410) (OCaml_current)
-module Solve = Interpreter.BoxInter
+module Solve = Cover.BoxCover
 
 (* exception we raise when we try to handle a term that does not belong to
    the subset of type langage we can handle *)
