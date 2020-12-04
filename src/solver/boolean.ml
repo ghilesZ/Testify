@@ -1,23 +1,7 @@
 (* lift numeric operation to boolean ones *)
-open Tools
+open Signatures
 
-module type Numeric = sig
-  type t
-
-  val filter : t -> Lang.arith -> Lang.cmp -> Lang.arith -> t Consistency.t
-
-  val join : t -> t -> t
-
-  val init : SSet.t -> SSet.t -> t
-
-  val compile : t -> Migrate_parsetree.Ast_410.Parsetree.expression
-
-  val split : t -> t list
-
-  val volume : t -> float
-end
-
-module Make (D : Numeric) = struct
+module Make (D : Numeric) : Abs = struct
   include D
 
   let filter space constr : (t * Lang.constr) Consistency.t =
