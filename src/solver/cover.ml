@@ -9,6 +9,16 @@ module Make (D : Signatures.Abs) = struct
     ; inner_volume: vol
     ; total_volume: vol }
 
+  let print fmt {inner; outer; _} =
+    let print_list f =
+      Format.pp_print_list ~pp_sep:(fun fmt _ -> Format.fprintf fmt "\n") f
+    in
+    Format.fprintf fmt "inner: %a\nouter: %a\n"
+      (print_list (fun fmt (d, _) -> Format.fprintf fmt "%a" D.print d))
+      inner
+      (print_list (fun fmt (d, _, _) -> Format.fprintf fmt "%a" D.print d))
+      outer
+
   let empty = {inner= []; outer= []; inner_volume= 0.; total_volume= 0.}
 
   (* true if the cover is a partition, ie the problem is solved *)

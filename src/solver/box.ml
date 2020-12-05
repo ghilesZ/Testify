@@ -269,3 +269,9 @@ let compile (a : t) =
   aux ItvI.compile a.ints ;
   aux ItvF.compile a.floats ;
   lambda_s "rs" !instance
+
+let print fmt {ints; floats} =
+  Format.fprintf fmt "{" ;
+  SMap.iter (fun k v -> Format.printf "%s: %a;" k ItvI.print v) ints ;
+  SMap.iter (fun k v -> Format.printf "%s: %a;" k ItvF.print v) floats ;
+  Format.fprintf fmt "}"

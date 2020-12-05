@@ -1,11 +1,11 @@
 (* lift numeric operation to boolean ones *)
 open Signatures
+open Lang
 
 module Make (D : Numeric) : Abs = struct
   include D
 
-  let filter space constr : (t * Lang.constr) Consistency.t =
-    let open Lang in
+  let filter space constr : (t * constr) Consistency.t =
     let open Consistency in
     let rec aux num = function
       | Boolop (c1, Or, c2) -> (

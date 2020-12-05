@@ -1,6 +1,8 @@
 (* integer intervals *)
 type t = Z.t * Z.t
 
+let print fmt (l, u) = Format.fprintf fmt "[%a;%a]" Z.pp_print l Z.pp_print u
+
 let z2 = Z.of_int 2
 
 let join (l1, h1) (l2, h2) = (Z.min l1 l2, Z.max h1 h2)

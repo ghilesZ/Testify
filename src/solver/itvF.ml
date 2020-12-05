@@ -2,6 +2,8 @@
 
 type t = Q.t * Q.t
 
+let print fmt (l, u) = Format.fprintf fmt "[%a;%a]" Q.pp_print l Q.pp_print u
+
 let q2 = Q.of_int 2
 
 let join (l1, h1) (l2, h2) = (Q.min l1 l2, Q.max h1 h2)
