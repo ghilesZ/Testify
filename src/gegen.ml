@@ -64,17 +64,17 @@ let split_fun f =
       |> failwith
 
 let craft_generator inner outer pattern r =
-  let inner_gens =
-    List.fold_left
-      (fun acc (w, g) -> cons_exp (Exp.tuple [float_exp w; r |><| g]) acc)
-      empty_list_exp inner
-  in
-  let inner_outer_gens =
+  let outer_gens =
     List.fold_left
       (fun acc (w, reject, g) ->
         let g = apply_runtime "reject" [lambda pattern reject; r |><| g] in
         cons_exp (Exp.tuple [float_exp w; g]) acc)
-      inner_gens outer
+      empty_list_exp (List.rev outer)
+  in
+  let inner_outer_gens =
+    List.fold_left
+      (fun acc (w, g) -> cons_exp (Exp.tuple [float_exp w; r |><| g]) acc)
+      outer_gens (List.rev inner)
   in
   apply_runtime "weighted" [inner_outer_gens]
 

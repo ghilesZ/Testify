@@ -3,9 +3,8 @@ module Make (D : Signatures.Abs) = struct
   type vol = float
 
   type t =
-    { inner: (D.t * vol) list (* sorted, increasing, volume-wise*)
-    ; outer: (D.t * vol * Lang.constr) list
-          (* sorted, decreasing, volume-wise*)
+    { inner: (D.t * vol) list (* sorted, increasing volume *)
+    ; outer: (D.t * vol * Lang.constr) list (* sorted decreasing volume*)
     ; inner_volume: vol
     ; total_volume: vol }
 
@@ -53,7 +52,9 @@ module Make (D : Signatures.Abs) = struct
   let ratio {inner_volume; total_volume; _} = inner_volume /. total_volume
 
   let compile cover =
-    let inner_gens = List.map (fun (g, w) -> (w, D.compile g)) cover.inner in
+    let inner_gens =
+      List.rev_map (fun (g, w) -> (w, D.compile g)) cover.inner
+    in
     let outer_gens =
       List.map
         (fun (g, w, r) -> (w, Lang.to_ocaml r, D.compile g))
@@ -62,7 +63,7 @@ module Make (D : Signatures.Abs) = struct
     (inner_gens, outer_gens)
 
   (* TODO: add option to change this *)
-  let threshold = ref 0.9
+  let threshold = ref 0.999
 
   let solve abs constr : t =
     let rec aux cover =
