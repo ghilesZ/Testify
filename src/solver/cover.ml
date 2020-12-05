@@ -50,10 +50,7 @@ module Make (D : Signatures.Abs) = struct
       outer= add_outer (elm, v, c) cover.outer
     ; total_volume= cover.total_volume +. v }
 
-  let ratio {inner_volume; total_volume; _} =
-    let ratio = inner_volume /. total_volume in
-    Format.printf "%f/%f = %f\n%!" inner_volume total_volume ratio ;
-    ratio
+  let ratio {inner_volume; total_volume; _} = inner_volume /. total_volume
 
   let compile cover =
     let inner_gens = List.map (fun (g, w) -> (w, D.compile g)) cover.inner in
@@ -64,10 +61,10 @@ module Make (D : Signatures.Abs) = struct
     in
     (inner_gens, outer_gens)
 
+  (* TODO: add option to change this *)
   let threshold = ref 0.9
 
   let solve abs constr : t =
-    let open Consistency in
     let rec aux cover =
       if ratio cover > !threshold || is_partition cover then cover
       else
@@ -76,13 +73,13 @@ module Make (D : Signatures.Abs) = struct
         else
           let new_cover =
             match D.filter biggest constr with
-            | Unsat -> cover
+            | Unsat -> cover'
             | Sat -> add_inner cover' abs
             | Filtered ((abs', _), true) -> add_inner cover' abs'
             | Filtered ((abs', c), false) ->
                 List.fold_left
                   (fun acc elm -> add_outer acc elm c)
-                  cover (D.split abs')
+                  cover' (D.split abs')
           in
           aux new_cover
     in
