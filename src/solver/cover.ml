@@ -91,4 +91,5 @@ module Make (D : Signatures.Abs) = struct
     solve abs constr |> compile
 end
 
-module BoxCover = Make (Boolean.Make (Box))
+module BoxCover = Make (Boolean.Make (Boxes))
+module PolyCover = Make (Boolean.Make (Polyhedra))
