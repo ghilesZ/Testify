@@ -90,12 +90,10 @@ let split pol =
   let env = Abstract1.env pol in
   let var, itv = largest pol in
   let mid = mid itv in
-  let p1 =
-    assign_texpr pol var (Texprext.cst env (Coeff.i_of_scalar itv.inf mid))
-  in
-  let p2 =
-    assign_texpr pol var (Texprext.cst env (Coeff.i_of_scalar itv.inf mid))
-  in
+  let i1 = Coeff.i_of_scalar itv.inf mid in
+  let i2 = Coeff.i_of_scalar mid itv.sup in
+  let p1 = assign_texpr pol var (Texprext.cst env i1) in
+  let p2 = assign_texpr pol var (Texprext.cst env i2) in
   [p1; p2]
 
 let compile _ = failwith "poly.compile"
