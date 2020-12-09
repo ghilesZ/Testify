@@ -63,6 +63,8 @@ let split_fun f =
         Pprintast.expression (Conv.copy_expression f)
       |> failwith
 
+(* builds a generator list, sorted by probability of being chosen (from most
+   likely to less likely) *)
 let craft_generator inner outer pattern r =
   let outer_gens =
     List.fold_left
