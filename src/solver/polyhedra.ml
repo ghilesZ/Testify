@@ -57,8 +57,7 @@ let constraint_to_apron env =
     | ToInt _a -> assert false
     | ToFloat _a -> assert false
   in
-  let comparison a1 op a2 = (cmp op) (numeric a1) (numeric a2) in
-  comparison
+  fun a1 op a2 -> (cmp op) (numeric a1) (numeric a2)
 
 let filter pol e1 cmp e2 =
   let tc = constraint_to_apron Abstract1.(pol.env) e1 cmp e2 in
@@ -68,7 +67,36 @@ let filter pol e1 cmp e2 =
     let succ = is_bottom (filter_tcons pol (Tconsext.neg tc)) in
     Consistency.Filtered (pol, succ)
 
-let split _ = failwith "poly.split"
+(* extracts the variable with the largest interval range *)
+let largest pol : Var.t * Interval.t =
+  let env = pol.Abstract1.env in
+  let box = Abstract1.to_box man pol in
+  let itvs = box.Abstract1.interval_array in
+  let len = Array.length itvs in
+  let rec aux cur i_max diam_max itv_max =
+    if cur >= len then (i_max, itv_max)
+    else
+      let e = itvs.(cur) in
+      let diam = Intervalext.range_mpqf e in
+      if Mpqf.cmp diam diam_max > 0 then aux (cur + 1) cur diam e
+      else aux (cur + 1) i_max diam_max itv_max
+  in
+  let a, b = aux 0 0 (Mpqf.of_int 0) itvs.(0) in
+  (Environment.var_of_dim env a, b)
+
+(* split variable with largest dimension *)
+let split pol =
+  let open Intervalext in
+  let env = Abstract1.env pol in
+  let var, itv = largest pol in
+  let mid = mid itv in
+  let p1 =
+    assign_texpr pol var (Texprext.cst env (Coeff.i_of_scalar itv.inf mid))
+  in
+  let p2 =
+    assign_texpr pol var (Texprext.cst env (Coeff.i_of_scalar itv.inf mid))
+  in
+  [p1; p2]
 
 let compile _ = failwith "poly.compile"
 
