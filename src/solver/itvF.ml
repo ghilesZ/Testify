@@ -79,7 +79,6 @@ let compile ((inf, sup) : t) =
   let open Helper in
   let i = inf |> Q.to_float |> float_exp in
   let s = sup |> Q.to_float |> float_exp in
-  [exp_id "rs"]
-  |> apply_nolbl (apply_runtime "float_range" [i; s])
-  |> apply_runtime_1 "mk_float"
-  |> lambda_s "rs"
+  lambda_s "rs"
+    (apply_nolbl_s "mk_float"
+       [[exp_id "rs"] |> apply_nolbl (apply_nolbl_s "float_range" [i; s])])

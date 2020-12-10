@@ -73,7 +73,7 @@ module Make (D : Signatures.Abs) = struct
   (* TODO: add option to change this *)
   let threshold = ref 0.999
 
-  let max_size = ref 5
+  let max_size = ref 10
 
   let solve abs constr : t =
     let rec aux cover =
@@ -88,7 +88,7 @@ module Make (D : Signatures.Abs) = struct
           let new_cover =
             match D.filter biggest constr with
             | Unsat -> cover'
-            | Sat -> add_inner cover' abs
+            | Sat -> add_inner cover' biggest
             | Filtered ((abs', _), true) -> add_inner cover' abs'
             | Filtered ((abs', c), false) ->
                 List.fold_left
@@ -117,7 +117,7 @@ module Make (D : Signatures.Abs) = struct
   let get_generators i_s f_s constr =
     let abs = D.init i_s f_s in
     let c = solve abs constr in
-    (* show c (Tools.SSet.min_elt i_s) (Tools.SSet.max_elt i_s) ; *)
+    (* show c (Tools.SSet.max_elt i_s) (Tools.SSet.min_elt i_s) ; *)
     compile c
 end
 
