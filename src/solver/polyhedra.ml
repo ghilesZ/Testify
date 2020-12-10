@@ -99,3 +99,5 @@ let split pol =
 let compile _ = failwith "poly.compile"
 
 let volume _ = failwith "poly.volume"
+
+let to_drawable = Picasso.Drawable.of_pol

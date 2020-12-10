@@ -9,7 +9,7 @@
   (modules itv)
   (preprocess (pps ppx_testify))
   (libraries testify_runtime qcheck))
-
+  
 (executable
   (name itv_record)
   (modules itv_record)

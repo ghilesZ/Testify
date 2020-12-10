@@ -79,6 +79,6 @@ let compile ((inf, sup) : t) =
   let open Helper in
   let i = inf |> Z.to_int |> int_exp in
   let s = sup |> Z.to_int |> int_exp in
-  [exp_id "rs"]
-  |> apply_nolbl (apply_runtime "int_range" [i; s])
-  |> apply_runtime_1 "mk_int" |> lambda_s "rs"
+  lambda_s "rs"
+    (apply_nolbl_s "mk_int"
+       [[exp_id "rs"] |> apply_nolbl (apply_nolbl_s "int_range" [i; s])])

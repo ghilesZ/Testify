@@ -35,11 +35,15 @@ let apply_lab_nolab f args1 args2 =
 (* same as apply_lab_nolab but argument function name is a string *)
 let apply_lab_nolab_s s = apply_lab_nolab (exp_id s)
 
+(* opens the runtime and then build exp *)
+let open_runtime exp =
+  Exp.open_ (Opn.mk (Mod.ident (lid_loc "Testify_runtime"))) exp
+
 (* calls a function defined in the runtime *)
 let apply_runtime s = apply_nolbl_s ("Testify_runtime." ^ s)
 
 (* apply_runtime for arity one functions *)
-let apply_runtime_1 s x = apply_nolbl_s ("Testify_runtime." ^ s) [x]
+let apply_runtime_1 s x = apply_runtime s [x]
 
 (* Same as Exp.fun_ *)
 let lambda = Exp.fun_ Nolabel None

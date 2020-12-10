@@ -5,14 +5,10 @@
   (name ppx_testify)
   (wrapped false)
   (kind ppx_rewriter)
-  (modules helper tools itvI itvF polyhedra boxes boolean lang signatures consistency cover gegen ppx_testify satisfying such_that)
   (libraries
      zarith
      ppx_tools_versioned
      ocaml-migrate-parsetree
-     apron apron.boxMPQ apron.polkaMPQ apronext))
+     apron apron.boxMPQ apron.polkaMPQ apronext
+     picasso))
              
-(library
-  (name testify_runtime)
-  (modules testify_runtime)
-  (libraries qcheck))

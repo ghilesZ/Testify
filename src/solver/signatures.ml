@@ -16,6 +16,8 @@ module type Numeric = sig
   val volume : t -> float
 
   val print : Format.formatter -> t -> unit
+
+  val to_drawable : t -> Picasso.Drawable.t
 end
 
 module type Abs = sig

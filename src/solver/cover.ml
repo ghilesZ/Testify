@@ -6,7 +6,8 @@ module Make (D : Signatures.Abs) = struct
     { inner: (D.t * vol) list (* sorted, increasing volume *)
     ; outer: (D.t * vol * Lang.constr) list (* sorted decreasing volume*)
     ; inner_volume: vol
-    ; total_volume: vol }
+    ; total_volume: vol
+    ; nb_elem: int }
 
   let print fmt {inner; outer; _} =
     let print_list f =
@@ -18,24 +19,30 @@ module Make (D : Signatures.Abs) = struct
       (print_list (fun fmt (d, _, _) -> Format.fprintf fmt "%a" D.print d))
       outer
 
-  let empty = {inner= []; outer= []; inner_volume= 0.; total_volume= 0.}
+  let empty =
+    {inner= []; outer= []; inner_volume= 0.; total_volume= 0.; nb_elem= 0}
 
   (* true if the cover is a partition, ie the problem is solved *)
   let is_partition {outer; _} = outer = []
 
   (* gets the first (biggest) element of the outer elements *)
-  let pop_outer cover =
-    match cover.outer with
+  let pop_outer c =
+    match c.outer with
     | [] -> invalid_arg "no outer element"
     | ((_, vol, _) as h) :: tl ->
-        (h, {cover with total_volume= cover.total_volume -. vol; outer= tl})
+        ( h
+        , { c with
+            total_volume= c.total_volume -. vol
+          ; outer= tl
+          ; nb_elem= c.nb_elem - 1 } )
 
-  let add_inner cover elm =
+  let add_inner c elm =
     let v = D.volume elm in
-    { cover with
-      inner= (elm, v) :: cover.inner
-    ; inner_volume= cover.inner_volume +. v
-    ; total_volume= cover.total_volume +. v }
+    { c with
+      inner= (elm, v) :: c.inner
+    ; inner_volume= c.inner_volume +. v
+    ; total_volume= c.total_volume +. v
+    ; nb_elem= c.nb_elem + 1 }
 
   (* insertion maintaining the order *)
   let add_outer cover elm (c : Lang.constr) =
@@ -47,7 +54,8 @@ module Make (D : Signatures.Abs) = struct
     in
     { cover with
       outer= add_outer (elm, v, c) cover.outer
-    ; total_volume= cover.total_volume +. v }
+    ; total_volume= cover.total_volume +. v
+    ; nb_elem= cover.nb_elem + 1 }
 
   let ratio {inner_volume; total_volume; _} = inner_volume /. total_volume
 
@@ -65,9 +73,14 @@ module Make (D : Signatures.Abs) = struct
   (* TODO: add option to change this *)
   let threshold = ref 0.999
 
+  let max_size = ref 5
+
   let solve abs constr : t =
     let rec aux cover =
-      if ratio cover > !threshold || is_partition cover then cover
+      if
+        ratio cover > !threshold
+        || is_partition cover || cover.nb_elem > !max_size
+      then cover
       else
         let (biggest, _, constr), cover' = pop_outer cover in
         if Lang.is_rejection constr then cover
@@ -86,9 +99,26 @@ module Make (D : Signatures.Abs) = struct
     in
     aux (add_outer empty abs constr)
 
+  let show {inner; outer; _} x y =
+    let open Picasso in
+    let render = Rendering.create ~abciss:x ~ordinate:y 600. 600. in
+    let render =
+      List.fold_left Rendering.add render
+        (List.map
+           (fun (e, _) -> (Colors.rgb 200 200 255, D.to_drawable e))
+           inner)
+    in
+    List.fold_left Rendering.add render
+      (List.map
+         (fun (e, _, _) -> (Colors.rgb 250 200 200, D.to_drawable e))
+         outer)
+    |> in_gtk_canvas
+
   let get_generators i_s f_s constr =
     let abs = D.init i_s f_s in
-    solve abs constr |> compile
+    let c = solve abs constr in
+    (* show c (Tools.SSet.min_elt i_s) (Tools.SSet.max_elt i_s) ; *)
+    compile c
 end
 
 module BoxCover = Make (Boolean.Make (Boxes))

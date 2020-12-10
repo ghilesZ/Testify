@@ -13,12 +13,6 @@ open Tools
    the subset of type langage we can handle *)
 exception OutOfSubset of string
 
-(* Parsetree.expression of type 'instance -> int' or 'instance -> float' *)
-let constructors =
-  Types.empty
-  |> add_s "int" (fun v -> apply_runtime "get_int" [string_exp v])
-  |> add_s "float" (fun v -> apply_runtime "get_float" [string_exp v])
-
 (* given a type 't' and a pattern, builds an exepression corresponding to a
    reconstruction function of type 'instance -> t' *)
 (* TODO: handle more patterns (e.g. _, as) *)
@@ -26,10 +20,10 @@ let reconstruct core_type pattern =
   let rec aux int_set float_set ct pat =
     match (ct.ptyp_desc, pat.ppat_desc) with
     | Ptyp_constr ({txt= Lident "int"; _}, []), Ppat_var {txt= ptxt; _} ->
-        let r = apply_runtime "get_int" [string_exp ptxt] in
+        let r = apply_nolbl_s "get_int" [string_exp ptxt] in
         (r, SSet.add ptxt int_set, float_set)
     | Ptyp_constr ({txt= Lident "float"; _}, []), Ppat_var {txt= ptxt; _} ->
-        let r = apply_runtime "get_float" [string_exp ptxt] in
+        let r = apply_nolbl_s "get_float" [string_exp ptxt] in
         (r, int_set, SSet.add ptxt float_set)
     | Ptyp_tuple ttup, Ppat_tuple ptup ->
         let sons, i_s, f_s =
@@ -70,7 +64,7 @@ let craft_generator inner outer pattern r =
   let outer_gens =
     List.fold_left
       (fun acc (w, reject, g) ->
-        let g = apply_runtime "reject" [lambda pattern reject; r |><| g] in
+        let g = apply_nolbl_s "reject" [lambda pattern reject; r |><| g] in
         cons_exp (Exp.tuple [float_exp w; g]) acc)
       empty_list_exp (List.rev outer)
   in
@@ -79,7 +73,7 @@ let craft_generator inner outer pattern r =
       (fun acc (w, g) -> cons_exp (Exp.tuple [float_exp w; r |><| g]) acc)
       outer_gens (List.rev inner)
   in
-  apply_runtime "weighted" [inner_outer_gens]
+  apply_nolbl_s "weighted" [inner_outer_gens] |> open_runtime
 
 (* given a type declaration and a pattern, we build a generator *)
 let abstract_core_type td sat =

@@ -1,0 +1,3 @@
+(library
+  (name testify_runtime)
+  (libraries qcheck))

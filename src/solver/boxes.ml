@@ -276,3 +276,11 @@ let print fmt {ints; floats} =
   SMap.iter (fun k v -> Format.printf "%s: %a;" k ItvI.print v) ints ;
   SMap.iter (fun k v -> Format.printf "%s: %a;" k ItvF.print v) floats ;
   Format.fprintf fmt "}"
+
+let to_drawable {ints; floats} =
+  let open Picasso in
+  let varsi, vi = List.split (SMap.bindings ints) in
+  let varsf, vf = List.split (SMap.bindings floats) in
+  let ri = List.map (fun (l, u) -> (Z.to_float l, Z.to_float u)) vi in
+  let rf = List.map (fun (l, u) -> (Q.to_float l, Q.to_float u)) vf in
+  Drawable.of_ranges (varsi @ varsf) (ri @ rf)
