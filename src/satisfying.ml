@@ -139,15 +139,11 @@ let get_generator rs t =
   | Ptype_open -> None
 
 let get_generator rs td =
-  let rejection name pred gen =
-    let name = "generator for " ^ name in
-    apply_runtime "add_test" [int_exp !count; string_exp name; gen; pred]
-  in
-  let name = td.ptype_name.txt in
+  let rejection pred gen = apply_runtime "reject" [pred; gen] in
   match get_attribute_pstr "satisfying" td.ptype_attributes with
   | Some e -> (
     match Gegen.generate td e with
-    | None -> Option.map (rejection name e) (get_generator rs td)
+    | None -> Option.map (rejection e) (get_generator rs td)
     | x -> x )
   | None -> None
 
