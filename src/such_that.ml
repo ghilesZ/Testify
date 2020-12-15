@@ -16,8 +16,7 @@ let handle_record labels e =
   let names =
     List.map
       (fun l ->
-        ( Location.mkloc (Longident.parse l.pld_name.txt) l.pld_loc
-        , Pat.var l.pld_name ))
+        (Location.mkloc (lparse l.pld_name.txt) l.pld_loc, Pat.var l.pld_name))
       labels
   in
   lambda (Pat.record names Closed) e

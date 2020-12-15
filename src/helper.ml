@@ -12,8 +12,11 @@ let none_loc ?(loc = Location.none) s = Location.mkloc s loc
 (* builds a Longident.t from a string *)
 let lid (id : string) = Longident.Lident id
 
+let lparse s =
+  String.split_on_char '.' s |> Longident.unflatten |> Option.get
+
 (* builds a Longident.t Location.t from a string *)
-let lid_loc ?(loc = Location.none) id = none_loc ~loc (Longident.parse id)
+let lid_loc ?(loc = Location.none) id = none_loc ~loc (lparse id)
 
 let pat_s s = Pat.var (none_loc s)
 
