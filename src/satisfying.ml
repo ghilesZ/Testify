@@ -81,41 +81,33 @@ let register_generator rs lid g =
 let register_property rs lid p =
   {rs with properties= Types.add lid p rs.properties}
 
-let get_gen_core_type rs =
+let derive_core_type env compose =
   let rec aux ct =
     match ct.ptyp_desc with
-    | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt rs.generators
+    | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt env
     | Ptyp_poly ([], ct) -> aux ct
     | Ptyp_tuple tup -> (
-        let gens = List.map aux tup in
-        try
-          List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
-          |> Exp.tuple |> lambda_s "x" |> Option.some
-        with Invalid_argument _ -> None )
+        let subtypes = List.map aux tup in
+        try compose subtypes |> Option.some with Invalid_argument _ -> None )
     | _ -> None
   in
   aux
 
+let get_gen_core_type rs =
+  derive_core_type rs.generators (fun gens ->
+      List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
+      |> Exp.tuple |> lambda_s "x")
+
 let get_printer_core_type rs =
-  let rec aux ct =
-    match ct.ptyp_desc with
-    | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt rs.printers
-    | Ptyp_poly ([], ct) -> aux ct
-    | Ptyp_tuple tup -> (
-        let prints = List.map aux tup in
-        try
-          let np p =
-            let n = get_name () in
-            (apply_nolbl (Option.get p) [exp_id n], pat_s n)
-          in
-          let names, pats = List.split (List.map np prints) in
-          let b = string_concat ~sep:", " names in
-          let b' = string_concat [string_exp "("; b; string_exp ")"] in
-          Some (lambda (Pat.tuple pats) b')
-        with Invalid_argument _ -> None )
-    | _ -> None
-  in
-  aux
+  derive_core_type rs.printers (fun printers ->
+      let np p =
+        let n = get_name () in
+        (apply_nolbl (Option.get p) [exp_id n], pat_s n)
+      in
+      let names, pats = List.split (List.map np printers) in
+      let b = string_concat ~sep:", " names in
+      let b' = string_concat [string_exp "("; b; string_exp ")"] in
+      lambda (Pat.tuple pats) b')
 
 (* Given a rewritting state [rs] and and a type [t], search for the generator
    associated to [t] in [rs]. Returns a Parsetree.expression (corresponding
@@ -211,8 +203,8 @@ let initial_rs =
 
 let derive s td =
   let id = lid td.ptype_name.txt in
-  option_meet s (get_generator s td) (get_printer s td) (fun gen print ->
-      register_printer (register_generator s id gen) id print)
+  option_meet s (get_generator s td) (get_printer s td) (fun gen ->
+      register_printer (register_generator s id gen) id)
 
 (* update the rewritting state according to a type declaration *)
 let declare_type state t =

@@ -3,6 +3,8 @@ open Tools
 module type Numeric = sig
   type t
 
+  (* given a set of integer variables and a set of float variables builds the
+     top value with the corresponding environment. *)
   val init : SSet.t -> SSet.t -> t
 
   val filter : t -> Lang.arith -> Lang.cmp -> Lang.arith -> t Consistency.t
