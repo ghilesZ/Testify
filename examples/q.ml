@@ -9,11 +9,12 @@
     France). *)
 
 type t = {num: Z.t  (** Numerator. *); den: Z.t  (** Denominator, >= 0 *)}
-[@@s.t
-  den >= Z.zero
-  && den = Z.zero => (num = Z.minus_one || num = Z.zero || num = Z.one)
-  && num = Z.zero => (den = Z.minus_one || den = Z.zero || den = Z.one)
-  && ocaml (no_common_factor den num)]
+
+(* [@@s.t
+ *   den >= Z.zero
+ *   && den = Z.zero => (num = Z.minus_one || num = Z.zero || num = Z.one)
+ *   && num = Z.zero => (den = Z.minus_one || den = Z.zero || den = Z.one)
+ *   && ocaml (no_common_factor den num)] *)
 
 (* Type of rationals. Invariants: - den is always >= 0; - num and den have no
    common factor; - if den=0, then num is -1, 0 or 1. - if num=0, then den is
