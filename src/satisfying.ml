@@ -162,27 +162,20 @@ let rec get_property (t : core_type) (s : state) : expression option =
 
 (* initial rewritting state, with a few generators/printers by default *)
 let initial_rs =
-  let add_id (t_id : string) (id : string) =
-    Types.add (Longident.Lident t_id) (exp_id id)
+  let add_id (t_id : string) (g_id : string) (p_id : string) (gens, prints) =
+    ( Types.add (Longident.Lident t_id) (exp_id g_id) gens
+    , Types.add (Longident.Lident t_id) (exp_id p_id) prints )
   in
   (* TODO: add entries for int32, int64, nativeint, string, bytes, aliases
      Mod.t *)
   (* TODO: add entries for parametric types ref, list, array, option, lazy_t *)
-  let gens =
-    Types.empty
-    |> add_id "unit" "QCheck.Gen.unit"
-    |> add_id "bool" "QCheck.Gen.bool"
-    |> add_id "char" "QCheck.Gen.char"
-    |> add_id "int" "QCheck.Gen.int"
-    |> add_id "float" "QCheck.Gen.float"
-  in
-  let prints =
-    Types.empty
-    |> add_id "unit" "QCheck.Print.unit"
-    |> add_id "bool" "string_of_bool"
-    |> add_id "char" "string_of_char"
-    |> add_id "int" "string_of_int"
-    |> add_id "float" "string_of_float"
+  let gens, prints =
+    (Types.empty, Types.empty)
+    |> add_id "unit" "QCheck.Gen.unit" "QCheck.Print.unit"
+    |> add_id "bool" "QCheck.Gen.bool" "string_of_bool"
+    |> add_id "char" "QCheck.Gen.char" "string_of_char"
+    |> add_id "int" "QCheck.Gen.int" "string_of_int"
+    |> add_id "float" "QCheck.Gen.float" "string_of_float"
   in
   {gens; prints; props= Types.empty}
 
@@ -213,26 +206,21 @@ let check_print vb (s : state) =
   | _ -> failwith "bad print attribute"
 
 let get_infos (s : state) e =
-  let helper s pat =
+  let helper pat =
     match pat.ppat_desc with
-    | Ppat_constraint (_, ({ptyp_desc= Ptyp_constr ({txt; _}, []); _} as ct))
-      -> (
-      try (Some (Types.find txt s.gens), Some (Types.find txt s.prints))
-      with Not_found -> (get_gen_core_type s ct, get_printer_core_type s ct)
-      )
-    | Ppat_constraint (_, ct) ->
-        (get_gen_core_type s ct, get_printer_core_type s ct)
+    | Ppat_constraint (_, t) ->
+        (get_gen_core_type s t, get_printer_core_type s t)
     | _ -> (None, None)
   in
-  let rec aux state res = function
+  let rec aux res = function
     | Pexp_fun (Nolabel, None, pat, exp) -> (
-      match helper state pat with
-      | Some g, Some p -> aux state ((g, p) :: res) exp.pexp_desc
+      match helper pat with
+      | Some g, Some p -> aux ((g, p) :: res) exp.pexp_desc
       | _ -> raise Exit )
-    | Pexp_constraint (_, ct) -> (state, List.rev res, ct)
+    | Pexp_constraint (_, ct) -> (List.rev res, ct)
     | _ -> raise Exit
   in
-  try Some (aux s [] e) with Exit -> None
+  try Some (aux [] e) with Exit -> None
 
 (* compute a list of tests to be added to the AST. handles: - explicitly
    typed constants - (fully) explicitly typed functions *)
@@ -246,7 +234,7 @@ let gather_tests vb state =
   | Ppat_var {txt; _} -> (
     match get_infos state vb.pvb_expr.pexp_desc with
     | None -> []
-    | Some (_, args, ct) ->
+    | Some (args, ct) ->
         let loc = Format.asprintf "%a" Location.print_loc vb.pvb_loc in
         let name = Format.asprintf "%s in %s" (bold_blue txt) (blue loc) in
         get_property ct state

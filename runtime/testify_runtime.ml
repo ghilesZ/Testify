@@ -4,7 +4,7 @@ let holder = ref ([] : Test.t list)
 
 (* test storing management *)
 let add_test count name gen pred =
-  let t = QCheck.Test.make ~count ~name gen pred in
+  let t = Test.make ~count ~name gen pred in
   holder := t :: !holder
 
 let run_test () =
@@ -29,12 +29,12 @@ let get_float name (l : instance) =
 
 (* int range generator *)
 let int_range a b =
-  if b < a then invalid_arg "Gen.int_range" ;
+  if b < a then invalid_arg "int_range" ;
   if a >= 0 || b < 0 then fun st -> a + Gen.int_bound (b - a) st
   else
     fun (* range potentially bigger than max_int: we split on 0 and choose
            the itv wrt to their size ratio *)
-          st ->
+      st ->
     let f_a = float_of_int a in
     let ratio = -.f_a /. (1. +. float_of_int b -. f_a) in
     if Random.State.float st 1. <= ratio then
@@ -63,14 +63,12 @@ let weighted (gens : (float * 'a Gen.t) list) : 'a Gen.t =
   let rec aux cpt = function
     | [] -> assert false
     | (w, g) :: tl ->
-        let cpt = cpt -. w in
-        if cpt < 0. then g else aux cpt tl
+       let cpt = cpt -. w in
+       if cpt < 0. then g else aux cpt tl
   in
   fun rs ->
-    let r = QCheck.Gen.float_bound_exclusive total_weight rs in
+    let r = Gen.float_bound_exclusive total_weight rs in
     (aux r gens) rs
-
-let compose_print = QCheck.Print.pair
 
 let count = ref 1000
 
