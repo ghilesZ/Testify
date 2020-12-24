@@ -70,6 +70,8 @@ let weighted (gens : (float * 'a Gen.t) list) : 'a Gen.t =
     let r = QCheck.Gen.float_bound_exclusive total_weight rs in
     (aux r gens) rs
 
+let compose_print = QCheck.Print.pair
+
 let count = ref 1000
 
 let reject pred g = QCheck.find_example ~f:pred ~count:!count g

@@ -27,17 +27,6 @@ let bold_blue x = Format.asprintf "\x1b[34;1m%s\x1b[0m" x
 (* same as [pp], but in blue *)
 let blue x = Format.asprintf "\x1b[36m%s\x1b[0m" x
 
-(* printer composition *)
-let concat_printer p1 p2 =
-  let p1_exp = apply_nolbl_s "fst" [exp_id "x"] in
-  let p2_exp = apply_nolbl_s "snd" [exp_id "x"] in
-  lambda_s "x"
-    (string_concat
-       [ string_exp "("
-       ; string_concat ~sep:", "
-           [apply_nolbl p1 [p1_exp]; apply_nolbl p2 [p2_exp]]
-       ; string_exp ")" ])
-
 (* builds an input from a list of generators and printers and apply to it the
    function funname *)
 let generate inputs fn testname satisfy =
@@ -47,7 +36,7 @@ let generate inputs fn testname satisfy =
         let name = get_name () in
         aux
           (apply_nolbl_s "QCheck.Gen.pair" [gen; g])
-          (concat_printer print p)
+          (apply_nolbl_s "QCheck.Print.pair" [print; p])
           (Pat.tuple [pat; pat_s name])
           (exp_id name :: args) tl
   in
@@ -67,19 +56,16 @@ let generate inputs fn testname satisfy =
 
 (* main type, for rewritting state. keeps tracks of : - test properties
    attached to a type. - current generators and printers *)
-type rewritting_state =
-  { properties: expression Types.t
-  ; generators: expression Types.t
-  ; printers: expression Types.t }
+type state =
+  { props: expression Types.t
+  ; gens: expression Types.t
+  ; prints: expression Types.t }
 
-let register_printer rs lid p =
-  {rs with printers= Types.add lid p rs.printers}
+let register_print s lid p = {s with prints= Types.add lid p s.prints}
 
-let register_generator rs lid g =
-  {rs with generators= Types.add lid g rs.generators}
+let register_gen s lid g = {s with gens= Types.add lid g s.gens}
 
-let register_property rs lid p =
-  {rs with properties= Types.add lid p rs.properties}
+let register_prop s lid p = {s with props= Types.add lid p s.props}
 
 let derive_core_type env compose =
   let rec aux ct =
@@ -93,13 +79,13 @@ let derive_core_type env compose =
   in
   aux
 
-let get_gen_core_type rs =
-  derive_core_type rs.generators (fun gens ->
+let get_gen_core_type s =
+  derive_core_type s.gens (fun gens ->
       List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
       |> Exp.tuple |> lambda_s "x")
 
-let get_printer_core_type rs =
-  derive_core_type rs.printers (fun printers ->
+let get_printer_core_type s =
+  derive_core_type s.prints (fun printers ->
       let np p =
         let n = get_name () in
         (apply_nolbl (Option.get p) [exp_id n], pat_s n)
@@ -168,11 +154,10 @@ let get_printer rs t =
   | Ptype_open -> None
 
 (* gets the property attached to the type [t] in [rs] (or None) *)
-let rec get_property (t : core_type) (rs : rewritting_state) :
-    expression option =
+let rec get_property (t : core_type) (s : state) : expression option =
   match t.ptyp_desc with
-  | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt rs.properties
-  | Ptyp_poly ([], ct) -> get_property ct rs
+  | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt s.props
+  | Ptyp_poly ([], ct) -> get_property ct s
   | _ -> None
 
 (* initial rewritting state, with a few generators/printers by default *)
@@ -183,7 +168,7 @@ let initial_rs =
   (* TODO: add entries for int32, int64, nativeint, string, bytes, aliases
      Mod.t *)
   (* TODO: add entries for parametric types ref, list, array, option, lazy_t *)
-  let generators =
+  let gens =
     Types.empty
     |> add_id "unit" "QCheck.Gen.unit"
     |> add_id "bool" "QCheck.Gen.bool"
@@ -191,7 +176,7 @@ let initial_rs =
     |> add_id "int" "QCheck.Gen.int"
     |> add_id "float" "QCheck.Gen.float"
   in
-  let printers =
+  let prints =
     Types.empty
     |> add_id "unit" "QCheck.Print.unit"
     |> add_id "bool" "string_of_bool"
@@ -199,48 +184,44 @@ let initial_rs =
     |> add_id "int" "string_of_int"
     |> add_id "float" "string_of_float"
   in
-  {generators; printers; properties= Types.empty}
+  {gens; prints; props= Types.empty}
 
 let derive s td =
   let id = lid td.ptype_name.txt in
   option_meet s (get_generator s td) (get_printer s td) (fun gen ->
-      register_printer (register_generator s id gen) id)
+      register_print (register_gen s id gen) id)
 
 (* update the rewritting state according to a type declaration *)
 let declare_type state t =
   let state = derive state t in
   match get_attribute_pstr "satisfying" t.ptype_attributes with
   | None -> state
-  | Some e -> register_property state (lid t.ptype_name.txt) e
+  | Some e -> register_prop state (lid t.ptype_name.txt) e
 
 (* annotation handling *)
 (***********************)
-let check_gen state pvb =
-  match get_attribute_pstr "gen" pvb.pvb_attributes with
-  | None -> state
-  | Some {pexp_desc= Pexp_ident l; _} ->
-      {state with generators= Types.add l.txt pvb.pvb_expr state.generators}
+let check_gen vb (s : state) : state =
+  match get_attribute_pstr "gen" vb.pvb_attributes with
+  | None -> s
+  | Some {pexp_desc= Pexp_ident l; _} -> register_gen s l.txt vb.pvb_expr
   | _ -> failwith "bad gen attribute"
 
-let check_print state pvb =
-  match get_attribute_pstr "print" pvb.pvb_attributes with
-  | None -> state
-  | Some {pexp_desc= Pexp_ident l; _} ->
-      {state with printers= Types.add l.txt pvb.pvb_expr state.printers}
+let check_print vb (s : state) =
+  match get_attribute_pstr "print" vb.pvb_attributes with
+  | None -> s
+  | Some {pexp_desc= Pexp_ident l; _} -> register_print s l.txt vb.pvb_expr
   | _ -> failwith "bad print attribute"
 
-let get_infos state e =
-  let helper state pat =
+let get_infos (s : state) e =
+  let helper s pat =
     match pat.ppat_desc with
     | Ppat_constraint (_, ({ptyp_desc= Ptyp_constr ({txt; _}, []); _} as ct))
       -> (
-      try
-        ( Some (Types.find txt state.generators)
-        , Some (Types.find txt state.printers) )
-      with Not_found ->
-        (get_gen_core_type state ct, get_printer_core_type state ct) )
+      try (Some (Types.find txt s.gens), Some (Types.find txt s.prints))
+      with Not_found -> (get_gen_core_type s ct, get_printer_core_type s ct)
+      )
     | Ppat_constraint (_, ct) ->
-        (get_gen_core_type state ct, get_printer_core_type state ct)
+        (get_gen_core_type s ct, get_printer_core_type s ct)
     | _ -> (None, None)
   in
   let rec aux state res = function
@@ -251,24 +232,22 @@ let get_infos state e =
     | Pexp_constraint (_, ct) -> (state, List.rev res, ct)
     | _ -> raise Exit
   in
-  try Some (aux state [] e) with Exit -> None
+  try Some (aux s [] e) with Exit -> None
 
 (* compute a list of tests to be added to the AST. handles: - explicitly
    typed constants - (fully) explicitly typed functions *)
-let gather_tests state = function
+let gather_tests vb state =
+  match vb.pvb_pat.ppat_desc with
   (* let constant:typ = val*)
-  | { pvb_pat=
-        { ppat_desc= Ppat_constraint ({ppat_desc= Ppat_var {txt; _}; _}, typ)
-        ; _ }
-    ; _ } ->
+  | Ppat_constraint ({ppat_desc= Ppat_var {txt; _}; _}, typ) ->
       get_property typ state
       |> Option.fold ~none:[] ~some:(fun p -> [test_constant txt p])
   (* let fn (arg1:typ1) (arg2:typ2) ... : return_typ = body *)
-  | {pvb_pat= {ppat_desc= Ppat_var {txt; _}; _}; pvb_expr; pvb_loc; _} -> (
-    match get_infos state pvb_expr.pexp_desc with
+  | Ppat_var {txt; _} -> (
+    match get_infos state vb.pvb_expr.pexp_desc with
     | None -> []
     | Some (_, args, ct) ->
-        let loc = Format.asprintf "%a" Location.print_loc pvb_loc in
+        let loc = Format.asprintf "%a" Location.print_loc vb.pvb_loc in
         let name = Format.asprintf "%s in %s" (bold_blue txt) (blue loc) in
         get_property ct state
         |> Option.fold ~none:[] ~some:(fun p -> [generate args txt name p]) )
@@ -282,9 +261,8 @@ let mapper =
       | ({pstr_desc= Pstr_type (_, [t]); _} as h) :: tl ->
           aux (declare_type state t) (h :: res) tl
       | ({pstr_desc= Pstr_value (_, [pvb]); _} as h) :: tl ->
-          let tests = gather_tests state pvb in
-          let state = check_gen state pvb in
-          let state = check_print state pvb in
+          let tests = gather_tests pvb state in
+          let state = state |> check_gen pvb |> check_print pvb in
           let h' = mapper.structure_item mapper h in
           aux state (tests @ (h' :: res)) tl
       | h :: tl -> aux state (h :: res) tl
