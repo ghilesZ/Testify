@@ -6,26 +6,27 @@ open Ast_helper
 open Helper
 
 (* number of generation per test *)
-let count = ref 1000
+let count = ref 100000
 
 let add_test args = apply_runtime "add_test" args |> Str.eval
 
 let run = apply_runtime "run_test" [unit] |> Str.eval
-
-(* QCheck test for constants *)
-let test_constant (name : string) (f : expression) =
-  let f = lambda (Pat.any ()) (apply_nolbl f [exp_id name]) in
-  add_test [one; string_exp name; exp_id "QCheck.unit"; f]
-
-(* generation of QCheck test *)
-let test (name : string) (args : expression list) =
-  add_test ([int_exp !count; string_exp name] @ args)
 
 (* same as [pp], but in bold blue] *)
 let bold_blue x = Format.asprintf "\x1b[34;1m%s\x1b[0m" x
 
 (* same as [pp], but in blue *)
 let blue x = Format.asprintf "\x1b[36m%s\x1b[0m" x
+
+(* QCheck test for constants *)
+let test_constant (name : string) loc (f : expression) =
+  let f = lambda (Pat.any ()) (apply_nolbl f [exp_id name]) in
+  let name = Format.asprintf "%s in %s" (bold_blue name) (blue loc) in
+  add_test [one; string_exp name; exp_id "QCheck.unit"; f]
+
+(* generation of QCheck test *)
+let test (name : string) (args : expression list) =
+  add_test ([int_exp !count; string_exp name] @ args)
 
 (* builds an input from a list of generators and printers and apply to it the
    function funname *)
@@ -162,13 +163,11 @@ let rec get_property (t : core_type) (s : state) : expression option =
 
 (* initial rewritting state, with a few generators/printers by default *)
 let initial_rs =
-  let add_id (t_id : string) (g_id : string) (p_id : string) (gens, prints) =
-    ( Types.add (Longident.Lident t_id) (exp_id g_id) gens
-    , Types.add (Longident.Lident t_id) (exp_id p_id) prints )
+  let add_id (t : string) (g : string) (p : string) (gens, prints) =
+    (Types.add (lid t) (exp_id g) gens, Types.add (lid t) (exp_id p) prints)
   in
   (* TODO: add entries for int32, int64, nativeint, string, bytes, aliases
-     Mod.t *)
-  (* TODO: add entries for parametric types ref, list, array, option, lazy_t *)
+     Mod.t and parametric types ref, list, array, option, lazy_t *)
   let gens, prints =
     (Types.empty, Types.empty)
     |> add_id "unit" "QCheck.Gen.unit" "QCheck.Print.unit"
@@ -225,17 +224,17 @@ let get_infos (s : state) e =
 (* compute a list of tests to be added to the AST. handles: - explicitly
    typed constants - (fully) explicitly typed functions *)
 let gather_tests vb state =
+  let loc = Format.asprintf "%a" Location.print_loc vb.pvb_loc in
   match vb.pvb_pat.ppat_desc with
   (* let constant:typ = val*)
   | Ppat_constraint ({ppat_desc= Ppat_var {txt; _}; _}, typ) ->
       get_property typ state
-      |> Option.fold ~none:[] ~some:(fun p -> [test_constant txt p])
+      |> Option.fold ~none:[] ~some:(fun p -> [test_constant txt loc p])
   (* let fn (arg1:typ1) (arg2:typ2) ... : return_typ = body *)
   | Ppat_var {txt; _} -> (
     match get_infos state vb.pvb_expr.pexp_desc with
     | None -> []
     | Some (args, ct) ->
-        let loc = Format.asprintf "%a" Location.print_loc vb.pvb_loc in
         let name = Format.asprintf "%s in %s" (bold_blue txt) (blue loc) in
         get_property ct state
         |> Option.fold ~none:[] ~some:(fun p -> [generate args txt name p]) )
