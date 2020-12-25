@@ -6,7 +6,7 @@ open Ast_helper
 open Helper
 
 (* number of generation per test *)
-let count = ref 100000
+let count = ref 50000
 
 let add_test args = apply_runtime "add_test" args |> Str.eval
 
@@ -21,8 +21,8 @@ let blue x = Format.asprintf "\x1b[36m%s\x1b[0m" x
 (* QCheck test for constants *)
 let test_constant (name : string) loc (f : expression) =
   let f = lambda (Pat.any ()) (apply_nolbl f [exp_id name]) in
-  let name = Format.asprintf "%s in %s" (bold_blue name) (blue loc) in
-  add_test [one; string_exp name; exp_id "QCheck.unit"; f]
+  let n = Format.asprintf "constant: %s in %s" (bold_blue name) (blue loc) in
+  add_test [one; string_exp n; exp_id "QCheck.unit"; f]
 
 (* generation of QCheck test *)
 let test (name : string) (args : expression list) =
@@ -47,7 +47,7 @@ let generate inputs fn testname satisfy =
       let pat = pat_s name in
       let gen, print, pat, args = aux g p pat [exp_id name] tl in
       let f = lambda pat ((satisfy @@@ exp_id fn) args) in
-      let testname = Format.asprintf "of %s\n" testname in
+      let testname = Format.asprintf "function: %s" testname in
       test testname
         [apply_lab_nolab_s "QCheck.make" [("print", print)] [gen]; f]
   | [] -> assert false
