@@ -1,0 +1,11 @@
+(executable
+ (name        interval_intel)
+ (public_name interval_intel)
+ (foreign_stubs (language c) (names interval_stubs))
+ (preprocess (pps ppx_testify))
+ (libraries testify_runtime  interval_base qcheck))
+ 
+(rule
+ (targets interval_intel.h)
+ (deps    ../src-base/interval_intel.h)
+ (action  (copy %{deps} %{targets})))
