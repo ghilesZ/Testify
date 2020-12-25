@@ -121,42 +121,42 @@ let of_ocaml (expr : expression) : constr =
 
 let to_ocaml (c : constr) : expression =
   let lop = function
-    | And -> exp_id "&&"
-    | Or -> exp_id "||"
+    | And -> exp_id "( && )"
+    | Or -> exp_id "( || )"
     | Imply ->
         lambda_s "x"
           (lambda_s "y"
-             (apply_nolbl_s "||"
+             (apply_nolbl_s "( || )"
                 [apply_nolbl_s "not" [exp_id "x"]; exp_id "y"]))
   in
   let binop = function
-    | Add -> "+"
-    | Sub -> "-"
-    | Mul -> "*"
-    | Div -> "/"
-    | Pow -> "**"
-    | AddF -> "+."
-    | SubF -> "-."
-    | MulF -> "*."
-    | DivF -> "/."
+    | Add -> "( + )"
+    | Sub -> "( - )"
+    | Mul -> "( * )"
+    | Div -> "( / )"
+    | Pow -> "( ** )"
+    | AddF -> "( +. )"
+    | SubF -> "( -. )"
+    | MulF -> "( *. )"
+    | DivF -> "( /. )"
   in
   let rec arith = function
     | Int i -> int_exp i
     | Float f -> float_exp f
     | Var s -> exp_id s
-    | Neg x -> apply_nolbl_s "~-" [arith x]
-    | NegF x -> apply_nolbl_s "~-." [arith x]
+    | Neg x -> apply_nolbl_s "( ~- )" [arith x]
+    | NegF x -> apply_nolbl_s "( ~-. )" [arith x]
     | Binop (a1, b, a2) -> apply_nolbl_s (binop b) [arith a1; arith a2]
     | ToInt x -> apply_nolbl_s "int_of_float" [arith x]
     | ToFloat x -> apply_nolbl_s "float" [arith x]
   in
   let cmp_to_string = function
-    | Leq -> "<="
-    | Lt -> "<"
-    | Geq -> ">="
-    | Gt -> ">"
-    | Eq -> "="
-    | Diseq -> "<>"
+    | Leq -> "( <= )"
+    | Lt -> "( < )"
+    | Geq -> "( >= )"
+    | Gt -> "( > )"
+    | Eq -> "( = )"
+    | Diseq -> "( <> )"
   in
   let rec aux = function
     | Rejection e -> e

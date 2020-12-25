@@ -508,19 +508,20 @@ let max (x : t) (y : t) : t =
 let min (x : t) (y : t) : t =
   {low= fmin x.low y.low; high= fmin x.high y.high}
 
-let ( + ) ({low= a; high= b} : t) ({low= c; high= d} : t) =
+let ( + ) ({low= a; high= b} : t) ({low= c; high= d} : t) : t =
   {low= Low.(a +. c); high= High.(b +. d)}
 
-let ( - ) ({low= a; high= b} : t) ({low= c; high= d} : t) =
+let ( - ) ({low= a; high= b} : t) ({low= c; high= d} : t) : t =
   {low= Low.(a -. d); high= High.(b -. c)}
 
-let ( +. ) ({low= a; high= b} : t) (x : float) =
+let ( +. ) ({low= a; high= b} : t) (x : float) : t =
   {low= Low.(a +. x); high= High.(b +. x)}
 
-let ( +: ) (x : float) ({low= a; high= b} : t) =
+let ( +: ) (x : float) ({low= a; high= b} : t) : t =
   {low= Low.(a +. x); high= High.(b +. x)}
 
-let ( -. ) {low= a; high= b} x = {low= Low.(a -. x); high= High.(b -. x)}
+let ( -. ) ({low= a; high= b} : t) (x : float) : t =
+  {low= Low.(a -. x); high= High.(b -. x)}
 
 let ( -: ) (x : float) ({low= c; high= d} : t) : t =
   {low= Low.(x -. d); high= High.(x -. c)}
@@ -545,15 +546,15 @@ let ( * ) ({low= a; high= b} : t) ({low= c; high= d} : t) : t =
     { low= fmin Low.(a *. d) Low.(b *. c)
     ; high= fmax High.(a *. c) High.(b *. d) }
 
-let ( *. ) y {low= a; high= b} =
+let ( *. ) (y : float) ({low= a; high= b} : t) : t =
   let sy = compare y 0. in
   if sy = 0 then {low= 0.; high= 0.}
   else if sy < 0 then {low= Low.(b *. y); high= High.(a *. y)}
   else {low= Low.(a *. y); high= High.(b *. y)}
 
-let ( *: ) a y = y *. a
+let ( *: ) (a : t) (y : float) : t = y *. a
 
-let ( / ) ({low= a; high= b} : t) ({low= c; high= d} : t) =
+let ( / ) ({low= a; high= b} : t) ({low= c; high= d} : t) : t =
   let sc = compare c 0. and sd = compare d 0. in
   if sd = 0 then
     if sc = 0 then raise Division_by_zero
@@ -575,7 +576,7 @@ let ( / ) ({low= a; high= b} : t) ({low= c; high= d} : t) =
   else if a = 0. && b = 0. then {low= 0.; high= 0.}
   else {low= neg_infinity; high= infinity}
 
-let ( /. ) {low= a; high= b} y =
+let ( /. ) ({low= a; high= b} : t) (y : float) : t =
   let sy = compare y 0. in
   if sy = 0 then raise Division_by_zero
   else if 0 < sy then {low= Low.(a /. y); high= High.(b /. y)}

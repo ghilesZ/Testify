@@ -9,7 +9,7 @@ let add_test count name gen pred =
 
 let run_test () =
   let holder = List.rev !holder in
-  QCheck_base_runner.run_tests ~colors:true ~long:false ~verbose:true holder
+  QCheck_base_runner.run_tests ~colors:true ~verbose:true holder
 
 (* abstract generators handling *)
 type generable = GInt of int | GFloat of float

@@ -6,7 +6,7 @@ open Ast_helper
 open Helper
 
 (* number of generation per test *)
-let count = ref 50000
+let count = ref 100000
 
 let add_test args = apply_runtime "add_test" args |> Str.eval
 
@@ -164,7 +164,8 @@ let rec get_property (t : core_type) (s : state) : expression option =
 (* initial rewritting state, with a few generators/printers by default *)
 let initial_rs =
   let add_id (t : string) (g : string) (p : string) (gens, prints) =
-    (Types.add (lid t) (exp_id g) gens, Types.add (lid t) (exp_id p) prints)
+    ( Types.add (lparse t) (exp_id g) gens
+    , Types.add (lparse t) (exp_id p) prints )
   in
   (* TODO: add entries for int32, int64, nativeint, string, bytes, aliases
      Mod.t and parametric types ref, list, array, option, lazy_t *)
@@ -179,7 +180,7 @@ let initial_rs =
   {gens; prints; props= Types.empty}
 
 let derive s td =
-  let id = lid td.ptype_name.txt in
+  let id = lparse td.ptype_name.txt in
   option_meet s (get_generator s td) (get_printer s td) (fun gen ->
       register_print (register_gen s id gen) id)
 
@@ -188,7 +189,7 @@ let declare_type state t =
   let state = derive state t in
   match get_attribute_pstr "satisfying" t.ptype_attributes with
   | None -> state
-  | Some e -> register_prop state (lid t.ptype_name.txt) e
+  | Some e -> register_prop state (lparse t.ptype_name.txt) e
 
 (* annotation handling *)
 (***********************)

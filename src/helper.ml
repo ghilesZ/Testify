@@ -1,5 +1,11 @@
 (* This module provides helpers for ast building *)
 
+let lparse s =
+  try Parse.longident (Lexing.from_string s)
+  with _ ->
+    (* for operators *)
+    Parse.longident (Lexing.from_string ("( " ^ s ^ " )"))
+
 open Migrate_parsetree
 open Ast_410
 open Parsetree
@@ -9,19 +15,13 @@ open Ast_helper
 (* same as mkloc but with optional argument; default is Location.none*)
 let none_loc ?(loc = Location.none) s = Location.mkloc s loc
 
-(* builds a Longident.t from a string *)
-let lid (id : string) = Longident.Lident id
-
-let lparse s =
-  String.split_on_char '.' s |> Longident.unflatten |> Option.get
-
 (* builds a Longident.t Location.t from a string *)
 let lid_loc ?(loc = Location.none) id = none_loc ~loc (lparse id)
 
 let pat_s s = Pat.var (none_loc s)
 
 (* given a string [name], builds the identifier [name] *)
-let exp_id ?(loc = Location.none) name = lid_loc name |> Exp.ident ~loc
+let exp_id ?loc name = lid_loc ?loc name |> Exp.ident
 
 (* same as apply but argument are not labelled *)
 let apply_nolbl f args = Exp.apply f (List.map (fun a -> (Nolabel, a)) args)
@@ -60,12 +60,6 @@ let ( |><| ) f g = lambda_s "x" (apply_nolbl f [apply_nolbl g [exp_id "x"]])
 (* doouble application *)
 let ( @@@ ) f g e = apply_nolbl f [apply_nolbl g e]
 
-(* application of bang *)
-let bang = apply_nolbl_s "!"
-
-(* application of := *)
-let assign = apply_nolbl_s ":="
-
 (* boolean expressions *)
 let true_ = Exp.construct (lid_loc "true") None
 
@@ -90,7 +84,7 @@ let vb_s id exp = Vb.mk (pat_s id) exp
 (* ast for lists *)
 let empty_list_exp = Exp.construct (lid_loc "[]") None
 
-let cons_exp h t = Exp.construct (lid_loc "::") (Some (Exp.tuple [h; t]))
+let cons_exp h t = Exp.construct (lid_loc "( :: )") (Some (Exp.tuple [h; t]))
 
 (* fresh identifier generator *)
 let get_name =
@@ -106,10 +100,10 @@ let string_concat ?sep l =
   in
   let rec aux acc = function
     | [] -> acc
-    | [last] -> apply_nolbl_s "^" [acc; last]
+    | [last] -> apply_nolbl_s "(^)" [acc; last]
     | h :: tl ->
-        let acc = apply_nolbl_s "^" [acc; h] in
-        aux (apply_nolbl_s "^" [acc; sep]) tl
+        let acc = apply_nolbl_s "(^)" [acc; h] in
+        aux (apply_nolbl_s "(^)" [acc; sep]) tl
   in
   aux (string_exp "") l
 
