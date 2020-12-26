@@ -353,35 +353,36 @@ let ( *.$ ) = I.( *. )
 
 let ( *$ ) = I.( * )
 
-let ( /$. ) x y = try I.(x /. y) with Division_by_zero -> failwith "/$."
+let ( /$. ) x y = try I.(x /. y) with Division_by_zero -> invalid_arg "/$."
 
-let ( /.$ ) x y = try I.(x /: y) with Division_by_zero -> failwith "/.$"
+let ( /.$ ) x y = try I.(x /: y) with Division_by_zero -> invalid_arg "/.$"
 
-let ( /$ ) x y = try I.(x / y) with Division_by_zero -> failwith "/$"
+let ( /$ ) x y = try I.(x / y) with Division_by_zero -> invalid_arg "/$"
 
 let mod_I_f x y =
-  try I.mod_f x y with Division_by_zero -> failwith "mod_I_f"
+  try I.mod_f x y with Division_by_zero -> invalid_arg "mod_I_f"
 
-let inv_I x = try I.inv x with Division_by_zero -> failwith "inv_I"
+let inv_I x = try I.inv x with Division_by_zero -> invalid_arg "inv_I"
 
 type pos_itv = t = {low: float; high: float} [@@s.t low <= high && low >= 0.]
 
 let sqrt_I (x : pos_itv) : pos_itv =
-  try I.sqrt x with Domain_error _ -> failwith "sqrt_I"
+  try I.sqrt x with Domain_error _ -> invalid_arg "sqrt_I"
 
 let pow_I_i (x : t) (y : int) : t =
-  try I.(x ** y) with Domain_error _ -> failwith "pow_I_i"
+  try I.(x ** y) with Domain_error _ -> invalid_arg "pow_I_i"
 
 let ( **$. ) (x : t) (y : float) : t =
-  try I.(x **. y) with Domain_error _ -> failwith "**$."
+  try I.(x **. y) with Domain_error _ -> invalid_arg "**$."
 
 let ( **.$ ) (x : float) (y : t) : t =
-  try I.(x **: y) with Domain_error _ -> failwith "**.$"
+  try I.(x **: y) with Domain_error _ -> invalid_arg "**.$"
 
 let ( **$ ) (x : t) (y : t) : t =
-  try I.(x *** y) with Domain_error _ -> failwith "**$"
+  try I.(x *** y) with Domain_error _ -> invalid_arg "**$"
 
-let log_I (x : t) : t = try I.log x with Domain_error _ -> failwith "log_I"
+let log_I (x : t) : t =
+  try I.log x with Domain_error _ -> invalid_arg "log_I"
 
 let exp_I (x : t) : t = I.exp x
 
@@ -395,18 +396,18 @@ let sin_I (x : t) : img = I.sin x
 let tan_I (x : t) : t = I.tan x
 
 let acos_I (x : img) : t =
-  try I.acos x with Domain_error _ -> failwith "acos_I"
+  try I.acos x with Domain_error _ -> invalid_arg "acos_I"
 
 let asin_I (x : img) : t =
-  try I.asin x with Domain_error _ -> failwith "asin_I"
+  try I.asin x with Domain_error _ -> invalid_arg "asin_I"
 
 let atan_I (x : t) : t = I.atan x
 
 let atan2mod_I_I x y =
-  try I.atan2mod x y with Domain_error _ -> failwith "atan2mod_I_I"
+  try I.atan2mod x y with Domain_error _ -> invalid_arg "atan2mod_I_I"
 
 let atan2_I_I x y =
-  try I.atan2 x y with Domain_error _ -> failwith "atan2_I_I"
+  try I.atan2 x y with Domain_error _ -> invalid_arg "atan2_I_I"
 
 type img_h = t = {low: float; high: float} [@@s.t low <= high && low >= 1.]
 

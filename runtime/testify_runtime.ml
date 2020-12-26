@@ -3,8 +3,12 @@ open QCheck
 let holder = ref ([] : Test.t list)
 
 (* test storing management *)
-let add_test count name gen pred =
-  let t = Test.make ~count ~name gen pred in
+let add_test count name arb pred =
+  let pred x =
+    try pred x with
+    | Invalid_argument _ -> true
+  in
+  let t = Test.make ~count ~name arb pred in
   holder := t :: !holder
 
 let run_test () =
