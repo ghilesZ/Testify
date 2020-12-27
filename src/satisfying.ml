@@ -30,30 +30,23 @@ let test (name : string) (args : expression list) =
 
 (* builds an input from a list of generators and printers and apply to it the
    function funname *)
-let generate inputs fn testname satisfy =
-  let rec aux gen print pat args = function
+let generate args fn testname satisfy =
+  let rec aux (gen, print) pat args = function
     | [] -> (gen, print, pat, List.rev args)
     | (g, p) :: tl ->
         let name = get_name () in
         aux
-          (apply_nolbl_s "QCheck.Gen.pair" [gen; g])
-          (apply_nolbl_s "QCheck.Print.pair" [print; p])
+          ( apply_nolbl_s "QCheck.Gen.pair" [gen; g]
+          , apply_nolbl_s "QCheck.Print.pair" [print; p] )
           (Pat.tuple [pat; pat_s name])
           (exp_id name :: args) tl
   in
-  match inputs with
-  | (g, p) :: tl ->
-      let name = get_name () in
-      let pat = pat_s name in
-      let gen, print, pat, args = aux g p pat [exp_id name] tl in
-      let f = lambda pat ((satisfy @@@ exp_id fn) args) in
-      let testname = Format.asprintf "function: %s" testname in
-      test testname
-        [apply_lab_nolab_s "QCheck.make" [("print", print)] [gen]; f]
-  | [] -> assert false
-
-(* Utilities for state rewritting *)
-(**********************************)
+  let id = get_name () in
+  let pat = pat_s id in
+  let g, p, pat, args = aux (List.hd args) pat [exp_id id] (List.tl args) in
+  let f = lambda pat ((satisfy @@@ exp_id fn) args) in
+  let testname = Format.asprintf "function: %s" testname in
+  test testname [apply_lab_nolab_s "QCheck.make" [("print", p)] [g]; f]
 
 (* main type, for rewritting state. keeps tracks of : - test properties
    attached to a type. - current generators and printers *)
@@ -68,7 +61,7 @@ let register_gen s lid g = {s with gens= Types.add lid g s.gens}
 
 let register_prop s lid p = {s with props= Types.add lid p s.props}
 
-let derive_core_type env compose =
+let derive_ctype env compose =
   let rec aux ct =
     match ct.ptyp_desc with
     | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt env
@@ -80,13 +73,13 @@ let derive_core_type env compose =
   in
   aux
 
-let get_gen_core_type s =
-  derive_core_type s.gens (fun gens ->
+let get_gen_ctype s =
+  derive_ctype s.gens (fun gens ->
       List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
       |> Exp.tuple |> lambda_s "x")
 
-let get_printer_core_type s =
-  derive_core_type s.prints (fun printers ->
+let get_printer_ctype s =
+  derive_ctype s.prints (fun printers ->
       let np p =
         let n = get_name () in
         (apply_nolbl (Option.get p) [exp_id n], pat_s n)
@@ -99,17 +92,15 @@ let get_printer_core_type s =
 (* Given a rewritting state [rs] and and a type [t], search for the generator
    associated to [t] in [rs]. Returns a Parsetree.expression (corresponding
    to a Gen.t) option. *)
-let get_generator rs t =
-  match t.ptype_kind with
-  | Ptype_abstract -> (
-    match t.ptype_manifest with
-    | None -> None
-    | Some m -> get_gen_core_type rs m )
+let get_generator s {ptype_kind; ptype_manifest; ptype_params; _} =
+  let s = List.fold_left (fun acc (_ct, _) -> acc) s ptype_params in
+  match ptype_kind with
+  | Ptype_abstract -> Option.(join (map (get_gen_ctype s) ptype_manifest))
   | Ptype_variant _ -> None
   | Ptype_record labs -> (
     try
       let handle_field f =
-        let gen = get_gen_core_type rs f.pld_type |> Option.get in
+        let gen = get_gen_ctype s f.pld_type |> Option.get in
         (lid_loc f.pld_name.txt, apply_nolbl gen [exp_id "rs"])
       in
       let app = Exp.record (List.map handle_field labs) None in
@@ -124,22 +115,20 @@ let get_generator rs td =
     match Gegen.generate td e with
     | None -> Option.map (rejection e) (get_generator rs td)
     | x -> x )
-  | None -> None
+  | None -> get_generator rs td
 
 (* Given a rewritting state [rs] and and a type [t], search for the printer
    associated to [t] in [rs]. Returns a Parsetree.expression (corresponding
    to a printer) option. *)
-let get_printer rs t =
-  match t.ptype_kind with
-  | Ptype_abstract -> (
-    match t.ptype_manifest with
-    | None -> None
-    | Some m -> get_printer_core_type rs m )
+let get_printer s {ptype_kind; ptype_manifest; _} =
+  match ptype_kind with
+  | Ptype_abstract ->
+      Option.(join (map (get_printer_ctype s) ptype_manifest))
   | Ptype_variant _ -> None
   | Ptype_record labs -> (
     try
       let handle_field f =
-        let print = get_printer_core_type rs f.pld_type |> Option.get in
+        let print = get_printer_ctype s f.pld_type |> Option.get in
         let field = apply_nolbl print [exp_id f.pld_name.txt] in
         let field_name = string_exp f.pld_name.txt in
         string_concat ~sep:"=" [field_name; field]
@@ -181,8 +170,8 @@ let initial_rs =
 
 let derive s td =
   let id = lparse td.ptype_name.txt in
-  option_meet s (get_generator s td) (get_printer s td) (fun gen ->
-      register_print (register_gen s id gen) id)
+  option_meet s (get_generator s td) (get_printer s td) (fun g p ->
+      register_print (register_gen s id g) id p)
 
 (* update the rewritting state according to a type declaration *)
 let declare_type state t =
@@ -208,8 +197,7 @@ let check_print vb (s : state) =
 let get_infos (s : state) e =
   let helper pat =
     match pat.ppat_desc with
-    | Ppat_constraint (_, t) ->
-        (get_gen_core_type s t, get_printer_core_type s t)
+    | Ppat_constraint (_, t) -> (get_gen_ctype s t, get_printer_ctype s t)
     | _ -> (None, None)
   in
   let rec aux res = function

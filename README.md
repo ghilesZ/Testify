@@ -30,6 +30,20 @@ integers. As you also noticed, Testify uses the wonderful QCheck
 library do the tests. Other examples are available in the examples
 directory.
 
+### Usage
+Testify is defined following the inline-test backend facility of
+[dune](https://dune.readthedocs.io/en/stable/tests.html#defining-your-own-inline-test-backend),
+thus you can simply add the following to your stanza in your dune file
+
+```
+(preprocess (pps ppx_testify))
+(inline_tests (backend ppx_testify))
+```
+
+and run the generated tests by doing `dune runtest`.  You might need
+to add the `--no-buffer` option in case dune messes with the colored
+output.
+
 ### Why a PPX for test generations?
 - because no one likes writting tests.
 - because of the 0 runtime overhead, as the *real* program and the tested one can be compiled separately.

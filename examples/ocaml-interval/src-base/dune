@@ -1,5 +1,5 @@
-(executable
+(library
   (name interval)
   (preprocess (pps ppx_testify))
-  (libraries testify_runtime qcheck)
+  (inline_tests (backend ppx_testify))
   (foreign_stubs (language c) (names interval_base_stubs)))

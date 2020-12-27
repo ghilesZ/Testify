@@ -5,6 +5,9 @@
   (name ppx_testify)
   (wrapped false)
   (kind ppx_rewriter)
+  (ppx_runtime_libraries testify_runtime)
+  (inline_tests.backend
+    (runner_libraries testify_runtime qcheck))
   (libraries
      zarith
      ppx_tools_versioned

@@ -6,7 +6,7 @@ let holder = ref ([] : Test.t list)
 let add_test count name arb pred =
   let pred x =
     try pred x with
-    | Invalid_argument _ -> true
+    | Invalid_argument _ | Failure _ -> true
   in
   let t = Test.make ~count ~name arb pred in
   holder := t :: !holder
