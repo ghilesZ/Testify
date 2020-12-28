@@ -1,31 +1,7 @@
 (include_subdirs no)
 
-(executable
-  (name positive)
-  (modules positive)
-  (preprocess (pps ppx_testify))
-  (libraries testify_runtime qcheck))
-  
-(executable
-  (name itv)
-  (modules itv)
-  (preprocess (pps ppx_testify))
-  (libraries testify_runtime qcheck))
-  
-(executable
-  (name itv_record)
-  (modules itv_record)
+(executables
+  (names positive itv itv_record circle)
   (preprocess (pps ppx_testify))
   (libraries testify_runtime qcheck))
 
-(executable
-  (name circle)
-  (modules circle)
-  (preprocess (pps ppx_testify))
-  (libraries testify_runtime  qcheck))
-
-(executable
-  (name q)
-  (modules q)
-  (preprocess (pps ppx_testify))
-  (libraries zarith testify_runtime qcheck))

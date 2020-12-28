@@ -1,0 +1,4 @@
+(executable
+  (name q)
+  (preprocess (pps ppx_testify))
+  (libraries zarith testify_runtime qcheck))

@@ -95,6 +95,4 @@ let generate t sat =
     | Ptype_variant _ -> None
     | Ptype_record _labs -> (* todo records *) None
     | Ptype_open -> None
-  with OutOfSubset msg ->
-    Format.printf "%s\n%!" msg ;
-    None
+  with OutOfSubset _ -> None

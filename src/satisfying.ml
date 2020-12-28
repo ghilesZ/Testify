@@ -6,7 +6,7 @@ open Ast_helper
 open Helper
 
 (* number of generation per test *)
-let count = ref 100000
+let count = ref 10000
 
 let add_test args = apply_runtime "add_test" args |> Str.eval
 
@@ -61,14 +61,14 @@ let register_gen s lid g = {s with gens= Types.add lid g s.gens}
 
 let register_prop s lid p = {s with props= Types.add lid p s.props}
 
+(* generic derivation function *)
 let derive_ctype env compose =
   let rec aux ct =
     match ct.ptyp_desc with
     | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt env
     | Ptyp_poly ([], ct) -> aux ct
     | Ptyp_tuple tup -> (
-        let subtypes = List.map aux tup in
-        try compose subtypes |> Option.some with Invalid_argument _ -> None )
+      try Some (compose (List.map aux tup)) with Invalid_argument _ -> None )
     | _ -> None
   in
   aux
@@ -88,6 +88,12 @@ let get_printer_ctype s =
       let b = string_concat ~sep:", " names in
       let b' = string_concat [string_exp "("; b; string_exp ")"] in
       lambda (Pat.tuple pats) b')
+
+let get_prop_ctype s =
+  derive_ctype s.props (fun props ->
+      let pat = List.map (assert false) props |> Pat.tuple in
+      let expr = List.fold_left (assert false) None props in
+      lambda pat (Option.get expr))
 
 (* Given a rewritting state [rs] and and a type [t], search for the generator
    associated to [t] in [rs]. Returns a Parsetree.expression (corresponding
@@ -173,12 +179,29 @@ let derive s td =
   option_meet s (get_generator s td) (get_printer s td) (fun g p ->
       register_print (register_gen s id g) id p)
 
+(* restriction: we force the same (structurally equal) pattern to appear on
+   both type declarations *)
+let compose_properties e1 e2 =
+  match (e1.pexp_desc, e2.pexp_desc) with
+  | Pexp_fun (l1, o1, p1, e1), Pexp_fun (l2, o2, p2, e2) ->
+      if p1 = p2 && l1 = l2 && o1 = o2 then
+        let pred = Pexp_fun (l1, o1, p1, apply_nolbl_s "( && )" [e1; e2]) in
+        {e1 with pexp_desc= pred}
+      else failwith "properties should have same pattern"
+  | _ -> failwith "properties should be functions"
+
 (* update the rewritting state according to a type declaration *)
 let declare_type state t =
   let state = derive state t in
   match get_attribute_pstr "satisfying" t.ptype_attributes with
   | None -> state
   | Some e -> register_prop state (lparse t.ptype_name.txt) e
+
+(* | Some e ->
+ *     register_prop state (lparse t.ptype_name.txt)
+ *       ( match get_property (Option.get t.ptype_manifest) state with
+ *       | None -> e
+ *       | Some e' -> compose_properties e e' ) *)
 
 (* annotation handling *)
 (***********************)

@@ -20,7 +20,8 @@ module Fpu = Fpu
 module Low = Fpu.Low
 module High = Fpu.High
 
-type t = Interval.t = {low: float; high: float} [@@s.t low <= high]
+type t = Interval.t = {low: float; high: float}
+[@@satisfying fun {low; high} -> low <= high]
 
 exception Division_by_zero = Interval.Division_by_zero
 
@@ -364,7 +365,7 @@ let mod_I_f x y =
 
 let inv_I x = try I.inv x with Division_by_zero -> invalid_arg "inv_I"
 
-type pos_itv = t = {low: float; high: float} [@@s.t low <= high && low >= 0.]
+type pos_itv = t [@@satisfying fun {low; high} -> low <= high && low >= 0.]
 
 let sqrt_I (x : pos_itv) : pos_itv =
   try I.sqrt x with Domain_error _ -> invalid_arg "sqrt_I"
@@ -386,8 +387,8 @@ let log_I (x : t) : t =
 
 let exp_I (x : t) : t = I.exp x
 
-type img = t = {low: float; high: float}
-[@@s.t low <= high && low >= -1. && high <= 1.]
+type img = t
+[@@satisfying fun {low; high} -> low <= high && low >= -1. && high <= 1.]
 
 let cos_I (x : t) : img = I.cos x
 
@@ -409,7 +410,8 @@ let atan2mod_I_I x y =
 let atan2_I_I x y =
   try I.atan2 x y with Domain_error _ -> invalid_arg "atan2_I_I"
 
-type img_h = t = {low: float; high: float} [@@s.t low <= high && low >= 1.]
+type img_h = t = {low: float; high: float}
+[@@satisfying fun {low; high} -> low <= high && low >= 1.]
 
 let cosh_I (x : t) : img_h = I.cosh x
 
