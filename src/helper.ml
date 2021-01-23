@@ -117,9 +117,6 @@ end)
 (* zagreus *)
 let add_s t_id = Types.add (Longident.Lident t_id)
 
-let option_meet default o1 o2 f =
-  match (o1, o2) with Some v1, Some v2 -> f v1 v2 | _ -> default
-
 (* keeps the attributes with name 'n'*)
 let check_attributes n attrs =
   List.filter (fun a -> a.attr_name.txt = n) attrs

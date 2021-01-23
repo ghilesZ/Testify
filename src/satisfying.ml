@@ -6,7 +6,7 @@ open Ast_helper
 open Helper
 
 (* number of generation per test *)
-let count = ref 10000
+let count = ref 1000
 
 let add_test args = apply_runtime "add_test" args |> Str.eval
 
@@ -91,9 +91,20 @@ let get_printer_ctype s =
 
 let get_prop_ctype s =
   derive_ctype s.props (fun props ->
-      let pat = List.map (assert false) props |> Pat.tuple in
-      let expr = List.fold_left (assert false) None props in
-      lambda pat (Option.get expr))
+      let compose (pats, prop) p =
+        match (prop, p) with
+        | x, None -> (Pat.any () :: pats, x)
+        | None, Some p ->
+            let id = get_name () in
+            let app = apply_nolbl p [exp_id id] in
+            (pat_s id :: pats, Some app)
+        | Some p', Some p ->
+            let id = get_name () in
+            let app = apply_nolbl p' [exp_id id] in
+            (pat_s id :: pats, Some (apply_nolbl_s "( && )" [p; app]))
+      in
+      let pats, body = List.fold_left compose ([], None) props in
+      lambda (Pat.tuple (List.rev pats)) (Option.get body))
 
 (* Given a rewritting state [rs] and and a type [t], search for the generator
    associated to [t] in [rs]. Returns a Parsetree.expression (corresponding
@@ -174,10 +185,12 @@ let initial_rs =
   in
   {gens; prints; props= Types.empty}
 
-let derive s td =
+let derive (s : state) (td : type_declaration) =
   let id = lparse td.ptype_name.txt in
-  option_meet s (get_generator s td) (get_printer s td) (fun g p ->
-      register_print (register_gen s id g) id p)
+  let s' =
+    Option.fold ~none:s ~some:(register_gen s id) (get_generator s td)
+  in
+  Option.fold ~none:s' ~some:(register_print s' id) (get_printer s' td)
 
 (* restriction: we force the same (structurally equal) pattern to appear on
    both type declarations *)
