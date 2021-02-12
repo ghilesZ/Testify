@@ -6,7 +6,7 @@ open Ast_helper
 open Helper
 
 (* number of generation per test *)
-let count = ref 1000
+let count = ref 100000
 
 let add_test args = apply_runtime "add_test" args |> Str.eval
 
@@ -246,8 +246,8 @@ let get_infos (s : state) e =
   in
   try Some (aux [] e) with Exit -> None
 
-(* compute a list of tests to be added to the AST. handles: - explicitly
-   typed constants - (fully) explicitly typed functions *)
+(* compute a list of tests to be added to the AST. handles: explicitly typed
+   constants and (fully) explicitly typed functions *)
 let gather_tests vb state =
   let loc = Format.asprintf "%a" Location.print_loc vb.pvb_loc in
   match vb.pvb_pat.ppat_desc with
@@ -270,8 +270,10 @@ let mapper =
   let handle_str mapper str =
     let rec aux state res = function
       | [] -> List.rev (run :: res)
+      (* type declaration *)
       | ({pstr_desc= Pstr_type (_, [t]); _} as h) :: tl ->
           aux (declare_type state t) (h :: res) tl
+      (* value declaration *)
       | ({pstr_desc= Pstr_value (_, [pvb]); _} as h) :: tl ->
           let tests = gather_tests pvb state in
           let state = state |> check_gen pvb |> check_print pvb in
