@@ -6,7 +6,6 @@ module Num =
     let max_num = max_float
   end
 
-
 module Var = String
 module VMap = Map.Make(Var)
 module VSet = Set.Make(Var)
@@ -26,6 +25,7 @@ let empty : t = {bounds = VMap.empty;
                  reduced = true}
 
 let add_var (var : Var.t) ?(inf=Num.min_num) ?(sup=Num.max_num) (pentagon : t) : t =
+  assert (inf < sup);
   {pentagon with
     bounds = VMap.add var (inf,sup) pentagon.bounds;
     upper = VMap.add var VSet.empty pentagon.upper;
@@ -139,8 +139,9 @@ let transitive_reduction (pentagon:t) : t =
 
 let find_var p =
   VSet.find_first_opt
-    (fun v -> VSet.cardinal (VMap.find v p.upper) <= 1
-              && VSet.cardinal (VMap.find v p.lower) <= 1)
+    (fun v -> let uc = VSet.cardinal (VMap.find v p.upper) in
+              let ul = VSet.cardinal (VMap.find v p.lower) in
+              uc <= 1 && ul <= 1)
     p.vars
 
 let find_vars p =
@@ -152,23 +153,102 @@ let find_vars p =
     | Some y -> x,y in
   find_vars p.vars p.vars
 
+type rule = B of Var.t | I of Var.t | T of Var.t | E of Var.t
+
 let unfold_bit_decomp pentagon =
   let rec fold acc todo =
     match todo with
       [] -> acc
     | (ord, orig, p) :: q ->
        if VSet.equal p.vars VSet.empty then
-         fold ((ord,orig)::acc) q
+         fold ((List.rev ord,orig)::acc) q
        else
          (match find_var p with
-         | None -> let x,y = find_vars p in
-                   let f p = transitive_reduction @@ add_rel x y p in
-                   let g p = transitive_reduction @@ add_rel y x p in
-                   fold acc ((ord, f orig, f p)::(ord, g orig, g p)::q)
-         | Some v -> fold acc (((v::ord), orig, del_var v p)::q)) in
+          | None -> let x,y = find_vars p in
+                    let f p = transitive_reduction @@ add_rel x y p in
+                    let g p = transitive_reduction @@ add_rel y x p in
+                    fold acc ((ord, f orig, f p)::(ord, g orig, g p)::q)
+         | Some v ->
+            let uc = VSet.cardinal (VMap.find v p.upper) in
+            let ul = VSet.cardinal (VMap.find v p.lower) in
+            let v' =
+              (match uc, ul with
+               | 0,0 -> E v
+               | 0,1 -> B v
+               | 1,0 -> T v
+               | 1,1 -> I v
+               | _ -> assert false) in
+            fold acc (((v'::ord), orig, del_var v p)::q)) in
   let p = transitive_reduction pentagon in
   fold [] [([],p,p)]
+
+type scalar = V of Var.t | N of Num.t
+
+let rec unfold_bounds_const ord pentagon =
+  let rec fold acc ord p =
+    match ord with
+    | [] -> List.map List.rev acc
+    | r :: ord' ->
+       (match r with
+        | B v -> let u = VSet.choose @@ VMap.find v p.lower in
+                 let vlo, vup = VMap.find v p.bounds in
+                 let ulo, uup = VMap.find u p.bounds in
+                 (match uup < vlo, ulo < vlo, uup < vup with
+                  | true,_,_ -> fold (List.map (fun x -> (v,N vlo,N vup)::x) acc)
+                                  ord' (del_var v p)
+                  | false,true,true -> (* u <= v 
+                                          p avec u \in [vlo,uup] et v \in [u,vup]
+                                          p avec u \in [ulo,vlo] et v \in [vlo, vup] *)
+                     fold (List.map (fun x -> (v,V u,N vup)::x) acc) ord'
+                       (del_var v {p with bounds = VMap.add u (vlo, uup) p.bounds})
+                     @ fold (List.map (fun x -> (v,N vlo,N vup)::x) acc) ord'
+                         (del_var v {p with bounds = VMap.add u (ulo, vlo) p.bounds})
+                  | _ ->
+                     (* u in v 
+                        p avec u \in [ulo, uup] et v \in [u, vup] *)
+                     fold (List.map (fun x -> (v,V u,N vup)::x) acc) ord'
+                       (del_var v {p with bounds = VMap.add u (ulo, min vup uup) p.bounds}))
+                  (* (\* Memes cas mais je voulais etre sur *\)
+                   * | false,false,false -> (\* v <= u
+                   *                           p avec u \in [ulo,vup] et v \in [u, vup] *\)
+                   *    fold (List.map (fun x -> (v,V u,N vup)::x) acc) ord'
+                   *      (del_var v {p with bounds = VMap.add u (ulo, vup) p.bounds})
+                   * | false,true,false -> (\* v in u 
+                   *                          p avec u \in [ulo, vup] et v \in [u, vup] *\)
+                   *    fold (List.map (fun x -> (v,V u,N vup)::x) acc) ord'
+                   *      (del_var v {p with bounds = VMap.add u (ulo, vup) p.bounds})) *)
+        | T v -> let u = VSet.choose @@ VMap.find v p.upper in
+                 let vlo, vup = VMap.find v p.bounds in
+                 (* let ulo, uup = VMap.find u p.bounds in
+                  * (match vup < ulo, ulo < vlo, uup < vup with
+                  *  | true,_,_ -> fold (List.map (fun x -> (v,N vlo,N vup)::x) acc)
+                  *                  ord' (del_var v p)
+                  *  | false,true,true -> (\* u <= v 
+                  *                          p avec u \in [vlo,uup] et v \in [u,vup]
+                  *                          p avec u \in [ulo,vlo] et v \in [vlo, vup] *\)
+                  *     fold (List.map (fun x -> (v,V u,N vup)::x) acc) ord'
+                  *       (del_var v {p with bounds = VMap.add u (vlo, uup) p.bounds})
+                  *     @ fold (List.map (fun x -> (v,N vlo,N vup)::x) acc) ord'
+                  *         (del_var v {p with bounds = VMap.add u (ulo, vlo) p.bounds})
+                  *  | _ ->
+                  *     (\* u in v 
+                  *        p avec u \in [ulo, uup] et v \in [u, vup] *\)
+                  *     fold (List.map (fun x -> (v,V u,N vup)::x) acc) ord'
+                  *       (del_var v {p with bounds = VMap.add u (ulo, min vup uup) p.bounds}))           *)
+        | E v -> let vlo, vup = VMap.find v p.bounds in
+                 fold (List.map (fun x -> (v, N vlo, N vup)::x) acc) ord' empty)
+
+        | I v ->
+  in
+  fold [[]] ord pentagon
+                    
+     
+       
+       
+       
+    
   
+
 let p = empty
         |> add_var "x0" ~inf:1. ~sup:2.
         |> add_var "x1" ~inf:3.
