@@ -1,0 +1,8 @@
+testable libs:
+
+- https://github.com/Chris00/ocaml-interval
+- https://github.com/Chris00/integration1d/blob/master/src/integration1D.ml
+- https://github.com/UnixJunkie/interval-tree/blob/master/lib/interval_tree.ml
+
+p-e ajouter des relations entre les arguments d'une fonction:
+- https://github.com/yawaramin/ocaml-decimal/blob/main/lib/decimal.ml#L517

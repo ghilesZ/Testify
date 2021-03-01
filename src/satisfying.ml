@@ -4,19 +4,14 @@ open Parsetree
 open Ast_mapper
 open Ast_helper
 open Helper
+open State
 
 (* number of generation per test *)
-let count = ref 100000
+let count = ref 10000
 
 let add_test args = apply_runtime "add_test" args |> Str.eval
 
 let run = apply_runtime "run_test" [unit] |> Str.eval
-
-(* same as [pp], but in bold blue] *)
-let bold_blue x = Format.asprintf "\x1b[34;1m%s\x1b[0m" x
-
-(* same as [pp], but in blue *)
-let blue x = Format.asprintf "\x1b[36m%s\x1b[0m" x
 
 (* QCheck test for constants *)
 let test_constant (name : string) loc (f : expression) =
@@ -29,8 +24,8 @@ let test (name : string) (args : expression list) =
   add_test ([int_exp !count; string_exp name] @ args)
 
 (* builds an input from a list of generators and printers and apply to it the
-   function funname *)
-let generate args fn testname satisfy =
+   function fn *)
+let generate fn args testname satisfy =
   let rec aux (gen, print) pat args = function
     | [] -> (gen, print, pat, List.rev args)
     | (g, p) :: tl ->
@@ -48,23 +43,11 @@ let generate args fn testname satisfy =
   let testname = Format.asprintf "function: %s" testname in
   test testname [apply_lab_nolab_s "QCheck.make" [("print", p)] [g]; f]
 
-(* main type, for rewritting state. keeps tracks of : - test properties
-   attached to a type. - current generators and printers *)
-type state =
-  { props: expression Types.t
-  ; gens: expression Types.t
-  ; prints: expression Types.t }
-
-let register_print s lid p = {s with prints= Types.add lid p s.prints}
-
-let register_gen s lid g = {s with gens= Types.add lid g s.gens}
-
-let register_prop s lid p = {s with props= Types.add lid p s.props}
-
 (* generic derivation function *)
 let derive_ctype env compose =
   let rec aux ct =
     match ct.ptyp_desc with
+    | Ptyp_var s -> Types.find_opt (lparse s) env
     | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt env
     | Ptyp_poly ([], ct) -> aux ct
     | Ptyp_tuple tup -> (
@@ -74,12 +57,16 @@ let derive_ctype env compose =
   aux
 
 let get_gen_ctype s =
-  derive_ctype s.gens (fun gens ->
+  derive_ctype
+    State.(s.gens)
+    (fun gens ->
       List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
       |> Exp.tuple |> lambda_s "x")
 
 let get_printer_ctype s =
-  derive_ctype s.prints (fun printers ->
+  derive_ctype
+    State.(s.prints)
+    (fun printers ->
       let np p =
         let n = get_name () in
         (apply_nolbl (Option.get p) [exp_id n], pat_s n)
@@ -90,7 +77,9 @@ let get_printer_ctype s =
       lambda (Pat.tuple pats) b')
 
 let get_prop_ctype s =
-  derive_ctype s.props (fun props ->
+  derive_ctype
+    State.(s.props)
+    (fun props ->
       let compose (pats, prop) p =
         match (prop, p) with
         | x, None -> (Pat.any () :: pats, x)
@@ -110,7 +99,9 @@ let get_prop_ctype s =
    associated to [t] in [rs]. Returns a Parsetree.expression (corresponding
    to a Gen.t) option. *)
 let get_generator s {ptype_kind; ptype_manifest; ptype_params; _} =
-  let s = List.fold_left (fun acc (_ct, _) -> acc) s ptype_params in
+  let s =
+    List.fold_left (fun acc ((_ct : core_type), _) -> acc) s ptype_params
+  in
   match ptype_kind with
   | Ptype_abstract -> Option.(join (map (get_gen_ctype s) ptype_manifest))
   | Ptype_variant _ -> None
@@ -161,7 +152,7 @@ let get_printer s {ptype_kind; ptype_manifest; _} =
   | Ptype_open -> None
 
 (* gets the property attached to the type [t] in [rs] (or None) *)
-let rec get_property (t : core_type) (s : state) : expression option =
+let rec get_property (t : core_type) (s : State.t) : expression option =
   match t.ptyp_desc with
   | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt s.props
   | Ptyp_poly ([], ct) -> get_property ct s
@@ -185,7 +176,7 @@ let initial_rs =
   in
   {gens; prints; props= Types.empty}
 
-let derive (s : state) (td : type_declaration) =
+let derive (s : State.t) (td : type_declaration) =
   let id = lparse td.ptype_name.txt in
   let s' =
     Option.fold ~none:s ~some:(register_gen s id) (get_generator s td)
@@ -218,19 +209,19 @@ let declare_type state t =
 
 (* annotation handling *)
 (***********************)
-let check_gen vb (s : state) : state =
+let check_gen vb (s : State.t) : State.t =
   match get_attribute_pstr "gen" vb.pvb_attributes with
   | None -> s
   | Some {pexp_desc= Pexp_ident l; _} -> register_gen s l.txt vb.pvb_expr
   | _ -> failwith "bad gen attribute"
 
-let check_print vb (s : state) =
+let check_print vb (s : State.t) =
   match get_attribute_pstr "print" vb.pvb_attributes with
   | None -> s
   | Some {pexp_desc= Pexp_ident l; _} -> register_print s l.txt vb.pvb_expr
   | _ -> failwith "bad print attribute"
 
-let get_infos (s : state) e =
+let get_infos (s : State.t) e =
   let helper pat =
     match pat.ppat_desc with
     | Ppat_constraint (_, t) -> (get_gen_ctype s t, get_printer_ctype s t)
@@ -261,8 +252,8 @@ let gather_tests vb state =
     | None -> []
     | Some (args, ct) ->
         let name = Format.asprintf "%s in %s" (bold_blue txt) (blue loc) in
-        get_property ct state
-        |> Option.fold ~none:[] ~some:(fun p -> [generate args txt name p]) )
+        get_property ct state |> Option.to_list
+        |> List.map (generate txt args name) )
   | _ -> []
 
 (* actual mapper *)

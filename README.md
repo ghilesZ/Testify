@@ -26,9 +26,9 @@ let _ = QCheck.Test.make (QCheck.make QCheck.Gen.int) (fun x1 -> ((<) 0) (abs x1
 
 As you noticed, a test has been added after the declaration of
 ```abs``` to check that its return values are indeed positive
-integers. As you also noticed, Testify uses the wonderful QCheck
-library do the tests. Other examples are available in the examples
-directory.
+integers. As you also noticed, Testify uses the wonderful
+[QCheck](https://github.com/c-cube/qcheck) library do the tests. Other
+examples are available in the examples directory.
 
 ### Usage
 Testify is defined following the inline-test backend facility of

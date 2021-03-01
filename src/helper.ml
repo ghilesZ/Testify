@@ -1,5 +1,7 @@
 (* This module provides helpers for ast building *)
 
+(* keep this before open as module Parse is shadowed by open
+   Migrate_parsetree *)
 let lparse s =
   try Parse.longident (Lexing.from_string s)
   with _ ->
@@ -18,6 +20,7 @@ let none_loc ?(loc = Location.none) s = Location.mkloc s loc
 (* builds a Longident.t Location.t from a string *)
 let lid_loc ?(loc = Location.none) id = none_loc ~loc (lparse id)
 
+(* pattern of string *)
 let pat_s s = Pat.var (none_loc s)
 
 (* given a string [name], builds the identifier [name] *)
@@ -135,3 +138,15 @@ let get_attribute_pstr n attrs =
   | Some (PStr [{pstr_desc= Pstr_eval (e, _); _}]) -> Some e
   | Some _ -> Format.asprintf "bad %s attribute" n |> failwith
   | None -> None
+
+(* fold_left over head and tail *)
+let reduce f = function
+  | [] -> invalid_arg "can not reduce an empty list"
+  | h :: t -> List.fold_left f h t
+
+(* printing *)
+(* same as [pp], but in bold blue] *)
+let bold_blue x = Format.asprintf "\x1b[34;1m%s\x1b[0m" x
+
+(* same as [pp], but in blue *)
+let blue x = Format.asprintf "\x1b[36m%s\x1b[0m" x
