@@ -2,7 +2,7 @@ build:
 	dune build
 
 test:
-	@dune runtest -f -j 1 --no-buffer
+	@dune runtest --force -j 1 --no-buffer
 
 clean:
 	dune clean

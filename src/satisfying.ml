@@ -56,14 +56,14 @@ let derive_ctype env compose =
   in
   aux
 
-let get_gen_ctype s =
+let get_gen s =
   derive_ctype
     State.(s.gens)
     (fun gens ->
       List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
       |> Exp.tuple |> lambda_s "x")
 
-let get_printer_ctype s =
+let get_print s =
   derive_ctype
     State.(s.prints)
     (fun printers ->
@@ -76,7 +76,7 @@ let get_printer_ctype s =
       let b' = string_concat [string_exp "("; b; string_exp ")"] in
       lambda (Pat.tuple pats) b')
 
-let get_prop_ctype s =
+let get_prop s =
   derive_ctype
     State.(s.props)
     (fun props ->
@@ -103,12 +103,12 @@ let get_generator s {ptype_kind; ptype_manifest; ptype_params; _} =
     List.fold_left (fun acc ((_ct : core_type), _) -> acc) s ptype_params
   in
   match ptype_kind with
-  | Ptype_abstract -> Option.(join (map (get_gen_ctype s) ptype_manifest))
+  | Ptype_abstract -> Option.(join (map (get_gen s) ptype_manifest))
   | Ptype_variant _ -> None
   | Ptype_record labs -> (
     try
       let handle_field f =
-        let gen = get_gen_ctype s f.pld_type |> Option.get in
+        let gen = get_gen s f.pld_type |> Option.get in
         (lid_loc f.pld_name.txt, apply_nolbl gen [exp_id "rs"])
       in
       let app = Exp.record (List.map handle_field labs) None in
@@ -130,22 +130,22 @@ let get_generator rs td =
    to a printer) option. *)
 let get_printer s {ptype_kind; ptype_manifest; _} =
   match ptype_kind with
-  | Ptype_abstract ->
-      Option.(join (map (get_printer_ctype s) ptype_manifest))
+  | Ptype_abstract -> Option.(join (map (get_print s) ptype_manifest))
   | Ptype_variant _ -> None
   | Ptype_record labs -> (
     try
       let handle_field f =
-        let print = get_printer_ctype s f.pld_type |> Option.get in
+        let print = get_print s f.pld_type |> Option.get in
         let field = apply_nolbl print [exp_id f.pld_name.txt] in
         let field_name = string_exp f.pld_name.txt in
         string_concat ~sep:"=" [field_name; field]
       in
-      let to_s f = f.pld_name.txt in
       let app = string_concat ~sep:"; " (List.map handle_field labs) in
       let app = string_concat [string_exp "{"; app; string_exp "}"] in
       let pat =
-        List.map (fun l -> (lid_loc (to_s l), pat_s (to_s l))) labs
+        List.map
+          (fun l -> (lid_loc l.pld_name.txt, pat_s l.pld_name.txt))
+          labs
       in
       Some (lambda (Pat.record pat Closed) app)
     with Invalid_argument _ -> None )
@@ -157,24 +157,6 @@ let rec get_property (t : core_type) (s : State.t) : expression option =
   | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt s.props
   | Ptyp_poly ([], ct) -> get_property ct s
   | _ -> None
-
-(* initial rewritting state, with a few generators/printers by default *)
-let initial_rs =
-  let add_id (t : string) (g : string) (p : string) (gens, prints) =
-    ( Types.add (lparse t) (exp_id g) gens
-    , Types.add (lparse t) (exp_id p) prints )
-  in
-  (* TODO: add entries for int32, int64, nativeint, string, bytes, aliases
-     Mod.t and parametric types ref, list, array, option, lazy_t *)
-  let gens, prints =
-    (Types.empty, Types.empty)
-    |> add_id "unit" "QCheck.Gen.unit" "QCheck.Print.unit"
-    |> add_id "bool" "QCheck.Gen.bool" "string_of_bool"
-    |> add_id "char" "QCheck.Gen.char" "string_of_char"
-    |> add_id "int" "QCheck.Gen.int" "string_of_int"
-    |> add_id "float" "QCheck.Gen.float" "string_of_float"
-  in
-  {gens; prints; props= Types.empty}
 
 let derive (s : State.t) (td : type_declaration) =
   let id = lparse td.ptype_name.txt in
@@ -224,7 +206,7 @@ let check_print vb (s : State.t) =
 let get_infos (s : State.t) e =
   let helper pat =
     match pat.ppat_desc with
-    | Ppat_constraint (_, t) -> (get_gen_ctype s t, get_printer_ctype s t)
+    | Ppat_constraint (_, t) -> (get_gen s t, get_print s t)
     | _ -> (None, None)
   in
   let rec aux res = function
@@ -272,6 +254,6 @@ let mapper =
           aux state (tests @ (h' :: res)) tl
       | h :: tl -> aux state (h :: res) tl
     in
-    aux initial_rs [] str
+    aux State.s0 [] str
   in
   {default_mapper with structure= handle_str}
