@@ -13,7 +13,7 @@ let add_test args = apply_runtime "add_test" args |> Str.eval
 
 let run = apply_runtime "run_test" [unit] |> Str.eval
 
-(* QCheck test for constants *)
+(* test generation for constants *)
 let test_constant (name : string) loc (f : expression) =
   let f = lambda (Pat.any ()) (apply_nolbl f [exp_id name]) in
   let n = Format.asprintf "constant: %s in %s" (bold_blue name) (blue loc) in
@@ -42,6 +42,8 @@ let generate fn args testname satisfy =
   let f = lambda pat ((satisfy @@@ exp_id fn) args) in
   let testname = Format.asprintf "function: %s" testname in
   test testname [apply_lab_nolab_s "QCheck.make" [("print", p)] [g]; f]
+
+(* Core Type handling *)
 
 (* generic derivation function *)
 let derive_ctype env compose =
@@ -95,26 +97,30 @@ let get_prop s =
       let pats, body = List.fold_left compose ([], None) props in
       lambda (Pat.tuple (List.rev pats)) (Option.get body))
 
-(* Given a rewritting state [rs] and and a type [t], search for the generator
-   associated to [t] in [rs]. Returns a Parsetree.expression (corresponding
-   to a Gen.t) option. *)
-let get_generator s {ptype_kind; ptype_manifest; ptype_params; _} =
-  let s =
-    List.fold_left (fun acc ((_ct : core_type), _) -> acc) s ptype_params
-  in
+(* Type declaration handling *)
+let derive_decl s get_f field_f record_f {ptype_kind; ptype_manifest; _} =
+  (* let s =
+   *   List.fold_left (fun acc ((_ct : core_type), _) -> acc) s ptype_params
+   * in *)
   match ptype_kind with
-  | Ptype_abstract -> Option.(join (map (get_gen s) ptype_manifest))
+  | Ptype_abstract -> Option.(join (map (get_f s) ptype_manifest))
   | Ptype_variant _ -> None
   | Ptype_record labs -> (
     try
-      let handle_field f =
-        let gen = get_gen s f.pld_type |> Option.get in
-        (lid_loc f.pld_name.txt, apply_nolbl gen [exp_id "rs"])
+      let field_f f =
+        let field = get_f s f.pld_type |> Option.get in
+        field_f field f.pld_name.txt
       in
-      let app = Exp.record (List.map handle_field labs) None in
-      Some (lambda_s "rs" app)
+      Some (record_f (List.map field_f labs))
     with Invalid_argument _ -> None )
   | Ptype_open -> None
+
+let get_generator s =
+  derive_decl s get_gen
+    (fun gen name -> (lid_loc name, apply_nolbl gen [exp_id "rs"]))
+    (fun fields ->
+      let app = Exp.record fields None in
+      lambda_s "rs" app)
 
 let get_generator rs td =
   let rejection pred gen = apply_runtime "reject" [pred; gen] in
@@ -128,28 +134,17 @@ let get_generator rs td =
 (* Given a rewritting state [rs] and and a type [t], search for the printer
    associated to [t] in [rs]. Returns a Parsetree.expression (corresponding
    to a printer) option. *)
-let get_printer s {ptype_kind; ptype_manifest; _} =
-  match ptype_kind with
-  | Ptype_abstract -> Option.(join (map (get_print s) ptype_manifest))
-  | Ptype_variant _ -> None
-  | Ptype_record labs -> (
-    try
-      let handle_field f =
-        let print = get_print s f.pld_type |> Option.get in
-        let field = apply_nolbl print [exp_id f.pld_name.txt] in
-        let field_name = string_exp f.pld_name.txt in
-        string_concat ~sep:"=" [field_name; field]
-      in
-      let app = string_concat ~sep:"; " (List.map handle_field labs) in
+let get_printer s =
+  derive_decl s get_print
+    (fun print name ->
+      let field = apply_nolbl print [exp_id name] in
+      let field_name = string_exp name in
+      (string_concat ~sep:"=" [field_name; field], (lid_loc name, pat_s name)))
+    (fun l ->
+      let fields, pat = List.split l in
+      let app = string_concat ~sep:"; " fields in
       let app = string_concat [string_exp "{"; app; string_exp "}"] in
-      let pat =
-        List.map
-          (fun l -> (lid_loc l.pld_name.txt, pat_s l.pld_name.txt))
-          labs
-      in
-      Some (lambda (Pat.record pat Closed) app)
-    with Invalid_argument _ -> None )
-  | Ptype_open -> None
+      lambda (Pat.record pat Closed) app)
 
 (* gets the property attached to the type [t] in [rs] (or None) *)
 let rec get_property (t : core_type) (s : State.t) : expression option =
@@ -159,11 +154,9 @@ let rec get_property (t : core_type) (s : State.t) : expression option =
   | _ -> None
 
 let derive (s : State.t) (td : type_declaration) =
+  let infos = (get_generator s td, get_printer s td, None) in
   let id = lparse td.ptype_name.txt in
-  let s' =
-    Option.fold ~none:s ~some:(register_gen s id) (get_generator s td)
-  in
-  Option.fold ~none:s' ~some:(register_print s' id) (get_printer s' td)
+  State.update s id infos
 
 (* restriction: we force the same (structurally equal) pattern to appear on
    both type declarations *)

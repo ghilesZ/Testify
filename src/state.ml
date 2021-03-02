@@ -38,3 +38,9 @@ let register_print s lid p = {s with prints= Types.add lid p s.prints}
 let register_gen s lid g = {s with gens= Types.add lid g s.gens}
 
 let register_prop s lid p = {s with props= Types.add lid p s.props}
+
+(* updates a state according to a gen option, a print opt and a prop opt *)
+let update s id (gen, print, prop) =
+  let s = Option.(value ~default:s (map (register_gen s id) gen)) in
+  let s = Option.(value ~default:s (map (register_print s id) print)) in
+  Option.(value ~default:s (map (register_prop s id) prop))
