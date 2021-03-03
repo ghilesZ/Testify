@@ -50,6 +50,15 @@ Also, Testify accepts the `-nb` option to change the number of runs per generate
 (preprocess (pps ppx_testify -- -nb 42))
 ```
 
+or using shell environment variables with dune's syntax :
+
+```
+(preprocess (pps ppx_testify -- -nb %{env:NB=42}))
+```
+
+which sets the number of runs to `$(NB)` if the variable `NB` is defined, and to `42` otherwise.
+You can then do for example `NB=100 dune runtest`
+
 ### Why a PPX for test generations?
 - because no one likes writting tests.
 - because having acces to the source code during test generation is good
