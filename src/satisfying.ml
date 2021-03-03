@@ -7,7 +7,9 @@ open Helper
 open State
 
 (* number of generation per test *)
-let count = ref 10000
+let number = ref 10000
+
+let set_number = ( := ) number
 
 let add_test args = apply_runtime "add_test" args |> Str.eval
 
@@ -21,7 +23,7 @@ let test_constant (name : string) loc (f : expression) =
 
 (* generation of QCheck test *)
 let test (name : string) (args : expression list) =
-  add_test ([int_exp !count; string_exp name] @ args)
+  add_test ([int_exp !number; string_exp name] @ args)
 
 (* builds an input from a list of generators and printers and apply to it the
    function fn *)

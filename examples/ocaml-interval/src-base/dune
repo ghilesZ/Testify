@@ -1,5 +1,5 @@
 (library
   (name interval)
-  (preprocess (pps ppx_testify))
+  (preprocess (pps ppx_testify -- -nb 1000))
   (inline_tests (backend ppx_testify))
   (foreign_stubs (language c) (names interval_base_stubs)))

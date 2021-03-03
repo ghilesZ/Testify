@@ -1,7 +1,7 @@
 (library
  (name        interval_intel)
  (foreign_stubs (language c) (names interval_stubs))
- (preprocess (pps ppx_testify))
+ (preprocess (pps ppx_testify -- -nb 1000))
  (inline_tests (backend ppx_testify))
  (libraries interval_base))
  
