@@ -1,6 +1,6 @@
 open QCheck
 
-let holder = ref ([] : Test.t list)
+let tests = ref ([] : Test.t list)
 
 (* test storing management *)
 let add_test count name arb pred =
@@ -9,11 +9,11 @@ let add_test count name arb pred =
     | Invalid_argument _ | Failure _ -> true
   in
   let t = Test.make ~count ~name arb pred in
-  holder := t :: !holder
+  tests := t :: !tests
 
 let run_test () =
-  let holder = List.rev !holder in
-  QCheck_base_runner.run_tests ~colors:true ~verbose:true holder
+  List.rev !tests |>
+  QCheck_base_runner.run_tests ~colors:true ~verbose:true
 
 (* abstract generators handling *)
 type generable = GInt of int | GFloat of float
@@ -62,4 +62,5 @@ let weighted (gens : (float * 'a Gen.t) list) : 'a Gen.t =
 
 let count = ref 1000
 
-let reject pred g = QCheck.find_example ~f:pred ~count:!count g
+let reject name pred g =
+ find_example ~name ~f:pred ~count:!count g

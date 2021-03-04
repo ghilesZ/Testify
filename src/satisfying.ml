@@ -140,7 +140,9 @@ let get_generator s =
     (fun _ -> invalid_arg "")
 
 let get_generator rs td =
-  let rejection pred gen = apply_runtime "reject" [pred; gen] in
+  let rejection pred gen =
+    apply_runtime "reject" [string_exp td.ptype_name.txt; pred; gen]
+  in
   match get_attribute_pstr "satisfying" td.ptype_attributes with
   | Some e -> (
     match Gegen.generate td e with
@@ -199,7 +201,6 @@ let declare_type state t =
   | Some e -> register_prop state (lparse t.ptype_name.txt) e
 
 (* annotation handling *)
-
 let check_gen vb (s : State.t) : State.t =
   match get_attribute_pstr "gen" vb.pvb_attributes with
   | None -> s

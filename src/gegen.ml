@@ -64,11 +64,14 @@ let split_fun f =
 
 (* builds a generator list, sorted by probability of being chosen (from most
    likely to less likely) *)
-let craft_generator inner outer pattern r =
+let craft_generator name inner outer pattern r =
   let outer_gens =
     List.fold_left
       (fun acc (w, reject, g) ->
-        let g = apply_nolbl_s "reject" [lambda pattern reject; r |><| g] in
+        let g =
+          apply_nolbl_s "reject"
+            [string_exp name; lambda pattern reject; r |><| g]
+        in
         cons_exp (Exp.tuple [float_exp w; g]) acc)
       empty_list_exp (List.rev outer)
   in
@@ -80,13 +83,13 @@ let craft_generator inner outer pattern r =
   apply_nolbl_s "weighted" [inner_outer_gens] |> open_runtime
 
 (* given a type declaration and a pattern, we build a generator *)
-let abstract_core_type td sat =
+let abstract_core_type name td sat =
   let pat, body = split_fun sat in
   let pat' = fill pat in
   let r, i_s, f_s = reconstruct td pat' in
   let constr = Lang.of_ocaml body in
   let inner, outer = Solve.get_generators i_s f_s constr in
-  craft_generator inner outer pat' r
+  craft_generator name inner outer pat' r
 
 (* builds a generator *)
 let generate t sat =
@@ -94,7 +97,7 @@ let generate t sat =
     match t.ptype_kind with
     | Ptype_abstract -> (
       match t.ptype_manifest with
-      | Some ct -> Some (abstract_core_type ct sat)
+      | Some ct -> Some (abstract_core_type t.ptype_name.txt ct sat)
       | None -> None )
     | Ptype_variant _ -> None
     | Ptype_record _labs -> (* todo records *) None
