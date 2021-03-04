@@ -81,4 +81,5 @@ let compile ((inf, sup) : t) =
   let s = sup |> Z.to_int |> int_exp in
   lambda_s "rs"
     (apply_nolbl_s "mk_int"
-       [[exp_id "rs"] |> apply_nolbl (apply_nolbl_s "int_range" [i; s])])
+       [ [exp_id "rs"]
+         |> apply_nolbl (apply_nolbl_s "QCheck.Gen.int_range" [i; s]) ])

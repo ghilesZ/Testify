@@ -31,20 +31,6 @@ let get_int name (l : instance) =
 let get_float name (l : instance) =
   match List.assoc name l with GFloat f -> f | _ -> failwith "type error"
 
-(* int range generator *)
-let int_range a b =
-  if b < a then invalid_arg "int_range" ;
-  if a >= 0 || b < 0 then fun st -> a + Gen.int_bound (b - a) st
-  else
-    fun (* range potentially bigger than max_int: we split on 0 and choose
-           the itv wrt to their size ratio *)
-      st ->
-    let f_a = float_of_int a in
-    let ratio = -.f_a /. (1. +. float_of_int b -. f_a) in
-    if Random.State.float st 1. <= ratio then
-      -Gen.int_bound (-(a + 1)) st - 1
-    else Gen.int_bound b st
-
 (* float range generator *)
 let float_range a b =
   if b < a then

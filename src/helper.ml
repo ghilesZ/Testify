@@ -81,7 +81,7 @@ let str_nonrec vb = Str.value Nonrecursive vb
 
 let unit = Exp.construct (lid_loc "()") None
 
-(* easy value binding with string *)
+(* value binding with string *)
 let vb_s id exp = Vb.mk (pat_s id) exp
 
 (* ast for lists *)
@@ -89,8 +89,7 @@ let empty_list_exp = Exp.construct (lid_loc "[]") None
 
 let cons_exp h t = Exp.construct (lid_loc "( :: )") (Some (Exp.tuple [h; t]))
 
-let list_of_list l =
-  List.fold_left (fun acc e -> cons_exp e acc) empty_list_exp (List.rev l)
+let list_of_list l = List.fold_right cons_exp l empty_list_exp
 
 (* fresh identifier generator *)
 let id_gen_gen () =
@@ -139,8 +138,12 @@ let reduce f = function
   | h :: t -> List.fold_left f h t
 
 (* printing *)
+
 (* same as [pp], but in bold blue] *)
 let bold_blue x = Format.asprintf "\x1b[34;1m%s\x1b[0m" x
 
 (* same as [pp], but in blue *)
 let blue x = Format.asprintf "\x1b[36m%s\x1b[0m" x
+
+(* same as [pp], but in gray *)
+let gray x = Format.asprintf "\x1b[37m%s\x1b[0m" x

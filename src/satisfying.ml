@@ -59,12 +59,14 @@ let derive_ctype env compose =
   in
   aux
 
-(* builds a n-tuple generator prom a list of n generators *)
+let default_printer = lambda (Pat.any ()) (string_exp (gray "undefined"))
+
+(* builds a n-tuple generator from a list of n generators *)
 let gen_tuple gens =
   List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
   |> Exp.tuple |> lambda_s "x"
 
-(* builds a n-tuple printer prom a list of n printers *)
+(* builds a n-tuple printer from a list of n printers *)
 let print_tuple printers =
   let get_name = id_gen_gen () in
   let np p =
@@ -164,7 +166,7 @@ let get_printer s =
       match ps with
       | [] -> lambda (Pat.any ()) (string_exp n.txt)
       | l -> print_tuple l)
-    (fun _ -> invalid_arg "")
+    (fun _ -> default_printer)
 
 (* gets the property attached to the type [t] in [rs] (or None) *)
 let rec get_property (t : core_type) (s : State.t) : expression option =
