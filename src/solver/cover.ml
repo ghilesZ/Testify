@@ -86,9 +86,9 @@ module Make (D : Signatures.Abs) = struct
     (inner_gens, outer_gens)
 
   (* TODO: add option to change this *)
-  let threshold = ref 0.999
+  let threshold = ref 0.5
 
-  let max_size = ref 10
+  let max_size = ref 2
 
   let solve abs constr : t =
     let rec aux cover =

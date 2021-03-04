@@ -89,6 +89,9 @@ let empty_list_exp = Exp.construct (lid_loc "[]") None
 
 let cons_exp h t = Exp.construct (lid_loc "( :: )") (Some (Exp.tuple [h; t]))
 
+let list_of_list l =
+  List.fold_left (fun acc e -> cons_exp e acc) empty_list_exp (List.rev l)
+
 (* fresh identifier generator *)
 let id_gen_gen () =
   let cpt = ref 0 in
@@ -98,17 +101,8 @@ let id_gen_gen () =
 
 (* string concat with separator over ast expressions *)
 let string_concat ?sep l =
-  let sep =
-    match sep with None -> string_exp "" | Some s -> string_exp s
-  in
-  let rec aux acc = function
-    | [] -> acc
-    | [last] -> apply_nolbl_s "(^)" [acc; last]
-    | h :: tl ->
-        let acc = apply_nolbl_s "(^)" [acc; h] in
-        aux (apply_nolbl_s "(^)" [acc; sep]) tl
-  in
-  aux (string_exp "") l
+  let sep = Option.value ~default:"" sep in
+  apply_nolbl_s "String.concat" [string_exp sep; list_of_list l]
 
 (* map for type identifiers *)
 module Types = Map.Make (struct
