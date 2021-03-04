@@ -28,6 +28,7 @@ let test (name : string) (args : expression list) =
 (* builds an input from a list of generators and printers and apply to it the
    function fn *)
 let generate fn args testname satisfy =
+  let get_name = id_gen_gen () in
   let rec aux (gen, print) pat args = function
     | [] -> (gen, print, pat, List.rev args)
     | (g, p) :: tl ->
@@ -45,9 +46,7 @@ let generate fn args testname satisfy =
   let testname = Format.asprintf "function: %s" testname in
   test testname [apply_lab_nolab_s "QCheck.make" [("print", p)] [g]; f]
 
-(* Core Type handling *)
-
-(* generic derivation function *)
+(* generic derivation function for core types *)
 let derive_ctype env compose =
   let rec aux ct =
     match ct.ptyp_desc with
@@ -60,30 +59,32 @@ let derive_ctype env compose =
   in
   aux
 
-let get_gen s =
-  derive_ctype
-    State.(s.gens)
-    (fun gens ->
-      List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
-      |> Exp.tuple |> lambda_s "x")
+(* builds a n-tuple generator prom a list of n generators *)
+let gen_tuple gens =
+  List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
+  |> Exp.tuple |> lambda_s "x"
 
-let get_print s =
-  derive_ctype
-    State.(s.prints)
-    (fun printers ->
-      let np p =
-        let n = get_name () in
-        (apply_nolbl (Option.get p) [exp_id n], pat_s n)
-      in
-      let names, pats = List.split (List.map np printers) in
-      let b = string_concat ~sep:", " names in
-      let b' = string_concat [string_exp "("; b; string_exp ")"] in
-      lambda (Pat.tuple pats) b')
+(* builds a n-tuple printer prom a list of n printers *)
+let print_tuple printers =
+  let get_name = id_gen_gen () in
+  let np p =
+    let n = get_name () in
+    (apply_nolbl (Option.get p) [exp_id n], pat_s n)
+  in
+  let names, pats = List.split (List.map np printers) in
+  let b = string_concat ~sep:", " names in
+  let b' = string_concat [string_exp "("; b; string_exp ")"] in
+  lambda (Pat.tuple pats) b'
+
+let get_gen s = derive_ctype State.(s.gens) gen_tuple
+
+let get_print s = derive_ctype State.(s.prints) print_tuple
 
 let get_prop s =
   derive_ctype
     State.(s.props)
     (fun props ->
+      let get_name = id_gen_gen () in
       let compose (pats, prop) p =
         match (prop, p) with
         | x, None -> (Pat.any () :: pats, x)
@@ -99,23 +100,27 @@ let get_prop s =
       let pats, body = List.fold_left compose ([], None) props in
       lambda (Pat.tuple (List.rev pats)) (Option.get body))
 
-(* Type declaration handling *)
-let derive_decl s get_f field_f record_f {ptype_kind; ptype_manifest; _} =
-  (* let s =
-   *   List.fold_left (fun acc ((_ct : core_type), _) -> acc) s ptype_params
-   * in *)
-  match ptype_kind with
-  | Ptype_abstract -> Option.(join (map (get_f s) ptype_manifest))
-  | Ptype_variant _ -> None
-  | Ptype_record labs -> (
-    try
-      let field_f f =
-        let field = get_f s f.pld_type |> Option.get in
-        field_f field f.pld_name.txt
-      in
-      Some (record_f (List.map field_f labs))
-    with Invalid_argument _ -> None )
-  | Ptype_open -> None
+(* generic derivation function for type declaration *)
+let derive_decl s get_f field_f record_f constr_f sum_f
+    {ptype_kind; ptype_manifest; _} =
+  let field_f f =
+    let field = get_f s f.pld_type |> Option.get in
+    field_f field f.pld_name.txt
+  in
+  try
+    match ptype_kind with
+    | Ptype_abstract -> Option.(join (map (get_f s) ptype_manifest))
+    | Ptype_variant constructors ->
+        let constr_f c =
+          match c.pcd_args with
+          | Pcstr_tuple ct ->
+              Some (constr_f (List.map (get_f s) ct) c.pcd_name)
+          | Pcstr_record labs -> Some (record_f (List.map field_f labs))
+        in
+        Some (sum_f (List.map constr_f constructors))
+    | Ptype_record labs -> Some (record_f (List.map field_f labs))
+    | Ptype_open -> None
+  with Invalid_argument _ -> None
 
 let get_generator s =
   derive_decl s get_gen
@@ -123,6 +128,14 @@ let get_generator s =
     (fun fields ->
       let app = Exp.record fields None in
       lambda_s "rs" app)
+    (fun gs n ->
+      match gs with
+      | [] -> lambda (Pat.any ()) (Exp.construct (lid_loc n.txt) None)
+      | l ->
+          lambda_s "rs"
+            (Exp.construct (lid_loc n.txt)
+               (Some (apply_nolbl (gen_tuple l) [string_exp "rs"]))))
+    (fun _ -> invalid_arg "")
 
 let get_generator rs td =
   let rejection pred gen = apply_runtime "reject" [pred; gen] in
@@ -147,6 +160,11 @@ let get_printer s =
       let app = string_concat ~sep:"; " fields in
       let app = string_concat [string_exp "{"; app; string_exp "}"] in
       lambda (Pat.record pat Closed) app)
+    (fun ps n ->
+      match ps with
+      | [] -> lambda (Pat.any ()) (string_exp n.txt)
+      | l -> print_tuple l)
+    (fun _ -> invalid_arg "")
 
 (* gets the property attached to the type [t] in [rs] (or None) *)
 let rec get_property (t : core_type) (s : State.t) : expression option =
@@ -178,14 +196,8 @@ let declare_type state t =
   | None -> state
   | Some e -> register_prop state (lparse t.ptype_name.txt) e
 
-(* | Some e ->
- *     register_prop state (lparse t.ptype_name.txt)
- *       ( match get_property (Option.get t.ptype_manifest) state with
- *       | None -> e
- *       | Some e' -> compose_properties e e' ) *)
-
 (* annotation handling *)
-(***********************)
+
 let check_gen vb (s : State.t) : State.t =
   match get_attribute_pstr "gen" vb.pvb_attributes with
   | None -> s

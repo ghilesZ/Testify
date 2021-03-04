@@ -42,13 +42,17 @@ let reconstruct core_type pattern =
   aux SSet.empty SSet.empty core_type pattern
 
 (* fills the '_' of a pattern *)
-let rec fill p =
-  match p.ppat_desc with
-  (* we prefix the name with % to avoid ame clash *)
-  | Ppat_any -> {p with ppat_desc= Ppat_var (none_loc ("%" ^ get_name ()))}
-  | Ppat_var _ -> p
-  | Ppat_tuple ptup -> {p with ppat_desc= Ppat_tuple (List.map fill ptup)}
-  | _ -> raise (OutOfSubset "pattern")
+let fill p =
+  let get_name = id_gen_gen () in
+  let rec aux p =
+    match p.ppat_desc with
+    (* we prefix the name with % to avoid ame clash *)
+    | Ppat_any -> {p with ppat_desc= Ppat_var (none_loc ("%" ^ get_name ()))}
+    | Ppat_var _ -> p
+    | Ppat_tuple ptup -> {p with ppat_desc= Ppat_tuple (List.map aux ptup)}
+    | _ -> raise (OutOfSubset "pattern")
+  in
+  aux p
 
 let split_fun f =
   match f.pexp_desc with

@@ -1,7 +1,0 @@
-(include_subdirs no)
-
-(executables
-  (names positive itv itv_record circle)
-  (preprocess (pps ppx_testify))
-  (libraries testify_runtime qcheck))
-

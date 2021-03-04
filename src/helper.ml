@@ -90,7 +90,7 @@ let empty_list_exp = Exp.construct (lid_loc "[]") None
 let cons_exp h t = Exp.construct (lid_loc "( :: )") (Some (Exp.tuple [h; t]))
 
 (* fresh identifier generator *)
-let get_name =
+let id_gen_gen () =
   let cpt = ref 0 in
   fun () ->
     incr cpt ;
