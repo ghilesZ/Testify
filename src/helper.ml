@@ -68,6 +68,9 @@ let true_ = Exp.construct (lid_loc "true") None
 
 let false_ = Exp.construct (lid_loc "false") None
 
+(* && over ast *)
+let ( &&@ ) a b = apply_nolbl_s " (&&) " [a; b]
+
 (* useful constructors *)
 let int_ x = Exp.constant (Const.int x)
 
@@ -114,9 +117,6 @@ module Types = Map.Make (struct
 
   let compare = compare
 end)
-
-(* zagreus *)
-let add_s t_id = Types.add (Longident.Lident t_id)
 
 (* keeps the attributes with name 'n'*)
 let check_attributes n attrs =
