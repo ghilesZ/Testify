@@ -141,8 +141,8 @@ let to_ocaml (c : constr) : expression =
     | DivF -> "( /. )"
   in
   let rec arith = function
-    | Int i -> int_exp i
-    | Float f -> float_exp f
+    | Int i -> int_ i
+    | Float f -> float_ f
     | Var s -> exp_id s
     | Neg x -> apply_nolbl_s "( ~- )" [arith x]
     | NegF x -> apply_nolbl_s "( ~-. )" [arith x]

@@ -55,7 +55,7 @@ let apply_runtime_1 s x = apply_runtime s [x]
 let lambda = Exp.fun_ Nolabel None
 
 (* Same as lambda with string instead of pattern *)
-let lambda_s s = lambda (pat_s s)
+let lambda_s = function "_" -> lambda (Pat.any ()) | s -> lambda (pat_s s)
 
 (* function composition at ast level *)
 let ( |><| ) f g = lambda_s "x" (apply_nolbl f [apply_nolbl g [exp_id "x"]])
@@ -69,20 +69,24 @@ let true_ = Exp.construct (lid_loc "true") None
 let false_ = Exp.construct (lid_loc "false") None
 
 (* useful constructors *)
-let int_exp x = Exp.constant (Const.int x)
+let int_ x = Exp.constant (Const.int x)
 
-let one = int_exp 1
+let one = int_ 1
 
-let float_exp x = Exp.constant (Const.float (string_of_float x))
+let float_ x = Exp.constant (Const.float (string_of_float x))
 
-let string_exp x = Exp.constant (Const.string x)
+let string_ x = Exp.constant (Const.string x)
 
 let str_nonrec vb = Str.value Nonrecursive vb
 
 let unit = Exp.construct (lid_loc "()") None
 
+let pair a b = Exp.tuple [a; b]
+
 (* value binding with string *)
 let vb_s id exp = Vb.mk (pat_s id) exp
+
+let let_ id exp in_ = Exp.let_ Nonrecursive [vb_s id exp] in_
 
 (* ast for lists *)
 let empty_list_exp = Exp.construct (lid_loc "[]") None
@@ -96,12 +100,13 @@ let id_gen_gen () =
   let cpt = ref 0 in
   fun () ->
     incr cpt ;
-    "x" ^ string_of_int !cpt
+    let s = "x" ^ string_of_int !cpt in
+    (s, exp_id s)
 
 (* string concat with separator over ast expressions *)
 let string_concat ?sep l =
   let sep = Option.value ~default:"" sep in
-  apply_nolbl_s "String.concat" [string_exp sep; list_of_list l]
+  apply_nolbl_s "String.concat" [string_ sep; list_of_list l]
 
 (* map for type identifiers *)
 module Types = Map.Make (struct

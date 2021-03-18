@@ -263,7 +263,7 @@ let compile (a : t) =
     SMap.iter
       (fun v i ->
         let value = apply_nolbl (comp i) [exp_id "rs"] in
-        let pair = Ast_helper.Exp.tuple [string_exp v; value] in
+        let pair = Ast_helper.Exp.tuple [string_ v; value] in
         instance := cons_exp pair !instance)
       map
   in

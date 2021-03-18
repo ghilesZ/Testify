@@ -4,16 +4,26 @@ let tests = ref ([] : Test.t list)
 
 (* test storing management *)
 let add_test count name arb pred =
-  let pred x =
-    try pred x with
-    | Invalid_argument _ | Failure _ -> true
-  in
   let t = Test.make ~count ~name arb pred in
   tests := t :: !tests
 
 let run_test () =
   List.rev !tests |>
   QCheck_base_runner.run_tests ~colors:true ~verbose:true
+
+(* input -> output utilities *)
+let opt_pred pred = function None -> true | Some x -> pred x
+
+let opt_gen g rs =
+  try Some (g rs)
+  with Invalid_argument _ | No_example_found _ -> None
+
+let opt_print p = function
+  | Some x -> p x
+  | None -> invalid_arg "should not occur"
+
+let sat_output pred = function
+  | None -> true | Some (out,_) -> pred out
 
 (* abstract generators handling *)
 type generable = GInt of int | GFloat of float
@@ -62,5 +72,5 @@ let weighted (gens : (float * 'a Gen.t) list) : 'a Gen.t =
 
 let count = ref 1000
 
-let reject name pred g =
- find_example ~name ~f:pred ~count:!count g
+let reject pred g =
+ find_example ~f:pred ~count:!count g

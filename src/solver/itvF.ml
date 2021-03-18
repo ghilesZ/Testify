@@ -77,8 +77,8 @@ let filter_diseq ((l1, h1) as i1 : t) ((l2, h2) as i2 : t) :
 (* compilation *)
 let compile ((inf, sup) : t) =
   let open Helper in
-  let i = inf |> Q.to_float |> float_exp in
-  let s = sup |> Q.to_float |> float_exp in
+  let i = inf |> Q.to_float |> float_ in
+  let s = sup |> Q.to_float |> float_ in
   lambda_s "rs"
     (apply_nolbl_s "mk_float"
        [[exp_id "rs"] |> apply_nolbl (apply_nolbl_s "float_range" [i; s])])

@@ -77,8 +77,8 @@ let filter_diseq ((l1, h1) as i1 : t) ((l2, h2) as i2 : t) :
 (* compilation *)
 let compile ((inf, sup) : t) =
   let open Helper in
-  let i = inf |> Z.to_int |> int_exp in
-  let s = sup |> Z.to_int |> int_exp in
+  let i = inf |> Z.to_int |> int_ in
+  let s = sup |> Z.to_int |> int_ in
   lambda_s "rs"
     (apply_nolbl_s "mk_int"
        [ [exp_id "rs"]
