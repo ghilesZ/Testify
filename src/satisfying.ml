@@ -62,15 +62,18 @@ let generate fn args out_print testname satisfy =
         ; apply_runtime_1 "sat_output" satisfy ]
 
 (* generic derivation function for core types *)
-let derive_ctype env compose =
+let derive_ctype env ~tuple ~sat =
   let rec aux ct =
-    match ct.ptyp_desc with
-    | Ptyp_var s -> Types.find_opt (lparse s) env
-    | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt env
-    | Ptyp_poly ([], ct) -> aux ct
-    | Ptyp_tuple tup -> (
-      try Some (compose (List.map aux tup)) with Invalid_argument _ -> None )
-    | _ -> None
+    match get_attribute_pstr "satisfying" ct.ptyp_attributes with
+    | Some e -> sat ct e
+    | None -> (
+      match ct.ptyp_desc with
+      | Ptyp_var s -> Types.find_opt (lparse s) env
+      | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt env
+      | Ptyp_poly ([], ct) -> aux ct
+      | Ptyp_tuple tup -> (
+        try Some (tuple (List.map aux tup)) with Invalid_argument _ -> None )
+      | _ -> None )
   in
   aux
 
@@ -93,14 +96,27 @@ let print_tuple printers =
   let b' = string_concat [string_ "("; b; string_ ")"] in
   lambda (Pat.tuple pats) b'
 
-let get_gen s = derive_ctype State.(s.gens) gen_tuple
+let rec get_gen s =
+  derive_ctype
+    State.(s.gens)
+    ~tuple:gen_tuple
+    ~sat:(fun ct e ->
+      let rejection pred gen = apply_runtime "reject" [pred; gen] in
+      match Gegen.solve_ct ct e with
+      | None ->
+          Option.map (rejection e) (get_gen s {ct with ptyp_attributes= []})
+      | x -> x)
 
-let get_print s = derive_ctype State.(s.prints) print_tuple
+let rec get_print s =
+  derive_ctype
+    State.(s.prints)
+    ~tuple:print_tuple
+    ~sat:(fun ct _ -> get_print s {ct with ptyp_attributes= []})
 
 let get_prop s =
   derive_ctype
     State.(s.props)
-    (fun props ->
+    ~tuple:(fun props ->
       let get_name = id_gen_gen () in
       let compose (pats, prop) p =
         match (prop, p) with
@@ -118,69 +134,68 @@ let get_prop s =
       lambda (Pat.tuple (List.rev pats)) (Option.get body))
 
 (* generic derivation function for type declaration *)
-let derive_decl (s : State.t) get_f field_f record_f constr_f sum_f sat_f
+let derive_decl (s : State.t) ~core_type ~field ~record ~constr ~sum ~sat
     ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) =
-  let field_f f =
-    let field = get_f s f.pld_type |> Option.get in
-    field_f field f.pld_name.txt
+  let field f =
+    field (core_type s f.pld_type |> Option.get) f.pld_name.txt
   in
   try
     match get_attribute_pstr "satisfying" ptype_attributes with
-    | Some e -> sat_f td e
+    | Some e -> sat td e
     | None -> (
       match ptype_kind with
-      | Ptype_abstract -> Option.(join (map (get_f s) ptype_manifest))
+      | Ptype_abstract -> Option.(join (map (core_type s) ptype_manifest))
       | Ptype_variant constructors ->
           let constr_f c =
             match c.pcd_args with
             | Pcstr_tuple ct ->
-                Some (constr_f (List.map (get_f s) ct) c.pcd_name)
+                Some (constr (List.map (core_type s) ct) c.pcd_name)
             | Pcstr_record _labs -> None
           in
-          Some (sum_f (List.map constr_f constructors))
-      | Ptype_record labs -> Some (record_f (List.map field_f labs))
+          Some (sum (List.map constr_f constructors))
+      | Ptype_record labs -> Some (record (List.map field labs))
       | Ptype_open -> None )
   with Invalid_argument _ -> None
 
 let rec get_generator s =
-  derive_decl s get_gen
-    (fun gen name -> (lid_loc name, apply_nolbl gen [exp_id "rs"]))
-    (fun fields ->
+  derive_decl s ~core_type:get_gen
+    ~field:(fun gen name -> (lid_loc name, apply_nolbl gen [exp_id "rs"]))
+    ~record:(fun fields ->
       let app = Exp.record fields None in
       lambda_s "rs" app)
-    (fun gs n ->
+    ~constr:(fun gs n ->
       match gs with
       | [] -> lambda_s "_" (Exp.construct (lid_loc n.txt) None)
       | l ->
           lambda_s "rs"
             (Exp.construct (lid_loc n.txt)
                (Some (apply_nolbl (gen_tuple l) [string_ "rs"]))))
-    (fun _ -> invalid_arg "")
-    (fun td e ->
+    ~sum:(fun _ -> invalid_arg "")
+    ~sat:(fun td e ->
       let rejection pred gen = apply_runtime "reject" [pred; gen] in
       match Gegen.solve_td td e with
       | None ->
           Option.map (rejection e)
             (get_generator s {td with ptype_attributes= []})
-      | x -> x)
+      | Some x -> x)
 
 (* Given a rewritting state [rs] and and a type [t], search for the printer
    associated to [t] in [rs]. Returns a Parsetree.expression (corresponding
    to a printer) option. *)
 let get_printer s td =
   let rec aux s td =
-    derive_decl s get_print
-      (fun print name ->
+    derive_decl s ~core_type:get_print
+      ~field:(fun print name ->
         let field = apply_nolbl print [exp_id name] in
         let field_name = string_ name in
         ( string_concat ~sep:"=" [field_name; field]
         , (lid_loc name, pat_s name) ))
-      (fun l ->
+      ~record:(fun l ->
         let fields, pat = List.split l in
         let app = string_concat ~sep:"; " fields in
         let app = string_concat [string_ "{"; app; string_ "}"] in
         lambda (Pat.record pat Closed) app)
-      (fun p n : case ->
+      ~constr:(fun p n : case ->
         match p with
         | [] -> Exp.case (Pat.variant n.txt None) (string_ n.txt)
         | p ->
@@ -196,7 +211,7 @@ let get_printer s td =
             Exp.case
               (Pat.variant n.txt (Some (Pat.tuple pat)))
               (apply_nolbl (print_tuple p) [Exp.tuple exp]))
-      (fun (cl : case option list) ->
+      ~sum:(fun (cl : case option list) ->
         lambda_s "x"
           (Exp.match_ (exp_id "x")
              (List.map
@@ -204,7 +219,7 @@ let get_printer s td =
                   | None -> Exp.case (Pat.any ()) default_printer
                   | Some c -> c)
                 cl)))
-      (fun td _ -> aux s {td with ptype_attributes= []})
+      ~sat:(fun td _ -> aux s {td with ptype_attributes= []})
       td
   in
   aux s td |> Option.value ~default:default_printer

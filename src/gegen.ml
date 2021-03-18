@@ -81,19 +81,22 @@ let craft_generator inner outer pattern r =
   apply_nolbl_s "weighted" [inner_outer_gens] |> open_runtime
 
 (* generator for constrained core types *)
-let solve_ct sat ct =
-  let pat, body = split_fun sat in
-  let pat' = fill pat in
-  let unflatten, i_s, f_s = flatten ct pat' in
-  let constr = Lang.of_ocaml body in
-  let inner, outer = Solve.get_generators i_s f_s constr in
-  craft_generator inner outer pat' unflatten
+let solve_ct ct sat =
+  try
+    let pat, body = split_fun sat in
+    let pat' = fill pat in
+    let unflatten, i_s, f_s = flatten ct pat' in
+    let constr = Lang.of_ocaml body in
+    let inner, outer = Solve.get_generators i_s f_s constr in
+    Some (craft_generator inner outer pat' unflatten)
+  with OutOfSubset _ -> None
 
 (* generator for constrained type declarations *)
 let solve_td td sat =
   try
     match td.ptype_kind with
-    | Ptype_abstract -> Option.map (solve_ct sat) td.ptype_manifest
+    | Ptype_abstract ->
+        Option.map (fun ct -> solve_ct ct sat) td.ptype_manifest
     | Ptype_record _labs -> (* todo records *) None
     | Ptype_variant _ -> None
     | Ptype_open -> None

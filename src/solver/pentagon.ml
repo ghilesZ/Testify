@@ -112,17 +112,22 @@ let to_dot_file pentagon (filename : string) : unit =
   close_out fd
 
 let str_of_pentagon p =
-  (String.concat "\n" (List.concat_map (fun v -> VSet.elements
-                                                 @@ VSet.map
-                                                      (fun u -> Printf.sprintf "%s < %s" v u)
-                                                      (VMap.find v p.upper))
-                         (VSet.elements p.vars)))
-  ^ "\n" ^
-    (String.concat "\n" (VSet.elements
-                         @@ VSet.map (fun v ->
-                                let lo,up = VMap.find v p.bounds in
-                                Printf.sprintf "%s [%.3e, %.3e]" v lo up)
-                              p.vars))
+  String.concat "\n"
+    (List.concat_map
+       (fun v ->
+         VSet.elements
+         @@ VSet.map
+              (fun u -> Printf.sprintf "%s < %s" v u)
+              (VMap.find v p.upper))
+       (VSet.elements p.vars))
+  ^ "\n"
+  ^ String.concat "\n"
+      ( VSet.elements
+      @@ VSet.map
+           (fun v ->
+             let lo, up = VMap.find v p.bounds in
+             Printf.sprintf "%s [%.3e, %.3e]" v lo up)
+           p.vars )
 
 let show pentagon =
   let temp_file = "temp_dot_" ^ string_of_float (Sys.time ()) in
@@ -186,44 +191,43 @@ let str_of_rule = function
   | B v -> Printf.sprintf "B %s" v
   | I v -> Printf.sprintf "I %s" v
   | T v -> Printf.sprintf "T %s" v
-   
+
 let unfold_bit_decomp pentagon =
   let rec fold acc todo =
     match todo with
     | [] -> acc
     | (ord, orig, p) :: q -> (
-      if VSet.equal p.vars VSet.empty then
-        fold ((List.rev ord, orig) :: acc) q
-      else
-        match find_var p with
-        | None ->
-           let x, y = find_vars p in
-           let f p = transitive_reduction @@ add_rel x y p in
-           let g p = transitive_reduction @@ add_rel y x p in
-           fold acc ((ord, f orig, f p) :: (ord, g orig, g p) :: q)
-        | Some v ->
-           let uc = VSet.cardinal (VMap.find v p.upper) in
-           let ul = VSet.cardinal (VMap.find v p.lower) in
-           (* Printf.printf "%s %d %d\n" v uc ul; *)
-           print_endline (str_of_pentagon p);
-           let v' =
-             match (uc, ul) with
-             | 0, 0 -> E v
-             | 0, 1 -> B v
-             | 1, 0 -> T v
-             | 1, 1 -> I v
-             | _ -> assert false
-           in
-           fold acc ((v' :: ord, orig, del_var v p) :: q) )
+        if VSet.equal p.vars VSet.empty then
+          fold ((List.rev ord, orig) :: acc) q
+        else
+          match find_var p with
+          | None ->
+              let x, y = find_vars p in
+              let f p = transitive_reduction @@ add_rel x y p in
+              let g p = transitive_reduction @@ add_rel y x p in
+              fold acc ((ord, f orig, f p) :: (ord, g orig, g p) :: q)
+          | Some v ->
+              let uc = VSet.cardinal (VMap.find v p.upper) in
+              let ul = VSet.cardinal (VMap.find v p.lower) in
+              (* Printf.printf "%s %d %d\n" v uc ul; *)
+              print_endline (str_of_pentagon p) ;
+              let v' =
+                match (uc, ul) with
+                | 0, 0 -> E v
+                | 0, 1 -> B v
+                | 1, 0 -> T v
+                | 1, 1 -> I v
+                | _ -> assert false
+              in
+              fold acc ((v' :: ord, orig, del_var v p) :: q) )
   in
   let p = transitive_reduction pentagon in
   fold [] [([], p, p)]
 
-
 let rec str_of_bit_decomp (decomp, p) =
-  match decomp with     
-  | [] -> "\n" ^ (str_of_pentagon p)
-  | r :: q -> (str_of_rule r) ^ " " ^ str_of_bit_decomp (q, p)
+  match decomp with
+  | [] -> "\n" ^ str_of_pentagon p
+  | r :: q -> str_of_rule r ^ " " ^ str_of_bit_decomp (q, p)
 
 type scalar = V of Var.t | N of Num.t
 
@@ -231,74 +235,109 @@ let unfold_bounds_const ord pentagon =
   let rec b_handler acc ord p u v =
     let vlo, vup = VMap.find v p.bounds in
     let ulo, uup = VMap.find u p.bounds in
-    match uup < vlo, ulo < vlo with
-    | true,_ -> fold (List.map (fun x -> (v,N vlo,N vup)::x) acc)
-                  ord (del_var v p)
-    | false,true -> fold (List.map (fun x -> (v,V u,N vup)::x) acc) ord
-                      (del_var v {p with bounds = VMap.add u (vlo, min vup uup) p.bounds})
-                    @ fold (List.map (fun x -> (v,N vlo,N vup)::x) acc) ord
-                        (del_var v {p with bounds = VMap.add u (ulo, vlo) p.bounds})
-    | _ -> fold (List.map (fun x -> (v,V u,N vup)::x) acc) ord
-             (del_var v {p with bounds = VMap.add u (ulo, min vup uup) p.bounds})
+    match (uup < vlo, ulo < vlo) with
+    | true, _ ->
+        fold
+          (List.map (fun x -> (v, N vlo, N vup) :: x) acc)
+          ord (del_var v p)
+    | false, true ->
+        fold
+          (List.map (fun x -> (v, V u, N vup) :: x) acc)
+          ord
+          (del_var v {p with bounds= VMap.add u (vlo, min vup uup) p.bounds})
+        @ fold
+            (List.map (fun x -> (v, N vlo, N vup) :: x) acc)
+            ord
+            (del_var v {p with bounds= VMap.add u (ulo, vlo) p.bounds})
+    | _ ->
+        fold
+          (List.map (fun x -> (v, V u, N vup) :: x) acc)
+          ord
+          (del_var v {p with bounds= VMap.add u (ulo, min vup uup) p.bounds})
   and t_handler acc ord p u v =
     let vlo, vup = VMap.find v p.bounds in
     let ulo, uup = VMap.find u p.bounds in
-    (match vup < ulo, uup > vup with
-     | true,_ -> fold (List.map (fun x -> (v,N vlo,N vup)::x) acc)
-                   ord (del_var v p)
-     | false,true -> fold (List.map (fun x -> (v,N vlo,N vup)::x) acc) ord
-                       (del_var v {p with bounds = VMap.add u (vup, uup) p.bounds})
-                     @ fold (List.map (fun x -> (v,N vlo,V u)::x) acc) ord
-                         (del_var v {p with bounds = VMap.add u (max vlo ulo, vup) p.bounds})
-     | _ -> fold (List.map (fun x -> (v,N vlo, V u)::x) acc) ord
-              (del_var v {p with bounds = VMap.add u (max vlo ulo, uup) p.bounds}))
-  and fold acc ord p =    
+    match (vup < ulo, uup > vup) with
+    | true, _ ->
+        fold
+          (List.map (fun x -> (v, N vlo, N vup) :: x) acc)
+          ord (del_var v p)
+    | false, true ->
+        fold
+          (List.map (fun x -> (v, N vlo, N vup) :: x) acc)
+          ord
+          (del_var v {p with bounds= VMap.add u (vup, uup) p.bounds})
+        @ fold
+            (List.map (fun x -> (v, N vlo, V u) :: x) acc)
+            ord
+            (del_var v
+               {p with bounds= VMap.add u (max vlo ulo, vup) p.bounds})
+    | _ ->
+        fold
+          (List.map (fun x -> (v, N vlo, V u) :: x) acc)
+          ord
+          (del_var v {p with bounds= VMap.add u (max vlo ulo, uup) p.bounds})
+  and fold acc ord p =
     match ord with
     | [] -> List.map List.rev acc
-    | r :: ord' ->
-       (match r with
-        | B v -> (* case v > u *)
-           let u = VSet.choose @@ VMap.find v p.lower in
-           b_handler acc ord' p u v
-        | T v -> (* case v < u *)
-           let u = VSet.choose @@ VMap.find v p.upper in
-           t_handler acc ord' p u v
-        | E v -> let vlo, vup = VMap.find v p.bounds in
-                 fold (List.map (fun x -> (v, N vlo, N vup)::x) acc) ord' empty
-        | I v -> (* case u < v < w *)
-           let u = VSet.choose @@ VMap.find v p.lower in
-           let w = VSet.choose @@ VMap.find v p.upper in
-           let vlo, vup = VMap.find v p.bounds in
-           let ulo, uup = VMap.find u p.bounds in
-           let wlo, wup = VMap.find w p.bounds in
-           (match uup < vlo, vup < wlo with
-            | true, true -> fold (List.map (fun x -> (v,N vlo,N vup)::x) acc)
-                              ord' (del_var v p)
-            | true, false -> t_handler acc ord' p w v
-            | false, true -> b_handler acc ord' p u v
-            | false, false ->
-               (if ulo < vlo && vup < wup then
-                 fold (List.map (fun x -> (v, N vlo, N vup)::x) acc) ord
-                   (del_var v {p with bounds = p.bounds
-                                               |> VMap.add u (ulo, vlo) 
-                                               |> VMap.add w (vup, wup)})
-               else [])
-               @ fold (List.map (fun x -> (v, V u, V w)::x) acc) ord
-                   (del_var v {p with bounds = p.bounds
-                                               |> VMap.add u (ulo, min vup uup) 
-                                               |> VMap.add w (max vlo wlo, wup)})))
+    | r :: ord' -> (
+      match r with
+      | B v ->
+          (* case v > u *)
+          let u = VSet.choose @@ VMap.find v p.lower in
+          b_handler acc ord' p u v
+      | T v ->
+          (* case v < u *)
+          let u = VSet.choose @@ VMap.find v p.upper in
+          t_handler acc ord' p u v
+      | E v ->
+          let vlo, vup = VMap.find v p.bounds in
+          fold (List.map (fun x -> (v, N vlo, N vup) :: x) acc) ord' empty
+      | I v -> (
+          (* case u < v < w *)
+          let u = VSet.choose @@ VMap.find v p.lower in
+          let w = VSet.choose @@ VMap.find v p.upper in
+          let vlo, vup = VMap.find v p.bounds in
+          let ulo, uup = VMap.find u p.bounds in
+          let wlo, wup = VMap.find w p.bounds in
+          match (uup < vlo, vup < wlo) with
+          | true, true ->
+              fold
+                (List.map (fun x -> (v, N vlo, N vup) :: x) acc)
+                ord' (del_var v p)
+          | true, false -> t_handler acc ord' p w v
+          | false, true -> b_handler acc ord' p u v
+          | false, false ->
+              ( if ulo < vlo && vup < wup then
+                fold
+                  (List.map (fun x -> (v, N vlo, N vup) :: x) acc)
+                  ord
+                  (del_var v
+                     { p with
+                       bounds=
+                         p.bounds
+                         |> VMap.add u (ulo, vlo)
+                         |> VMap.add w (vup, wup) })
+              else [] )
+              @ fold
+                  (List.map (fun x -> (v, V u, V w) :: x) acc)
+                  ord
+                  (del_var v
+                     { p with
+                       bounds=
+                         p.bounds
+                         |> VMap.add u (ulo, min vup uup)
+                         |> VMap.add w (max vlo wlo, wup) }) ) )
   in
   fold [[]] ord pentagon
 
-let str_of_scalar = function
-  | V v -> v
-  | N v -> Printf.sprintf "%f" v
+let str_of_scalar = function V v -> v | N v -> Printf.sprintf "%f" v
 
 let rec latex_of_formula = function
   | [] -> ""
-  | (v, lo, up) :: f -> Printf.sprintf "\\int_{%s}^{%s} %s \\mathrm{d} {%s}"
-                          (str_of_scalar lo) (str_of_scalar up) (latex_of_formula f) v
-                          
+  | (v, lo, up) :: f ->
+      Printf.sprintf "\\int_{%s}^{%s} %s \\mathrm{d} {%s}" (str_of_scalar lo)
+        (str_of_scalar up) (latex_of_formula f) v
 
 let p =
   empty
@@ -312,15 +351,15 @@ let p' =
   |> add_rel "x0" "x2" |> add_rel "x0" "x3" |> add_rel "x1" "x2"
   |> add_rel "x1" "x3"
 
-let _ =
-  show (transitive_reduction p);
+let go _ =
+  show (transitive_reduction p) ;
   let decomp = unfold_bit_decomp p in
-  List.iter (fun x -> print_endline @@ str_of_bit_decomp x) decomp;
- 
-  Printf.printf "\\documentclass{article}\n\\begin{document}\n$$\n";
-  List.iter (fun x -> print_endline @@ latex_of_formula x) (List.concat_map (fun (ord, p) -> unfold_bounds_const ord p) (decomp));
+  List.iter (fun x -> print_endline @@ str_of_bit_decomp x) decomp ;
+  Printf.printf "\\documentclass{article}\n\\begin{document}\n$$\n" ;
+  List.iter
+    (fun x -> print_endline @@ latex_of_formula x)
+    (List.concat_map (fun (ord, p) -> unfold_bounds_const ord p) decomp) ;
   Printf.printf "$$\n\ned{document}"
-
 
 (* let _ =
  *   show p;
