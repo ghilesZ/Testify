@@ -66,19 +66,26 @@ let split_fun f =
 (* builds a generator list, sorted by probability of being chosen (from most
    likely to less likely) *)
 let craft_generator inner outer pattern r =
-  let outer_gens =
-    List.fold_left
-      (fun acc (w, reject, g) ->
-        let g = apply_nolbl_s "reject" [lambda pattern reject; r |><| g] in
-        cons_exp (Exp.tuple [float_ w; g]) acc)
-      empty_list_exp (List.rev outer)
-  in
-  let inner_outer_gens =
-    List.fold_left
-      (fun acc (w, g) -> cons_exp (Exp.tuple [float_ w; r |><| g]) acc)
-      outer_gens (List.rev inner)
-  in
-  apply_nolbl_s "weighted" [inner_outer_gens]
+  match (inner, outer) with
+  | [(_, g)], [] ->
+      r |><| g
+      (* lighter generated code when the cover is a single element *)
+  | _ ->
+      let outer_gens =
+        List.fold_left
+          (fun acc (w, reject, g) ->
+            let g =
+              apply_nolbl_s "reject" [lambda pattern reject; r |><| g]
+            in
+            cons_exp (Exp.tuple [float_ w; g]) acc)
+          empty_list_exp (List.rev outer)
+      in
+      let inner_outer_gens =
+        List.fold_left
+          (fun acc (w, g) -> cons_exp (Exp.tuple [float_ w; r |><| g]) acc)
+          outer_gens (List.rev inner)
+      in
+      apply_nolbl_s "weighted" [inner_outer_gens]
 
 (* generator for constrained core types *)
 let solve_ct ct sat =

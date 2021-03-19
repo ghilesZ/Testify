@@ -219,6 +219,11 @@ let get_printer s td =
         let constr pat = Pat.construct (lid_loc n.txt) pat in
         match p with
         | [] -> Exp.case (constr None) (string_ n.txt)
+        | [print] ->
+            let print = Option.value ~default:default_printer print in
+            let id = id_gen_gen () in
+            let p, e = id () in
+            Exp.case (constr (Some (pat_s p))) (apply_nolbl print [e])
         | p ->
             let id = id_gen_gen () in
             let pat, exp =
@@ -260,6 +265,11 @@ let get_property s td =
         let constr pat = Pat.construct (lid_loc n.txt) pat in
         match p with
         | [] -> Exp.case (constr None) true_
+        | [prop] ->
+            let prop = Option.get prop in
+            let id = id_gen_gen () in
+            let p, e = id () in
+            Exp.case (constr (Some (pat_s p))) (apply_nolbl prop [e])
         | p ->
             let id = id_gen_gen () in
             let pat, exp =
