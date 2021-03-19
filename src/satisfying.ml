@@ -343,6 +343,9 @@ let check_print vb (s : State.t) =
 let get_infos (s : State.t) e =
   let helper pat =
     match pat.ppat_desc with
+    | Ppat_construct ({txt= Lident "()"; _}, _) ->
+        (* allow to omit the explicit type annotation for the unit type*)
+        (State.get_gen s (lparse "unit"), State.get_print s (lparse "unit"))
     | Ppat_constraint (_, t) -> (get_gen s t, get_print s t)
     | _ -> (None, None)
   in
@@ -370,12 +373,12 @@ let gather_tests vb state =
     match get_infos state vb.pvb_expr.pexp_desc with
     | None -> []
     | Some (args, ct) ->
-        let out_print =
+        let p =
           get_print state ct |> Option.value ~default:default_printer
         in
         let name = Format.asprintf "%s in %s" (bold_blue txt) (blue loc) in
         get_prop state ct |> Option.to_list
-        |> List.map (generate txt args out_print name) )
+        |> List.map (generate txt args p name) )
   | _ -> []
 
 (* actual mapper *)
