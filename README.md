@@ -91,10 +91,11 @@ type itv = {inf:int; sup:int} [@@satisfying (fun {inf;sup} -> inf <= sup)]
 ```
 
 ### Derivation
-Automatic derivation of generators is made for the following types:
+Automatic derivation of generators is made for the following *Non-inductive* types:
 - for basic types (unit, bool, char, int, float)
 - for tuples
 - for records
+- for sum types
 - for types who are attached a ```[@@satisying pred]``` annotation, we
   proceed to a rejection sampling using
   ```QCheck.find_example```. However, this can be avoided by
@@ -109,7 +110,6 @@ Testify is still at a very (very) early stage of developpement and is
 still very (very) unstable.
 
 ##### Things that are yet to be done
-- handling of ADTs
 - handling of parametric types
 - handling of module path for type annotations (e.g : `Int.t`)
 - provide the user with a *standard library* of predifined types (positive integers, non-empty lists ...)

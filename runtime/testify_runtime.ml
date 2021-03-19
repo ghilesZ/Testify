@@ -81,6 +81,11 @@ let weighted (gens : (float * 'a Gen.t) list) : 'a Gen.t =
     let r = Gen.float_bound_exclusive total_weight rs in
     (aux r gens) rs
 
+let one_of (gens: 'a Gen.t list) : 'a Gen.t =
+  let size = List.length gens in
+  let sgen = Gen.int_bound (size -1) in
+  fun rs -> (List.nth gens (sgen rs) rs)
+
 let count = ref 1000
 
 let reject pred g =

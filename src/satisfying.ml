@@ -189,10 +189,11 @@ let rec get_generator s =
       | l ->
           lambda_s "rs"
             (Exp.construct (lid_loc n.txt)
-               (Some (apply_nolbl (gen_tuple l) [string_ "rs"]))))
-    ~sum:(fun _ -> invalid_arg "")
+               (Some (apply_nolbl (gen_tuple l) [exp_id "rs"]))))
+    ~sum:(fun gs ->
+      Some (apply_nolbl_s "one_of" [list_of_list (List.map Option.get gs)]))
     ~sat:(fun td e ->
-      let rejection pred gen = apply_runtime "reject" [pred; gen] in
+      let rejection pred gen = apply_nolbl_s "reject" [pred; gen] in
       match Gegen.solve_td td e with
       | None ->
           Option.map (rejection e)
