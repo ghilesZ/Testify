@@ -71,7 +71,12 @@ let derive_ctype env ~tuple ~sat =
       | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt env
       | Ptyp_poly ([], ct) -> aux ct
       | Ptyp_tuple tup -> (
-        try Some (tuple (List.map aux tup)) with Invalid_argument _ -> None )
+        match tup with
+        | [] -> assert false
+        | [x] -> aux x
+        | tup -> (
+          try Some (tuple (List.map aux tup))
+          with Invalid_argument _ -> None ) )
       | _ -> None )
   in
   aux
@@ -79,34 +84,25 @@ let derive_ctype env ~tuple ~sat =
 let default_printer = lambda_s "_" (string_ (gray "undefined"))
 
 (* builds a n-tuple generator from a list of n generators *)
-let gen_tuple = function
-  | [] -> (* empty tuple *) assert false
-  | [x] -> Option.get x
-  | gens ->
-      List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
-      |> Exp.tuple |> lambda_s "x"
+let gen_tuple gens =
+  List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
+  |> Exp.tuple |> lambda_s "x"
 
 (* builds a n-tuple printer from a list of n printers *)
-let print_tuple printers =
+let print_tuple p =
   let get_name = id_gen_gen () in
   let np p =
     let n, id = get_name () in
     (apply_nolbl (Option.value ~default:default_printer p) [id], pat_s n)
   in
-  match printers with
-  | [] -> (* empty tuple *) assert false
-  | [x] ->
-      let n, p = np x in
-      lambda p n
-  | p ->
-      let names, pats = List.split (List.map np p) in
-      let b = string_concat ~sep:", " names in
-      let b' = string_concat [string_ "("; b; string_ ")"] in
-      lambda (Pat.tuple pats) b'
+  let names, pats = List.split (List.map np p) in
+  let b = string_concat ~sep:", " names in
+  let b' = string_concat [string_ "("; b; string_ ")"] in
+  lambda (Pat.tuple pats) b'
 
 (* builds a n-tuple satisfying predicate from a list of n satisfying
    predicates *)
-let sat_tuple props =
+let sat_tuple p =
   let get_name = id_gen_gen () in
   let compose (pats, prop) p =
     match (prop, p) with
@@ -120,7 +116,7 @@ let sat_tuple props =
         let app = apply_nolbl p' [id] in
         (pat_s name :: pats, Some (p &&@ app))
   in
-  let pats, body = List.fold_left compose ([], None) props in
+  let pats, body = List.fold_left compose ([], None) p in
   lambda (Pat.tuple (List.rev pats)) (Option.get body)
 
 let rec get_gen s =
@@ -180,12 +176,14 @@ let derive_decl (s : State.t) ~core_type ~field ~record ~constr ~sum ~sat
 let rec get_generator s =
   derive_decl s ~core_type:get_gen
     ~field:(fun gen name -> (lid_loc name, apply_nolbl gen [exp_id "rs"]))
-    ~record:(fun fields ->
-      let app = Exp.record fields None in
-      lambda_s "rs" app)
+    ~record:(fun fields -> Exp.record fields None |> lambda_s "rs")
     ~constr:(fun gs n ->
       match gs with
       | [] -> lambda_s "_" (Exp.construct (lid_loc n.txt) None)
+      | [x] ->
+          lambda_s "rs"
+            (Exp.construct (lid_loc n.txt)
+               (Some (apply_nolbl (Option.get x) [exp_id "rs"])))
       | l ->
           lambda_s "rs"
             (Exp.construct (lid_loc n.txt)
@@ -218,15 +216,14 @@ let get_printer s td =
         lambda (Pat.record pat Closed) app)
       ~constr:(fun p n : case ->
         let constr pat = Pat.construct (lid_loc n.txt) pat in
+        let id = id_gen_gen () in
         match p with
         | [] -> Exp.case (constr None) (string_ n.txt)
         | [print] ->
             let print = Option.value ~default:default_printer print in
-            let id = id_gen_gen () in
             let p, e = id () in
             Exp.case (constr (Some (pat_s p))) (apply_nolbl print [e])
         | p ->
-            let id = id_gen_gen () in
             let pat, exp =
               List.map
                 (fun _ ->
@@ -242,9 +239,8 @@ let get_printer s td =
         Some
           (Exp.function_
              (List.map
-                (function
-                  | None -> Exp.case (Pat.any ()) default_printer
-                  | Some c -> c)
+                (Option.value
+                   ~default:(Exp.case (Pat.any ()) default_printer))
                 cl)))
       ~sat:(fun td _ -> aux s {td with ptype_attributes= []})
       td
