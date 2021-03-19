@@ -11,19 +11,19 @@ let number = ref 10000
 
 let set_number = ( := ) number
 
-let add_test args = apply_runtime "add_test" args |> Str.eval
-
 let run = apply_runtime "run_test" [unit] |> Str.eval
 
 (* test generation for constants *)
 let test_constant (name : string) loc (f : expression) =
   let f = lambda_s "_" (apply_nolbl f [exp_id name]) in
   let n = Format.asprintf "constant: %s in %s" (bold_blue name) (blue loc) in
-  add_test [one; string_ n; exp_id "QCheck.unit"; f]
+  open_runtime (apply_nolbl_s "add_const" [one; string_ n; f]) |> Str.eval
 
 (* generation of QCheck test *)
 let test (name : string) (args : expression list) =
-  add_test ([int_ !number; string_ name] @ args)
+  open_runtime
+    (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args))
+  |> Str.eval
 
 (* function application generator *)
 let generate fn args out_print testname satisfy =
@@ -56,10 +56,9 @@ let generate fn args out_print testname satisfy =
         |> pair id |> leto |> lambda_s "rs"
       in
       test testname
-        [ apply_lab_nolab_s "QCheck.make"
-            [("print", apply_runtime_1 "opt_print" (exp_id "snd"))]
-            [apply_runtime_1 "opt_gen" go]
-        ; apply_runtime_1 "sat_output" satisfy ]
+        [ apply_nolbl_s "opt_print" [exp_id "snd"]
+        ; apply_nolbl_s "opt_gen" [go]
+        ; apply_nolbl_s "sat_output" [satisfy] ]
 
 (* generic derivation function for core types *)
 let derive_ctype env ~tuple ~sat =
@@ -80,9 +79,12 @@ let derive_ctype env ~tuple ~sat =
 let default_printer = lambda_s "_" (string_ (gray "undefined"))
 
 (* builds a n-tuple generator from a list of n generators *)
-let gen_tuple gens =
-  List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
-  |> Exp.tuple |> lambda_s "x"
+let gen_tuple = function
+  | [] -> (* empty tuple *) assert false
+  | [x] -> Option.get x
+  | gens ->
+      List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
+      |> Exp.tuple |> lambda_s "x"
 
 (* builds a n-tuple printer from a list of n printers *)
 let print_tuple printers =
@@ -91,10 +93,16 @@ let print_tuple printers =
     let n, id = get_name () in
     (apply_nolbl (Option.value ~default:default_printer p) [id], pat_s n)
   in
-  let names, pats = List.split (List.map np printers) in
-  let b = string_concat ~sep:", " names in
-  let b' = string_concat [string_ "("; b; string_ ")"] in
-  lambda (Pat.tuple pats) b'
+  match printers with
+  | [] -> (* empty tuple *) assert false
+  | [x] ->
+      let n, p = np x in
+      lambda p n
+  | p ->
+      let names, pats = List.split (List.map np p) in
+      let b = string_concat ~sep:", " names in
+      let b' = string_concat [string_ "("; b; string_ ")"] in
+      lambda (Pat.tuple pats) b'
 
 (* builds a n-tuple satisfying predicate from a list of n satisfying
    predicates *)
@@ -120,9 +128,9 @@ let rec get_gen s =
     State.(s.gens)
     ~tuple:gen_tuple
     ~sat:(fun ct e ->
-      let rejection pred gen = apply_runtime "reject" [pred; gen] in
       match Gegen.solve_ct ct e with
       | None ->
+          let rejection pred gen = apply_runtime "reject" [pred; gen] in
           Option.map (rejection e) (get_gen s {ct with ptyp_attributes= []})
       | x -> x)
 
@@ -208,8 +216,9 @@ let get_printer s td =
         let app = string_concat [string_ "{"; app; string_ "}"] in
         lambda (Pat.record pat Closed) app)
       ~constr:(fun p n : case ->
+        let constr pat = Pat.construct (lid_loc n.txt) pat in
         match p with
-        | [] -> Exp.case (Pat.variant n.txt None) (string_ n.txt)
+        | [] -> Exp.case (constr None) (string_ n.txt)
         | p ->
             let id = id_gen_gen () in
             let pat, exp =
@@ -221,17 +230,16 @@ let get_printer s td =
               |> List.split
             in
             Exp.case
-              (Pat.variant n.txt (Some (Pat.tuple pat)))
+              (constr (Some (Pat.tuple pat)))
               (apply_nolbl (print_tuple p) [Exp.tuple exp]))
       ~sum:(fun (cl : case option list) ->
         Some
-          (lambda_s "x"
-             (Exp.match_ (exp_id "x")
-                (List.map
-                   (function
-                     | None -> Exp.case (Pat.any ()) default_printer
-                     | Some c -> c)
-                   cl))))
+          (Exp.function_
+             (List.map
+                (function
+                  | None -> Exp.case (Pat.any ()) default_printer
+                  | Some c -> c)
+                cl)))
       ~sat:(fun td _ -> aux s {td with ptype_attributes= []})
       td
   in
@@ -249,8 +257,9 @@ let get_property s td =
             List.fold_left ( &&@ ) h tl |> lambda (Pat.record pat Closed)
         | _ -> (*record with 0 field*) assert false)
       ~constr:(fun p n : case ->
+        let constr pat = Pat.construct (lid_loc n.txt) pat in
         match p with
-        | [] -> Exp.case (Pat.variant n.txt None) (string_ n.txt)
+        | [] -> Exp.case (constr None) true_
         | p ->
             let id = id_gen_gen () in
             let pat, exp =
@@ -262,18 +271,17 @@ let get_property s td =
               |> List.split
             in
             Exp.case
-              (Pat.variant n.txt (Some (Pat.tuple pat)))
+              (constr (Some (Pat.tuple pat)))
               (apply_nolbl (sat_tuple p) [Exp.tuple exp]))
       ~sum:(fun (cl : case option list) ->
         if List.for_all (( = ) None) cl then None
         else
           Some
-            (lambda_s "x"
-               (Exp.match_ (exp_id "x")
-                  (List.map
-                     (function
-                       | None -> Exp.case (Pat.any ()) true_ | Some c -> c)
-                     cl))))
+            (Exp.function_
+               (List.map
+                  (function
+                    | None -> Exp.case (Pat.any ()) true_ | Some c -> c)
+                  cl)))
       ~sat:(fun td _ -> aux s {td with ptype_attributes= []})
       td
   in

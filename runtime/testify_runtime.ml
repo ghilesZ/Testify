@@ -3,7 +3,13 @@ open QCheck
 let tests = ref ([] : Test.t list)
 
 (* test storing management *)
-let add_test count name arb pred =
+let add_fun count name print gen pred =
+  let arb = make ~print gen in
+  let t = Test.make ~count ~name arb pred in
+  tests := t :: !tests
+
+let add_const count name pred =
+  let arb = make Gen.unit in
   let t = Test.make ~count ~name arb pred in
   tests := t :: !tests
 
@@ -40,6 +46,11 @@ let get_int name (l : instance) =
 
 let get_float name (l : instance) =
   match List.assoc name l with GFloat f -> f | _ -> failwith "type error"
+
+(* GENERATORS *)
+
+let unit = Gen.unit
+let int_range = Gen.int_range
 
 (* float range generator *)
 let float_range a b =

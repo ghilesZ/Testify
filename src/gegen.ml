@@ -78,7 +78,7 @@ let craft_generator inner outer pattern r =
       (fun acc (w, g) -> cons_exp (Exp.tuple [float_ w; r |><| g]) acc)
       outer_gens (List.rev inner)
   in
-  apply_nolbl_s "weighted" [inner_outer_gens] |> open_runtime
+  apply_nolbl_s "weighted" [inner_outer_gens]
 
 (* generator for constrained core types *)
 let solve_ct ct sat =

@@ -49,7 +49,7 @@ let filter_leq ((l1, h1) : t) ((l2, h2) : t) : (t * t) Consistency.t =
   let open Consistency in
   if Z.leq h1 l2 then Sat
   else if Z.gt l1 h2 then Unsat
-  else Filtered (((l1, Z.min h1 h2), (Z.max l1 l2, h2)), false)
+  else Filtered (((l1, Z.min h1 h2), (Z.max l1 l2, h2)), l1 = h1 || l2 = h2)
 
 let filter_lt ((l1, h1) : t) ((l2, h2) : t) : (t * t) Consistency.t =
   let open Consistency in
@@ -81,5 +81,4 @@ let compile ((inf, sup) : t) =
   let s = sup |> Z.to_int |> int_ in
   lambda_s "rs"
     (apply_nolbl_s "mk_int"
-       [ [exp_id "rs"]
-         |> apply_nolbl (apply_nolbl_s "QCheck.Gen.int_range" [i; s]) ])
+       [[exp_id "rs"] |> apply_nolbl (apply_nolbl_s "int_range" [i; s])])
