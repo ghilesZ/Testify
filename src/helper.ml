@@ -84,6 +84,11 @@ let str_nonrec vb = Str.value Nonrecursive vb
 
 let unit = Exp.construct (lid_loc "()") None
 
+(* same as Exp.construct but with list of expressions *)
+let constructor name params =
+  Exp.construct (lid_loc name)
+    (match params with [] -> None | [x] -> Some x | l -> Some (Exp.tuple l))
+
 let pair a b = Exp.tuple [a; b]
 
 (* value binding with string *)
@@ -118,6 +123,11 @@ module Types = Map.Make (struct
   let compare = compare
 end)
 
+let typ_var_of_ct ct =
+  match ct.ptyp_desc with
+  | Ptyp_var txt -> txt
+  | _ -> invalid_arg "not a type variable"
+
 (* keeps the attributes with name 'n'*)
 let check_attributes n attrs =
   List.filter (fun a -> a.attr_name.txt = n) attrs
@@ -141,6 +151,8 @@ let get_attribute_pstr n attrs =
 let reduce f = function
   | [] -> invalid_arg "can not reduce an empty list"
   | h :: t -> List.fold_left f h t
+
+let refine s f opt = Option.fold ~none:s ~some:f opt
 
 (* printing *)
 

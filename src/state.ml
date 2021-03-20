@@ -51,3 +51,11 @@ let update s id (gen, print, prop) =
   let s = Option.(value ~default:s (map (register_gen s id) gen)) in
   let s = register_print s id print in
   Option.(value ~default:s (map (register_prop s id) prop))
+
+(* TODO: make sure no name conflict can occur *)
+let register_param s ct =
+  let txt = typ_var_of_ct ct in
+  let lid = lparse txt in
+  let s = register_gen s lid (exp_id txt) in
+  let s = register_print s lid (exp_id txt) in
+  register_prop s lid (exp_id txt)

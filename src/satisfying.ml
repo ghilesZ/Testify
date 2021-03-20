@@ -25,6 +25,8 @@ let test (name : string) (args : expression list) =
     (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args))
   |> Str.eval
 
+let rejection pred gen = apply_nolbl_s "reject" [pred; gen]
+
 (* function application generator *)
 let generate fn args out_print testname satisfy =
   let testname = Format.asprintf "function: %s" testname in
@@ -151,27 +153,44 @@ let rec get_prop s ct =
 
 (* generic derivation function for type declaration *)
 let derive_decl (s : State.t) ~core_type ~field ~record ~constr ~sum ~sat
-    ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) =
+    ({ptype_kind; ptype_manifest; ptype_attributes; ptype_params; _} as td) =
   let field f =
     field (core_type s f.pld_type |> Option.get) f.pld_name.txt
   in
-  try
-    match get_attribute_pstr "satisfying" ptype_attributes with
-    | Some e -> sat td e
-    | None -> (
-      match ptype_kind with
-      | Ptype_abstract -> Option.(join (map (core_type s) ptype_manifest))
-      | Ptype_variant constructors ->
-          let constr_f c =
-            match c.pcd_args with
-            | Pcstr_tuple ct ->
-                Some (constr (List.map (core_type s) ct) c.pcd_name)
-            | Pcstr_record _labs -> None
-          in
-          sum (List.map constr_f constructors)
-      | Ptype_record labs -> Some (record (List.map field labs))
-      | Ptype_open -> None )
-  with Invalid_argument _ -> None
+  let s =
+    List.fold_left
+      (fun s (ct, _var) -> State.register_param s ct)
+      s ptype_params
+  in
+  let right =
+    try
+      match get_attribute_pstr "satisfying" ptype_attributes with
+      | Some e -> sat td e
+      | None -> (
+        match ptype_kind with
+        | Ptype_abstract -> Option.(join (map (core_type s) ptype_manifest))
+        | Ptype_variant constructors ->
+            let constr_f c =
+              match c.pcd_args with
+              | Pcstr_tuple ct ->
+                  Some (constr (List.map (core_type s) ct) c.pcd_name)
+              | Pcstr_record _labs -> None
+            in
+            sum (List.map constr_f constructors)
+        | Ptype_record labs -> Some (record (List.map field labs))
+        | Ptype_open -> None )
+    with Invalid_argument _ -> None
+  in
+  match ptype_params with
+  | [] -> right
+  | (ct, _variance) :: t ->
+      let func =
+        List.fold_left
+          (fun acc (t, _var) x -> acc (lambda_s (typ_var_of_ct t) x))
+          (lambda_s (typ_var_of_ct ct))
+          t
+      in
+      Option.map func right
 
 let rec get_generator s =
   derive_decl s ~core_type:get_gen
@@ -191,7 +210,6 @@ let rec get_generator s =
     ~sum:(fun gs ->
       Some (apply_nolbl_s "one_of" [list_of_list (List.map Option.get gs)]))
     ~sat:(fun td e ->
-      let rejection pred gen = apply_nolbl_s "reject" [pred; gen] in
       match Gegen.solve_td td e with
       | None ->
           Option.map (rejection e)
@@ -247,75 +265,53 @@ let get_printer s td =
   in
   aux s td |> Option.value ~default:default_printer
 
-let get_property s td =
-  let rec aux s td =
-    derive_decl s ~core_type:get_prop
-      ~field:(fun prop name ->
-        (apply_nolbl prop [exp_id name], (lid_loc name, pat_s name)))
-      ~record:(fun l ->
-        let fields, pat = List.split l in
-        match fields with
-        | h :: tl ->
-            List.fold_left ( &&@ ) h tl |> lambda (Pat.record pat Closed)
-        | _ -> (*record with 0 field*) assert false)
-      ~constr:(fun p n : case ->
-        let constr pat = Pat.construct (lid_loc n.txt) pat in
-        match p with
-        | [] -> Exp.case (constr None) true_
-        | [prop] ->
-            let prop = Option.get prop in
-            let id = id_gen_gen () in
-            let p, e = id () in
-            Exp.case (constr (Some (pat_s p))) (apply_nolbl prop [e])
-        | p ->
-            let id = id_gen_gen () in
-            let pat, exp =
-              List.map
-                (fun _ ->
-                  let p, e = id () in
-                  (pat_s p, e))
-                p
-              |> List.split
-            in
-            Exp.case
-              (constr (Some (Pat.tuple pat)))
-              (apply_nolbl (sat_tuple p) [Exp.tuple exp]))
-      ~sum:(fun (cl : case option list) ->
-        if List.for_all (( = ) None) cl then None
-        else
-          Some
-            (Exp.function_
-               (List.map
-                  (function
-                    | None -> Exp.case (Pat.any ()) true_ | Some c -> c)
-                  cl)))
-      ~sat:(fun td _ -> aux s {td with ptype_attributes= []})
-      td
-  in
-  aux s td
-
-(* (\* gets the property attached to the type [t] in [rs] (or None) *\)
- * let rec get_property (t : core_type) (s : State.t) : expression option =
- *   match t.ptyp_desc with
- *   | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt s.props
- *   | Ptyp_poly ([], ct) -> get_property ct s
- *   | _ -> None *)
+let rec get_property s =
+  derive_decl s ~core_type:get_prop
+    ~field:(fun prop name ->
+      (apply_nolbl prop [exp_id name], (lid_loc name, pat_s name)))
+    ~record:(fun l ->
+      let fields, pat = List.split l in
+      match fields with
+      | h :: tl ->
+          List.fold_left ( &&@ ) h tl |> lambda (Pat.record pat Closed)
+      | _ -> (*record with 0 field*) assert false)
+    ~constr:(fun p n : case ->
+      let constr pat = Pat.construct (lid_loc n.txt) pat in
+      match p with
+      | [] -> Exp.case (constr None) true_
+      | [prop] ->
+          let prop = Option.get prop in
+          let id = id_gen_gen () in
+          let p, e = id () in
+          Exp.case (constr (Some (pat_s p))) (apply_nolbl prop [e])
+      | p ->
+          let id = id_gen_gen () in
+          let pat, exp =
+            List.map
+              (fun _ ->
+                let p, e = id () in
+                (pat_s p, e))
+              p
+            |> List.split
+          in
+          Exp.case
+            (constr (Some (Pat.tuple pat)))
+            (apply_nolbl (sat_tuple p) [Exp.tuple exp]))
+    ~sum:(fun (cl : case option list) ->
+      if List.for_all (( = ) None) cl then None
+      else
+        Some
+          (Exp.function_
+             (List.map
+                (function
+                  | None -> Exp.case (Pat.any ()) true_ | Some c -> c)
+                cl)))
+    ~sat:(fun td _ -> get_property s {td with ptype_attributes= []})
 
 let derive (s : State.t) (td : type_declaration) =
   let infos = (get_generator s td, get_printer s td, get_property s td) in
   let id = lparse td.ptype_name.txt in
   State.update s id infos
-
-(* restriction: we force the same (structurally equal) pattern to appear on
-   both type declarations *)
-let compose_properties e1 e2 =
-  match (e1.pexp_desc, e2.pexp_desc) with
-  | Pexp_fun (l1, o1, p1, e1), Pexp_fun (l2, o2, p2, e2) ->
-      if p1 = p2 && l1 = l2 && o1 = o2 then
-        let pred = Pexp_fun (l1, o1, p1, e1 &&@ e2) in
-        {e1 with pexp_desc= pred}
-      else failwith "properties should have same pattern"
-  | _ -> failwith "properties should be functions"
 
 (* update the rewritting state according to a type declaration *)
 let declare_type state t =
