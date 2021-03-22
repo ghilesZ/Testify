@@ -1,4 +1,4 @@
-type p_int = int [@@satisfying fun x -> x >= 0]
+type p_int = (int[@satisfying fun x -> x >= 0])
 
 let square (x : int) : p_int =
   let two32 = 0x1_0000_0000 in

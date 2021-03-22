@@ -1,4 +1,4 @@
-type itv = int * int [@@satisfying fun (x, y) -> x <= y]
+type itv = (int * int[@satisfying fun (x, y) -> x <= y])
 
 (* buggy due to -min_int. unlikely to be detected by testify *)
 let neg ((low, high) : itv) : itv = (-high, -low)

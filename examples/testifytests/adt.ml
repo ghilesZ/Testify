@@ -1,4 +1,4 @@
-type pos = int [@@satisfying fun x -> x >= 0]
+type pos = (int[@satisfying fun x -> x >= 0])
 
 type optpos = None | Some of pos
 

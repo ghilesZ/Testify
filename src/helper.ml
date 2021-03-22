@@ -132,7 +132,7 @@ let typ_var_of_ct ct =
 let check_attributes n attrs =
   List.filter (fun a -> a.attr_name.txt = n) attrs
 
-(* gets the only attributes with name 'n', raises an error if more than one,
+(* gets the only attribute with name 'n', raises an error if more than one,
    None if 0 *)
 let get_attribute_payload n attrs =
   match check_attributes n attrs with

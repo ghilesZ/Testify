@@ -32,7 +32,7 @@ module I = struct
 
   include Generic
 
-  let sqrt {low= a; high= b} =
+  let sqrt ({low= a; high= b} : t) : t =
     let open U in
     if b < 0. then raise (Domain_error "sqrt")
     else {low= (if a < 0. then 0. else Low.sqrt a); high= High.sqrt b}

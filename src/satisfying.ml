@@ -11,8 +11,6 @@ let number = ref 10000
 
 let set_number = ( := ) number
 
-let run = apply_runtime "run_test" [unit] |> Str.eval
-
 (* test generation for constants *)
 let test_constant (name : string) loc (f : expression) =
   let f = lambda_s "_" (apply_nolbl f [exp_id name]) in
@@ -24,6 +22,8 @@ let test (name : string) (args : expression list) =
   open_runtime
     (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args))
   |> Str.eval
+
+let run () = apply_runtime "run_test" [unit] |> Str.eval
 
 let rejection pred gen = apply_nolbl_s "reject" [pred; gen]
 
@@ -376,9 +376,10 @@ let gather_tests vb state =
 
 (* actual mapper *)
 let mapper =
+  let in_attribute = ref false in
   let handle_str mapper str =
     let rec aux state res = function
-      | [] -> List.rev (run :: res)
+      | [] -> List.rev (if !in_attribute then res else run () :: res)
       (* type declaration *)
       | ({pstr_desc= Pstr_type (_, [t]); _} as h) :: tl ->
           aux (declare_type state t) (h :: res) tl
@@ -388,8 +389,15 @@ let mapper =
           let state = state |> check_gen pvb |> check_print pvb in
           let h' = mapper.structure_item mapper h in
           aux state (tests @ (h' :: res)) tl
-      | h :: tl -> aux state (h :: res) tl
+      | h :: tl -> aux state (mapper.structure_item mapper h :: res) tl
     in
     aux State.s0 [] str
   in
-  {default_mapper with structure= handle_str}
+  let handle_attr m a =
+    (* deactivate test generation in attributes *)
+    in_attribute := true ;
+    let res = default_mapper.attribute m a in
+    in_attribute := false ;
+    res
+  in
+  {default_mapper with structure= handle_str; attribute= handle_attr}
