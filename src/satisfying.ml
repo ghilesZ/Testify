@@ -63,14 +63,14 @@ let generate fn args out_print testname satisfy =
         ; apply_nolbl_s "sat_output" [satisfy] ]
 
 (* generic derivation function for core types *)
-let derive_ctype env ~tuple ~sat =
+let derive_ctype get_env ~tuple ~sat =
   let rec aux ct =
     match get_attribute_pstr "satisfying" ct.ptyp_attributes with
     | Some e -> sat ct e
     | None -> (
       match ct.ptyp_desc with
-      | Ptyp_var s -> Types.find_opt (lparse s) env
-      | Ptyp_constr ({txt; _}, []) -> Types.find_opt txt env
+      | Ptyp_var s -> get_env (lparse s)
+      | Ptyp_constr ({txt; _}, []) -> get_env txt
       | Ptyp_poly ([], ct) -> aux ct
       | Ptyp_tuple tup -> (
         match tup with
@@ -122,10 +122,7 @@ let sat_tuple p =
   lambda (Pat.tuple (List.rev pats)) (Option.get body)
 
 let rec get_gen s =
-  derive_ctype
-    State.(s.gens)
-    ~tuple:gen_tuple
-    ~sat:(fun ct e ->
+  derive_ctype (State.get_gen s) ~tuple:gen_tuple ~sat:(fun ct e ->
       match Gegen.solve_ct ct e with
       | None ->
           let rejection pred gen = apply_runtime "reject" [pred; gen] in
@@ -133,15 +130,11 @@ let rec get_gen s =
       | x -> x)
 
 let rec get_print s =
-  derive_ctype
-    State.(s.prints)
-    ~tuple:print_tuple
-    ~sat:(fun ct _ -> get_print s {ct with ptyp_attributes= []})
+  derive_ctype (State.get_print s) ~tuple:print_tuple ~sat:(fun ct _ ->
+      get_print s {ct with ptyp_attributes= []})
 
 let rec get_prop s ct =
-  derive_ctype
-    State.(s.props)
-    ~tuple:sat_tuple
+  derive_ctype (State.get_prop s) ~tuple:sat_tuple
     ~sat:(fun ct pred ->
       match get_prop s {ct with ptyp_attributes= []} with
       | None -> Some pred
@@ -376,22 +369,27 @@ let gather_tests vb state =
 
 (* actual mapper *)
 let mapper =
+  let global = ref State.s0 in
   let in_attribute = ref false in
   let handle_str mapper str =
-    let rec aux state res = function
-      | [] -> List.rev (if !in_attribute then res else run () :: res)
+    let rec aux res = function
+      | [] ->
+          global := end_block !global ;
+          List.rev (if !in_attribute then res else run () :: res)
       (* type declaration *)
       | ({pstr_desc= Pstr_type (_, [t]); _} as h) :: tl ->
-          aux (declare_type state t) (h :: res) tl
+          global := declare_type !global t ;
+          aux (h :: res) tl
       (* value declaration *)
       | ({pstr_desc= Pstr_value (_, [pvb]); _} as h) :: tl ->
-          let tests = gather_tests pvb state in
-          let state = state |> check_gen pvb |> check_print pvb in
+          let tests = gather_tests pvb !global in
+          global := !global |> check_gen pvb |> check_print pvb ;
           let h' = mapper.structure_item mapper h in
-          aux state (tests @ (h' :: res)) tl
-      | h :: tl -> aux state (mapper.structure_item mapper h :: res) tl
+          aux (tests @ (h' :: res)) tl
+      | h :: tl -> aux (mapper.structure_item mapper h :: res) tl
     in
-    aux State.s0 [] str
+    global := new_block !global ;
+    aux [] str
   in
   let handle_attr m a =
     (* deactivate test generation in attributes *)

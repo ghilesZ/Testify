@@ -11,13 +11,18 @@ module Types = Map.Make (struct
 end)
 
 (* main type, for rewritting state *)
-type t =
+type state =
   { props: expression Types.t (* constraints*)
   ; gens: expression Types.t (* generators *)
   ; prints: expression Types.t (* printers *) }
 
+let empty_state = {props= Types.empty; gens= Types.empty; prints= Types.empty}
+
+(* for handling of scopes *)
+type t = state list
+
 (* intial state *)
-let s0 =
+let s0 : t =
   let add_id (t : string) (g : string) (p : string) (gens, prints) =
     ( Types.add (lparse t) (exp_id g) gens
     , Types.add (lparse t) (exp_id p) prints )
@@ -30,21 +35,40 @@ let s0 =
     |> add_id "int" "QCheck.Gen.int" "string_of_int"
     |> add_id "float" "QCheck.Gen.float" "string_of_float"
   in
-  {gens; prints; props= Types.empty}
+  [{gens; prints; props= Types.empty}]
 
 (* registering functions *)
-let register_print s lid p = {s with prints= Types.add lid p s.prints}
+let register_print (s : t) lid p =
+  match s with
+  | h :: t -> {h with prints= Types.add lid p h.prints} :: t
+  | [] -> assert false
 
-let register_gen s lid g = {s with gens= Types.add lid g s.gens}
+let register_gen s lid g =
+  match s with
+  | h :: t -> {h with gens= Types.add lid g h.gens} :: t
+  | [] -> assert false
 
-let register_prop s lid p = {s with props= Types.add lid p s.props}
+let register_prop s lid p =
+  match s with
+  | h :: t -> {h with props= Types.add lid p h.props} :: t
+  | [] -> assert false
+
+exception Found of expression
+
+let browse_scope f s =
+  try
+    List.iter
+      (fun st -> match f st with None -> () | Some e -> raise (Found e))
+      s ;
+    None
+  with Found e -> Some e
 
 (* getters *)
-let get_print s lid = Types.find_opt lid s.prints
+let get_print s lid = browse_scope (fun st -> Types.find_opt lid st.prints) s
 
-let get_gen s lid = Types.find_opt lid s.gens
+let get_gen s lid = browse_scope (fun st -> Types.find_opt lid st.gens) s
 
-let get_prop s lid = Types.find_opt lid s.props
+let get_prop s lid = browse_scope (fun st -> Types.find_opt lid st.props) s
 
 (* updates a state according to a gen option, a print opt and a prop opt *)
 let update s id (gen, print, prop) =
@@ -59,3 +83,9 @@ let register_param s ct =
   let s = register_gen s lid (exp_id txt) in
   let s = register_print s lid (exp_id txt) in
   register_prop s lid (exp_id txt)
+
+let new_block s : t = empty_state :: s
+
+let end_block = function
+  | [] -> invalid_arg "end block on an empty stack"
+  | _ :: s -> s
