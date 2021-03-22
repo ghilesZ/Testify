@@ -3,7 +3,8 @@ BIN=rewrite
 all:
 	@dune build
 
-$(BIN): all
+$(BIN):
+	@dune build src/
 	@cp ./_build/default/.ppx/*/ppx.exe $@
 
 test:
@@ -13,4 +14,4 @@ clean:
 	@rm -f $(BIN)
 	@dune clean
 
-.PHONY: build test clean
+.PHONY: build test clean $(BIN)
