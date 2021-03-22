@@ -2,7 +2,7 @@
 
 type box2 =
   (float * float
-  [@satisfying fun (x, y) -> -2. < x && x < 2. && -2. < y && y < 2.])
+  [@satisfying fun (x, y) -> -2. <. x && x <. 2. && -2. <. y && y <. 2.])
 
 let noise () = Random.float 0.2 -. 0.1
 

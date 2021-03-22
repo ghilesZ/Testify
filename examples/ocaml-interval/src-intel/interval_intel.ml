@@ -21,7 +21,7 @@ module Low = Fpu.Low
 module High = Fpu.High
 
 type t = Interval.t = {low: float; high: float}
-[@@satisfying fun x -> fleq x.low x.high]
+[@@satisfying fun x -> x.low <=. x.high]
 
 exception Division_by_zero = Interval.Division_by_zero
 
@@ -33,7 +33,7 @@ module I = struct
   include Generic
 
   type posi = Interval.t = {low: float; high: float}
-  [@@satisfying fun {low; high} -> fleq low high && fgeq high 0.]
+  [@@satisfying fun {low; high} -> low <=. high && high >=. 0.]
 
   let sqrt ({low= a; high= b} : posi) : t =
     let open U in
@@ -396,7 +396,7 @@ let log_I (x : t) : t =
 let exp_I (x : t) : t = I.exp x
 
 type img = t
-[@@satisfying fun {low; high} -> low <= high && low >= -1. && high <= 1.]
+[@@satisfying fun {low; high} -> low <=. high && low >=. -1. && high <=. 1.]
 
 let cos_I (x : t) : img = I.cos x
 
@@ -419,7 +419,7 @@ let atan2_I_I x y =
   try I.atan2 x y with Domain_error _ -> invalid_arg "atan2_I_I"
 
 type img_h = t = {low: float; high: float}
-[@@satisfying fun {low; high} -> low <= high && low >= 1.]
+[@@satisfying fun {low; high} -> low <=. high && low >=. 1.]
 
 let cosh_I (x : t) : img_h = I.cosh x
 

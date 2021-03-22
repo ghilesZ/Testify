@@ -15,7 +15,7 @@ let add_const count name pred =
 
 let run_test () =
   List.rev !tests |>
-  QCheck_base_runner.run_tests ~colors:true ~verbose:true
+  QCheck_base_runner.run_tests ~colors:true ~verbose:true |> ignore
 
 (* input -> output utilities *)
 let opt_pred pred = function None -> true | Some x -> pred x
@@ -91,18 +91,16 @@ let count = ref 1000
 let reject pred g =
  find_example ~f:pred ~count:!count g
 
-(* to prevent the use of overloaded comparators (<, <= ...), we use
-   these ones instead*)
-let fleq (a:float) (b:float) = a <= b
-let flt (a:float) (b:float) = a < b
-let fgeq (a:float) (b:float) = a >= b
-let fgt (a:float) (b:float) = a > b
-let feq (a:float) (b:float) = a = b
-let fdiseq (a:float) (b:float) = a <> b
+let (<=.) : float -> float -> bool = (<=)
+let (<.)  : float -> float -> bool = (<)
+let (>.)  : float -> float -> bool = (>)
+let (>=.)  : float -> float -> bool = (>=)
+let (=.)  : float -> float -> bool = (=)
+let (<>.)  : float -> float -> bool = (<>)
 
-let ileq (a:int) (b:int) = a <= b
-let ilt (a:int) (b:int) = a < b
-let igeq (a:int) (b:int) = a >= b
-let igt (a:int) (b:int) = a > b
-let ieq (a:int) (b:int) = a = b
-let idiseq (a:int) (b:int) = a <> b
+let (<=) : int -> int -> bool = (<=)
+let (<)  : int -> int -> bool = (<)
+let (>)  : int -> int -> bool = (>)
+let (>=)  : int -> int -> bool = (>=)
+let (=)  : int -> int -> bool = (=)
+let (<>)  : int -> int -> bool = (<>)

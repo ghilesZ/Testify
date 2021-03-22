@@ -144,7 +144,7 @@ let get_attribute_payload n attrs =
 let get_attribute_pstr n attrs =
   match get_attribute_payload n attrs with
   | Some (PStr [{pstr_desc= Pstr_eval (e, _); _}]) -> Some e
-  | Some _ -> Format.asprintf "bad %s attribute" n |> failwith
+  | Some _ -> Format.kasprintf failwith "bad %s attribute" n
   | None -> None
 
 (* fold_left over head and tail *)

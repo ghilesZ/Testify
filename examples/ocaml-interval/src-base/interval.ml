@@ -363,7 +363,7 @@ module type DIRECTED = sig
   val pow_i : t -> int -> t
 end
 
-type t = {low: float; high: float} [@@s.t low <= high]
+type t = {low: float; high: float} [@@s.t low <=. high]
 
 exception Division_by_zero
 

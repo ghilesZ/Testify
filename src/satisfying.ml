@@ -19,11 +19,18 @@ let test_constant (name : string) loc (f : expression) =
 
 (* generation of QCheck test *)
 let test (name : string) (args : expression list) =
-  open_runtime
-    (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args))
-  |> Str.eval
+  Str.value Nonrecursive
+    [ Vb.mk
+        (Pat.construct (Helper.lid_loc "()") None)
+        (open_runtime
+           (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args)))
+    ]
 
-let run () = apply_runtime "run_test" [unit] |> Str.eval
+let run () =
+  Str.value Nonrecursive
+    [ Vb.mk
+        (Pat.construct (Helper.lid_loc "()") None)
+        (apply_runtime "run_test" [unit]) ]
 
 let rejection pred gen = apply_nolbl_s "reject" [pred; gen]
 

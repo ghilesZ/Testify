@@ -53,12 +53,12 @@ let of_ocaml (expr : expression) : constr =
     match cmp.pexp_desc with
     | Pexp_ident {txt= Lident i; _} -> (
       match i with
-      | ">=" -> Geq
-      | "<=" -> Leq
-      | ">" -> Gt
-      | "<" -> Lt
-      | "=" -> Eq
-      | "<>" -> Diseq
+      | ">=" | ">=." -> Geq
+      | "<=" | "<=." -> Leq
+      | ">" | ">." -> Gt
+      | "<" | "<." -> Lt
+      | "=" | "=." -> Eq
+      | "<>" | "<>." -> Diseq
       | x -> raise (OutOfSubset ("operator " ^ x)) )
     | _ -> raise (OutOfSubset "comparison not an ident")
   in
@@ -202,20 +202,20 @@ let to_ocaml ints reals (c : constr) : expression =
     match typ with
     | F -> (
       match cmp with
-      | Leq -> "fleq"
-      | Lt -> "flt"
-      | Geq -> "fgeq"
-      | Gt -> "fgt"
-      | Eq -> "feq"
-      | Diseq -> "fdiseq" )
+      | Leq -> "(<=.)"
+      | Lt -> "(<.)"
+      | Geq -> "(>=.)"
+      | Gt -> "(>.)"
+      | Eq -> "(=.)"
+      | Diseq -> "(<>.)" )
     | I -> (
       match cmp with
-      | Leq -> "ileq"
-      | Lt -> "ilt"
-      | Geq -> "igeq"
-      | Gt -> "igt"
-      | Eq -> "ieq"
-      | Diseq -> "idiseq" )
+      | Leq -> "(<=)"
+      | Lt -> "(<)"
+      | Geq -> "(>=)"
+      | Gt -> "(>)"
+      | Eq -> "(=)"
+      | Diseq -> "(<>)" )
   in
   let rec aux = function
     | Rejection e -> e
