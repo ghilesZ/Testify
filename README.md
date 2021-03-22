@@ -44,7 +44,7 @@ and run the generated tests by doing `dune runtest`.  You might need
 to add the `--no-buffer` option in case dune messes with the colored
 output.
 
-Also, Testify accepts the `-nb` option to change the number of runs per generated test, which you can pass through dune by doing: 
+Also, Testify accepts the `-nb` option to change the number of runs per generated test, which you can pass through dune by doing:
 
 ```
 (preprocess (pps ppx_testify -- -nb 42))
@@ -60,8 +60,8 @@ which sets the number of runs to `$(NB)` if the variable `NB` is defined, and to
 You can then do for example `NB=100 dune runtest`
 
 ### Why a PPX for test generations?
-- because no one likes writting tests.
-- because having acces to the source code during test generation is good
+- because no one likes writing tests;
+- because having access to the source code during test generation is good;
 - because of the 0 runtime overhead, as the *real* program and the tested one can be compiled separately.
 
 ## How is it done?
