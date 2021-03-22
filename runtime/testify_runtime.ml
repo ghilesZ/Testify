@@ -90,3 +90,19 @@ let count = ref 1000
 
 let reject pred g =
  find_example ~f:pred ~count:!count g
+
+(* to prevent the use of overloaded comparators (<, <= ...), we use
+   these ones instead*)
+let fleq (a:float) (b:float) = a <= b
+let flt (a:float) (b:float) = a < b
+let fgeq (a:float) (b:float) = a >= b
+let fgt (a:float) (b:float) = a > b
+let feq (a:float) (b:float) = a = b
+let fdiseq (a:float) (b:float) = a <> b
+
+let ileq (a:int) (b:int) = a <= b
+let ilt (a:int) (b:int) = a < b
+let igeq (a:int) (b:int) = a >= b
+let igt (a:int) (b:int) = a > b
+let ieq (a:int) (b:int) = a = b
+let idiseq (a:int) (b:int) = a <> b

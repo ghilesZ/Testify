@@ -21,7 +21,7 @@ module Low = Fpu.Low
 module High = Fpu.High
 
 type t = Interval.t = {low: float; high: float}
-[@@satisfying fun {low; high} -> low <= high]
+[@@satisfying fun x -> fleq x.low x.high]
 
 exception Division_by_zero = Interval.Division_by_zero
 

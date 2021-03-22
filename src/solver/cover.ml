@@ -71,7 +71,7 @@ module Make (D : Signatures.Abs) = struct
      * aux 0 0 *)
     1.
 
-  let compile cover =
+  let compile is fs cover =
     let inner_gens =
       List.rev_map (fun (abs, weight) -> (weight, D.compile abs)) cover.inner
     in
@@ -79,7 +79,7 @@ module Make (D : Signatures.Abs) = struct
       List.map
         (fun (abs, weight, constr) ->
           ( weight *. accept_rate abs constr
-          , Lang.to_ocaml constr
+          , Lang.to_ocaml is fs constr
           , D.compile abs ))
         cover.outer
     in
@@ -133,7 +133,7 @@ module Make (D : Signatures.Abs) = struct
     let abs = D.init i_s f_s in
     let c = solve abs constr in
     (* show c (Tools.SSet.max_elt i_s) (Tools.SSet.min_elt i_s) ; *)
-    compile c
+    compile i_s f_s c
 end
 
 module BoxCover = Make (Boolean.Make (Boxes))

@@ -119,7 +119,47 @@ let of_ocaml (expr : expression) : constr =
   in
   boolean expr
 
-let to_ocaml (c : constr) : expression =
+type typ = I | F
+
+let to_string = function I -> "int" | F -> "float"
+
+let coerce_to t1 t2 =
+  if t1 <> t2 then
+    invalid_arg
+      (Format.asprintf
+         "This expression has type %s but an expressaion was expected of \
+          type %s"
+         (to_string t1) (to_string t2))
+
+let get_typ ints reals =
+  let rec loop = function
+    | Int _ -> I
+    | Float _ -> F
+    | Var s ->
+        if Tools.SSet.mem s ints then I
+        else if Tools.SSet.mem s reals then F
+        else invalid_arg (Format.asprintf "unboud value %s" s)
+    | Neg x ->
+        coerce_to (loop x) I ;
+        I
+    | NegF x ->
+        coerce_to (loop x) F ;
+        F
+    | Binop (a1, b, a2) ->
+        let optyp = match b with Add | Sub | Mul | Div -> I | _ -> F in
+        coerce_to (loop a1) optyp ;
+        coerce_to (loop a2) optyp ;
+        optyp
+    | ToInt x ->
+        coerce_to (loop x) F ;
+        I
+    | ToFloat x ->
+        coerce_to (loop x) I ;
+        F
+  in
+  loop
+
+let to_ocaml ints reals (c : constr) : expression =
   let lop = function
     | And -> exp_id "( && )"
     | Or -> exp_id "( || )"
@@ -130,15 +170,15 @@ let to_ocaml (c : constr) : expression =
                 [apply_nolbl_s "not" [exp_id "x"]; exp_id "y"]))
   in
   let binop = function
-    | Add -> "( + )"
-    | Sub -> "( - )"
-    | Mul -> "( * )"
-    | Div -> "( / )"
-    | Pow -> "( ** )"
-    | AddF -> "( +. )"
-    | SubF -> "( -. )"
-    | MulF -> "( *. )"
-    | DivF -> "( /. )"
+    | Add -> "Int.add"
+    | Sub -> "Int.sub"
+    | Mul -> "Int.mul"
+    | Div -> "Int.div"
+    | Pow -> "Float.pow"
+    | AddF -> "Float.add"
+    | SubF -> "Float.sub"
+    | MulF -> "Float.mul"
+    | DivF -> "Float.div"
   in
   let rec arith = function
     | Int i -> int_ i
@@ -150,18 +190,32 @@ let to_ocaml (c : constr) : expression =
     | ToInt x -> apply_nolbl_s "int_of_float" [arith x]
     | ToFloat x -> apply_nolbl_s "float" [arith x]
   in
-  let cmp_to_string = function
-    | Leq -> "( <= )"
-    | Lt -> "( < )"
-    | Geq -> "( >= )"
-    | Gt -> "( > )"
-    | Eq -> "( = )"
-    | Diseq -> "( <> )"
+  let cmp_to_string typ cmp =
+    match typ with
+    | F -> (
+      match cmp with
+      | Leq -> "fleq"
+      | Lt -> "flt"
+      | Geq -> "fgeq"
+      | Gt -> "fgt"
+      | Eq -> "feq"
+      | Diseq -> "fdiseq" )
+    | I -> (
+      match cmp with
+      | Leq -> "ileq"
+      | Lt -> "ilt"
+      | Geq -> "igeq"
+      | Gt -> "igt"
+      | Eq -> "ieq"
+      | Diseq -> "idiseq" )
   in
   let rec aux = function
     | Rejection e -> e
     | Boolop (c1, op, c2) -> apply_nolbl (lop op) [aux c1; aux c2]
     | Comparison (a1, cmp, a2) ->
-        apply_nolbl_s (cmp_to_string cmp) [arith a1; arith a2]
+        let t1 = get_typ ints reals a1 in
+        let t2 = get_typ ints reals a2 in
+        coerce_to t1 t2 ;
+        apply_nolbl_s (cmp_to_string t1 cmp) [arith a1; arith a2]
   in
   aux c
