@@ -1,13 +1,16 @@
-build:
-	@echo 'You can run the following to set a "rewrite" command for launching testify on a .ml file'
-	@echo 'alias rewrite="./_build/default/.ppx/$$(ls _build/default/.ppx)/ppx.exe"'
-	dune build
-	@echo
+BIN=rewrite
+
+all:
+	@dune build
+
+$(BIN): all
+	@cp ./_build/default/.ppx/*/ppx.exe $@
 
 test:
 	@dune runtest --force -j 1 --no-buffer
 
 clean:
-	dune clean
+	@rm -f $(BIN)
+	@dune clean
 
 .PHONY: build test clean

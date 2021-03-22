@@ -6,3 +6,5 @@ _obuild
 *.byte
 *.docdir
 .merlin
+
+/rewrite
