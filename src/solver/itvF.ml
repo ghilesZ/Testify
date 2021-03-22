@@ -50,14 +50,14 @@ let filter_leq ((l1, h1) : t) ((l2, h2) : t) : (t * t) Consistency.t =
   let open Consistency in
   if Q.leq h1 l2 then Sat
   else if Q.gt l1 h2 then Unsat
-  else Filtered (((l1, Q.min h1 h2), (Q.max l1 l2, h2)), false)
+  else Filtered (((l1, Q.min h1 h2), (Q.max l1 l2, h2)), l1 = h1 || l2 = h2)
 
 let filter_lt ((l1, h1) as i1 : t) ((l2, h2) as i2 : t) :
     (t * t) Consistency.t =
   let open Consistency in
   if Q.lt h1 l2 then Sat
   else if l1 = h1 && i1 = i2 then Unsat
-  else Filtered (((l1, Q.min h1 h2), (Q.max l1 l2, h2)), false)
+  else Filtered (((l1, Q.min h1 h2), (Q.max l1 l2, h2)), l1 = h1 || l2 = h2)
 
 let filter_eq ((l1, h1) as i1 : t) ((l2, h2) as i2 : t) : t Consistency.t =
   let open Consistency in

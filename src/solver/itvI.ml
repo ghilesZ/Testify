@@ -71,7 +71,8 @@ let filter_diseq ((l1, h1) as i1 : t) ((l2, h2) as i2 : t) :
     (t * t) Consistency.t =
   let open Consistency in
   if l1 = h1 && l2 = h2 && l1 = l2 then Unsat
-  else if Option.is_some (meet i1 i2) then Filtered ((i1, i2), false)
+  else if Option.is_some (meet i1 i2) then
+    Filtered ((i1, i2), l1 = h1 || l2 = h2)
   else Sat
 
 (* compilation *)

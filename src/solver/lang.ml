@@ -80,6 +80,14 @@ let of_ocaml (expr : expression) : constr =
   in
   let rec numeric e =
     match e.pexp_desc with
+    | Pexp_apply
+        ( {pexp_desc= Pexp_ident {txt= Lident "float_of_int"; _}; _}
+        , [(Nolabel, arg)] ) ->
+        ToFloat (numeric arg)
+    | Pexp_apply
+        ( {pexp_desc= Pexp_ident {txt= Lident "int_of_float"; _}; _}
+        , [(Nolabel, arg)] ) ->
+        ToFloat (numeric arg)
     | Pexp_apply (op, [(Nolabel, arg1); (Nolabel, arg2)]) ->
         Binop (numeric arg1, handle_op op, numeric arg2)
     | Pexp_apply

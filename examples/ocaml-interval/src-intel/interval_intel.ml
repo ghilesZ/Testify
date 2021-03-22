@@ -32,7 +32,10 @@ module I = struct
 
   include Generic
 
-  let sqrt ({low= a; high= b} : t) : t =
+  type posi = Interval.t = {low: float; high: float}
+  [@@satisfying fun {low; high} -> fleq low high && fgeq high 0.]
+
+  let sqrt ({low= a; high= b} : posi) : t =
     let open U in
     if b < 0. then raise (Domain_error "sqrt")
     else {low= (if a < 0. then 0. else Low.sqrt a); high= High.sqrt b}
@@ -77,7 +80,10 @@ module I = struct
     else if sb = 0 then {low= neg_infinity; high= -.pow_l (-.a)}
     else {low= neg_infinity; high= infinity}
 
-  let ( **. ) ({low= a; high= b} : t) (nf : float) : t =
+  type fake_float = float
+  [@@satisfying fun x -> float_of_int (int_of_float x) = x]
+
+  let ( **. ) ({low= a; high= b} : t) (nf : fake_float) : t =
     let open U in
     let[@inline] pow_l x = if x = infinity then 0. else Low.pow x nf in
     let[@inline] pow_h x =
@@ -115,7 +121,7 @@ module I = struct
     else if sb = 0 then {low= neg_infinity; high= -.pow_l (-.a)}
     else {low= neg_infinity; high= infinity}
 
-  let ( *** ) ({low= a; high= b} : t) ({low= c; high= d} : t) : t =
+  let ( *** ) ({low= a; high= b} : posi) ({low= c; high= d} : posi) : t =
     let open U in
     let a = fmax 0. a in
     if b < 0. then raise (Domain_error "***")
@@ -140,7 +146,9 @@ module I = struct
       { low= fmin Low.(a ** d) Low.(b ** c)
       ; high= fmax High.(a ** c) High.(b ** d) }
 
-  let ( **: ) (x : float) ({low= a; high= b} : t) : t =
+  type pos_float = float [@@satisfying fun x -> x >= 0.]
+
+  let ( **: ) (x : pos_float) ({low= a; high= b} : t) : t =
     let open U in
     if x = 0. && 0. < b then {low= 0.; high= 0.}
     else if x <= 0. then raise (Domain_error "**:")
