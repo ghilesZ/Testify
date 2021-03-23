@@ -134,15 +134,37 @@ let rec get_print s =
   derive_ctype (State.get_print s) ~tuple:print_tuple ~sat:(fun ct _ ->
       get_print s {ct with ptyp_attributes= []})
 
+(*TODO: complete*)
+let unify_patterns p p' =
+  match (p.ppat_desc, p'.ppat_desc) with
+  | Ppat_any, _ -> Some p'
+  | _, Ppat_any -> Some p
+  | Ppat_var s, Ppat_var s' -> if s.txt = s'.txt then Some p else None
+  | _ -> None
+
+let compose_properties p p' =
+  match (p.pexp_desc, p'.pexp_desc) with
+  | Pexp_fun (_, _, pat, expr), Pexp_fun (_, _, pat', expr') -> (
+    match unify_patterns pat pat' with
+    | None ->
+        lambda_s "x"
+          (apply_nolbl p [exp_id "x"] &&@ apply_nolbl p' [exp_id "x"])
+    | Some pat ->
+        let newexpr = expr &&@ expr' in
+        let newp =
+          {p with pexp_desc= Pexp_fun (Nolabel, None, pat, newexpr)}
+        in
+        lambda_s "x" (apply_nolbl newp [exp_id "x"]) )
+  | _ ->
+      lambda_s "x"
+        (apply_nolbl p [exp_id "x"] &&@ apply_nolbl p' [exp_id "x"])
+
 let rec get_prop s ct =
   derive_ctype (State.get_prop s) ~tuple:sat_tuple
     ~sat:(fun ct p ->
       match get_prop s {ct with ptyp_attributes= []} with
       | None -> Some p
-      | Some p' ->
-          Some
-            (lambda_s "x"
-               (apply_nolbl p [exp_id "x"] &&@ apply_nolbl p' [exp_id "x"])))
+      | Some p' -> Some (compose_properties p p'))
     ct
 
 (* generic derivation function for type declaration *)
@@ -303,7 +325,11 @@ let rec get_property s =
                 (function
                   | None -> Exp.case (Pat.any ()) true_ | Some c -> c)
                 cl)))
-    ~sat:(fun td _ -> get_property s {td with ptype_attributes= []})
+    ~sat:(fun td p ->
+      let p' = get_property s {td with ptype_attributes= []} in
+      match p' with
+      | None -> Some p
+      | Some p' -> Some (compose_properties p p'))
 
 let derive (s : State.t) (td : type_declaration) =
   let infos = (get_generator s td, get_printer s td, get_property s td) in

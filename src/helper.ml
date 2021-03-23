@@ -63,7 +63,7 @@ let lambda_s s = lambda (pat_s s)
 (* function composition at ast level *)
 let ( |><| ) f g = lambda_s "x" (apply_nolbl f [apply_nolbl g [exp_id "x"]])
 
-(* doouble application *)
+(* double application *)
 let ( @@@ ) f g e = apply_nolbl f [apply_nolbl g e]
 
 (* boolean expressions *)
