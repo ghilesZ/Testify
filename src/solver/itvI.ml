@@ -58,7 +58,7 @@ let filter_lt ((l1, h1) : t) ((l2, h2) : t) : (t * t) Consistency.t =
   else
     Filtered
       ( ((l1, Z.min h1 (Z.sub h2 Z.one)), (Z.max (Z.add l1 Z.one) l2, h2))
-      , false )
+      , l1 = h1 || l2 = h2 )
 
 let filter_eq ((l1, h1) : t) ((l2, h2) : t) : t Consistency.t =
   let open Consistency in

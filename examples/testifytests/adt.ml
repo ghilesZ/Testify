@@ -1,8 +1,6 @@
 type pos = (int[@satisfying fun x -> x >= 0])
 
-type pos' = (pos[@satisfying fun x -> x < 10])
-
-type optpos = None | Some of pos'
+type optpos = None | Some of pos
 
 let output (x : pos) : optpos = if x < 0 then None else Some x
 
