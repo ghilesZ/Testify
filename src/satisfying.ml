@@ -15,22 +15,16 @@ let set_number = ( := ) number
 let test_constant (name : string) loc (f : expression) =
   let f = lambda_s "_" (apply_nolbl f [exp_id name]) in
   let n = Format.asprintf "constant: %s in %s" (bold_blue name) (blue loc) in
-  open_runtime (apply_nolbl_s "add_const" [one; string_ n; f]) |> Str.eval
+  letunit (open_runtime (apply_nolbl_s "add_const" [one; string_ n; f]))
 
-(* generation of QCheck test *)
+(* test generation for functions *)
 let test (name : string) (args : expression list) =
-  Str.value Nonrecursive
-    [ Vb.mk
-        (Pat.construct (Helper.lid_loc "()") None)
-        (open_runtime
-           (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args)))
-    ]
+  letunit
+    (open_runtime
+       (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args)))
 
-let run () =
-  Str.value Nonrecursive
-    [ Vb.mk
-        (Pat.construct (Helper.lid_loc "()") None)
-        (apply_runtime "run_test" [unit]) ]
+(* call to run_test*)
+let run () = letunit (apply_runtime "run_test" [unit])
 
 let rejection pred gen = apply_nolbl_s "reject" [pred; gen]
 
@@ -142,13 +136,13 @@ let rec get_print s =
 
 let rec get_prop s ct =
   derive_ctype (State.get_prop s) ~tuple:sat_tuple
-    ~sat:(fun ct pred ->
+    ~sat:(fun ct p ->
       match get_prop s {ct with ptyp_attributes= []} with
-      | None -> Some pred
-      | Some pred' ->
+      | None -> Some p
+      | Some p' ->
           Some
-            ( lambda_s "x" (apply_nolbl pred [string_ "x"])
-            &&@ apply_nolbl pred' [string_ "x"] ))
+            (lambda_s "x"
+               (apply_nolbl p [exp_id "x"] &&@ apply_nolbl p' [exp_id "x"])))
     ct
 
 (* generic derivation function for type declaration *)
@@ -240,7 +234,10 @@ let get_printer s td =
         | [print] ->
             let print = Option.value ~default:default_printer print in
             let p, e = id () in
-            Exp.case (constr (Some (pat_s p))) (apply_nolbl print [e])
+            Exp.case
+              (constr (Some (pat_s p)))
+              (string_concat
+                 [string_ (n.txt ^ "("); apply_nolbl print [e]; string_ ")"])
         | p ->
             let pat, exp =
               List.map

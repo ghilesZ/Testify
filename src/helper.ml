@@ -21,7 +21,10 @@ let none_loc ?(loc = Location.none) s = Location.mkloc s loc
 let lid_loc ?(loc = Location.none) id = none_loc ~loc (lparse id)
 
 (* pattern of string *)
-let pat_s s = Pat.var (none_loc s)
+let pat_s = function
+  | "_" -> Pat.any ()
+  | "()" -> Pat.construct (lid_loc "()") None
+  | s -> Pat.var (none_loc s)
 
 (* given a string [name], builds the identifier [name] *)
 let exp_id ?loc name = lid_loc ?loc name |> Exp.ident
@@ -55,7 +58,7 @@ let apply_runtime_1 s x = apply_runtime s [x]
 let lambda = Exp.fun_ Nolabel None
 
 (* Same as lambda with string instead of pattern *)
-let lambda_s = function "_" -> lambda (Pat.any ()) | s -> lambda (pat_s s)
+let lambda_s s = lambda (pat_s s)
 
 (* function composition at ast level *)
 let ( |><| ) f g = lambda_s "x" (apply_nolbl f [apply_nolbl g [exp_id "x"]])
@@ -80,8 +83,6 @@ let float_ x = Exp.constant (Const.float (string_of_float x))
 
 let string_ x = Exp.constant (Const.string x)
 
-let str_nonrec vb = Str.value Nonrecursive vb
-
 let unit = Exp.construct (lid_loc "()") None
 
 (* same as Exp.construct but with list of expressions *)
@@ -93,6 +94,8 @@ let pair a b = Exp.tuple [a; b]
 
 (* value binding with string *)
 let vb_s id exp = Vb.mk (pat_s id) exp
+
+let letunit exp = Str.value Nonrecursive [vb_s "()" exp]
 
 let let_ id exp in_ = Exp.let_ Nonrecursive [vb_s id exp] in_
 
