@@ -80,12 +80,13 @@ let update s id (gen, print, prop) =
 let register_param s ct =
   let txt = typ_var_of_ct ct in
   let lid = lparse txt in
-  let s = register_gen s lid (exp_id txt) in
-  let s = register_print s lid (exp_id txt) in
-  register_prop s lid (exp_id txt)
+  let exp = exp_id txt in
+  let s = register_gen s lid exp in
+  let s = register_print s lid exp in
+  register_prop s lid exp
 
 let new_block s : t = empty_state :: s
 
 let end_block = function
-  | [] -> invalid_arg "end block on an empty stack"
+  | [] -> invalid_arg "end block on an empty scope"
   | _ :: s -> s

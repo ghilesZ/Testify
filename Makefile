@@ -12,6 +12,7 @@ test:
 
 clean:
 	@rm -f $(BIN)
+	@rm -f *.log
 	@dune clean
 
 .PHONY: build test clean $(BIN)

@@ -294,7 +294,7 @@ let unfold_bounds_const ord pentagon =
           let vlo, vup = VMap.find v p.bounds in
           fold (List.map (fun x -> (v, N vlo, N vup) :: x) acc) ord' empty
       | I v -> (
-        (* case u < v < w *)
+          (* case u < v < w *)
           let u = VSet.choose @@ VMap.find v p.lower in
           let w = VSet.choose @@ VMap.find v p.upper in
           let vlo, vup = VMap.find v p.bounds in
@@ -337,10 +337,13 @@ let latex_of_formula formula =
   let rec aux inner_formula = function
     | [] -> inner_formula
     | (v, lo, up) :: f ->
-       let inner_formula = Printf.sprintf "\\int_{%s}^{%s} %s \\mathrm{d} {%s}~" (str_of_scalar lo)
-                             (str_of_scalar up) inner_formula v in
-       aux inner_formula f
-  in aux "" formula
+        let inner_formula =
+          Printf.sprintf "\\int_{%s}^{%s} %s \\mathrm{d} {%s}~"
+            (str_of_scalar lo) (str_of_scalar up) inner_formula v
+        in
+        aux inner_formula f
+  in
+  aux "" formula
 
 let p =
   empty
@@ -359,22 +362,20 @@ let p_simple =
   |> add_var "x0" ~inf:0. ~sup:3.
   |> add_var "x1" ~inf:1. ~sup:4.
   |> add_var "x2" ~inf:2. ~sup:5.
-  |> add_rel "x0" "x1"
-  |> add_rel "x1" "x2"
+  |> add_rel "x0" "x1" |> add_rel "x1" "x2"
 
-
-let _ =
-  (* let p = p_simple in *)
-  (* show (transitive_reduction p) ; *)
-  (* let decomp = unfold_bit_decomp p in
-   * List.iter (fun x -> print_endline @@ str_of_bit_decomp x) decomp ; *)
-  (* print_endline (str_of_pentagon p_simple); *)
-  let decomp = [[I "x1"; T "x0"; E "x2"], p_simple] in
-  Printf.printf "\\documentclass{article}\n\\begin{document}\n$$\\begin{array}{l}\n" ;
-  List.iter
-    (fun x -> print_endline ("\\displaystyle" ^ (latex_of_formula x) ^ "\\\\"))
-    (List.concat_map (fun (ord, p) -> unfold_bounds_const ord p) decomp) ;
-  Printf.printf "\\end{array}\n$$\n\\end{document}\n"
+(* let _ =
+ *   (\* let p = p_simple in *\)
+ *   (\* show (transitive_reduction p) ; *\)
+ *   (\* let decomp = unfold_bit_decomp p in
+ *    * List.iter (fun x -> print_endline @@ str_of_bit_decomp x) decomp ; *\)
+ *   (\* print_endline (str_of_pentagon p_simple); *\)
+ *   let decomp = [[I "x1"; T "x0"; E "x2"], p_simple] in
+ *   Printf.printf "\\documentclass{article}\n\\begin{document}\n$$\\begin{array}{l}\n" ;
+ *   List.iter
+ *     (fun x -> print_endline ("\\displaystyle" ^ (latex_of_formula x) ^ "\\\\"))
+ *     (List.concat_map (fun (ord, p) -> unfold_bounds_const ord p) decomp) ;
+ *   Printf.printf "\\end{array}\n$$\n\\end{document}\n" *)
 
 (* let _ =
  *   show p;

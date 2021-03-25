@@ -167,3 +167,14 @@ let blue x = Format.asprintf "\x1b[36m%s\x1b[0m" x
 
 (* same as [pp], but in gray *)
 let gray x = Format.asprintf "\x1b[37m%s\x1b[0m" x
+
+module Conv = Convert (OCaml_410) (OCaml_current)
+
+let print_expression fmt e =
+  Format.fprintf fmt "%a" Pprintast.expression (Conv.copy_expression e)
+
+let print_longident fmt l =
+  l |> Longident.flatten |> String.concat "" |> Format.fprintf fmt "%s"
+
+let print_pat fmt p =
+  Format.fprintf fmt "%a" Pprintast.pattern (Conv.copy_pattern p)

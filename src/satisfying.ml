@@ -9,7 +9,28 @@ open State
 (* number of generation per test *)
 let number = ref 10000
 
-let set_number = ( := ) number
+(* log file generation *)
+let log = ref false
+
+(* name of the module being rewritten *)
+let filename : Format.formatter option ref = ref None
+
+let get_output () =
+  match !filename with
+  | None -> failwith "ouput for log not set"
+  | Some f -> f
+
+let set_output s =
+  if !log then
+    match !filename with
+    | None ->
+        let s = Filename.(chop_extension (basename s)) ^ ".log" in
+        filename := Some (Format.formatter_of_out_channel (open_out s))
+    | Some _ -> ()
+
+let print_log x =
+  if !log then Format.fprintf (get_output ()) x
+  else Format.ifprintf Format.std_formatter x
 
 (* test generation for constants *)
 let test_constant (name : string) loc (f : expression) =
@@ -151,9 +172,7 @@ let compose_properties p p' =
           (apply_nolbl p [exp_id "x"] &&@ apply_nolbl p' [exp_id "x"])
     | Some pat ->
         let newexpr = expr &&@ expr' in
-        let newp =
-          {p with pexp_desc= Pexp_fun (Nolabel, None, pat, newexpr)}
-        in
+        let newp = lambda pat newexpr in
         lambda_s "x" (apply_nolbl newp [exp_id "x"]) )
   | _ ->
       lambda_s "x"
@@ -331,6 +350,18 @@ let rec get_property s =
       | None -> Some p
       | Some p' -> Some (compose_properties p p'))
 
+let get_generator s td =
+  let gen = get_generator s td in
+  let id = lparse td.ptype_name.txt in
+  ( match gen with
+  | None ->
+      print_log "failing to derive a generator for type %a\n%!"
+        print_longident id
+  | Some g ->
+      print_log "registering a generator for type %a\n%a\n%!" print_longident
+        id print_expression g ) ;
+  gen
+
 let derive (s : State.t) (td : type_declaration) =
   let infos = (get_generator s td, get_printer s td, get_property s td) in
   let id = lparse td.ptype_name.txt in
@@ -347,13 +378,19 @@ let declare_type state t =
 let check_gen vb (s : State.t) : State.t =
   match get_attribute_pstr "gen" vb.pvb_attributes with
   | None -> s
-  | Some {pexp_desc= Pexp_ident l; _} -> register_gen s l.txt vb.pvb_expr
+  | Some {pexp_desc= Pexp_ident l; _} ->
+      print_log "setting %a as a generator for %a\n%!" print_pat vb.pvb_pat
+        print_longident l.txt ;
+      register_gen s l.txt vb.pvb_expr
   | _ -> failwith "bad gen attribute"
 
 let check_print vb (s : State.t) =
   match get_attribute_pstr "print" vb.pvb_attributes with
   | None -> s
-  | Some {pexp_desc= Pexp_ident l; _} -> register_print s l.txt vb.pvb_expr
+  | Some {pexp_desc= Pexp_ident l; _} ->
+      print_log "setting %a as a printer for %a\n%!" print_pat vb.pvb_pat
+        print_longident l.txt ;
+      register_print s l.txt vb.pvb_expr
   | _ -> failwith "bad print attribute"
 
 let get_infos (s : State.t) e =
@@ -419,6 +456,11 @@ let mapper =
       | h :: tl -> aux (mapper.structure_item mapper h :: res) tl
     in
     global := new_block !global ;
+    ( match str with
+    | [] -> ()
+    | h :: _ ->
+        let s, _, _ = Location.get_pos_info h.pstr_loc.loc_start in
+        set_output s ) ;
     aux [] str
   in
   let handle_attr m a =
