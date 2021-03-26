@@ -362,6 +362,17 @@ let get_generator s td =
         id print_expression g ) ;
   gen
 
+let get_property s td =
+  let prop = get_property s td in
+  let id = lparse td.ptype_name.txt in
+  ( match prop with
+  | None ->
+      print_log "no constraint attached to type %a\n%!" print_longident id
+  | Some g ->
+      print_log "registering a constraint for type %a\n%a\n%!"
+        print_longident id print_expression g ) ;
+  prop
+
 let derive (s : State.t) (td : type_declaration) =
   let infos = (get_generator s td, get_printer s td, get_property s td) in
   let id = lparse td.ptype_name.txt in
@@ -436,32 +447,27 @@ let gather_tests vb state =
 
 (* actual mapper *)
 let mapper =
-  let global = ref State.s0 in
   let in_attribute = ref false in
   let handle_str mapper str =
-    let rec aux res = function
-      | [] ->
-          global := end_block !global ;
-          List.rev (if !in_attribute then res else run () :: res)
+    let rec aux res state = function
+      | [] -> List.rev (if !in_attribute then res else run () :: res)
       (* type declaration *)
       | ({pstr_desc= Pstr_type (_, [t]); _} as h) :: tl ->
-          global := declare_type !global t ;
-          aux (h :: res) tl
+          aux (h :: res) (declare_type state t) tl
       (* value declaration *)
       | ({pstr_desc= Pstr_value (_, [pvb]); _} as h) :: tl ->
-          let tests = gather_tests pvb !global in
-          global := !global |> check_gen pvb |> check_print pvb ;
+          let tests = gather_tests pvb state in
+          let s = state |> check_gen pvb |> check_print pvb in
           let h' = mapper.structure_item mapper h in
-          aux (tests @ (h' :: res)) tl
-      | h :: tl -> aux (mapper.structure_item mapper h :: res) tl
+          aux (tests @ (h' :: res)) s tl
+      | h :: tl -> aux (mapper.structure_item mapper h :: res) state tl
     in
-    global := new_block !global ;
     ( match str with
     | [] -> ()
     | h :: _ ->
         let s, _, _ = Location.get_pos_info h.pstr_loc.loc_start in
         set_output s ) ;
-    aux [] str
+    aux [] State.s0 str
   in
   let handle_attr m a =
     (* deactivate test generation in attributes *)
