@@ -300,34 +300,28 @@ let unfold_bounds_const ord pentagon =
           let vlo, vup = VMap.find v p.bounds in
           let ulo, uup = VMap.find u p.bounds in
           let wlo, wup = VMap.find w p.bounds in
-          match (uup < vlo, vup < wlo) with
+          match (uup <= vlo, vup <= wlo) with
           | true, true ->
               fold
                 (List.map (fun x -> (v, N vlo, N vup) :: x) acc)
                 ord' (del_var v p)
           | true, false -> t_handler acc ord' p w v
           | false, true -> b_handler acc ord' p u v
-          | false, false ->
-              ( if ulo < vlo && vup < wup then
-                fold
-                  (List.map (fun x -> (v, N vlo, N vup) :: x) acc)
-                  ord'
-                  (del_var v
-                     { p with
-                       bounds=
-                         p.bounds
-                         |> VMap.add u (ulo, vlo)
-                         |> VMap.add w (vup, wup) })
-              else [] )
-              @ fold
-                  (List.map (fun x -> (v, V u, V w) :: x) acc)
-                  ord'
-                  (del_var v
-                     { p with
-                       bounds=
-                         p.bounds
-                         |> VMap.add u (ulo, min vup uup)
-                         |> VMap.add w (max vlo wlo, wup) }) ) )
+          | false, false -> assert false ))(* (if ulo < vlo then fold (List.map (fun x -> (v, V u, V w) :: x) acc) ord' (del_var v p)))
+              * fold (List.map (fun x -> (v, V u, V w) :: x) acc) ord' (del_var v p))) *)
+                     
+             (* (match (ulo < vlo, vup < wup) with
+              *  | false, false -> fold (List.map (fun x -> (v, V u, V w) :: x) acc) ord' (del_var v p)
+              *  | false, true -> fold acc ord {p with bounds= VMap.add w (vup, wup) p.bounds}
+              *                   @ fold (List.map (fun x -> (v, V u, V w) :: x) acc) ord'
+              *                       (del_var v {p with bounds= VMap.add w (wlo, vup) p.bounds})
+              *  | true, false -> fold acc ord {p with bounds= VMap.add u (ulo, vlo) p.bounds}
+              *                   @ fold (List.map (fun x -> (v, V u, V w) :: x) acc) ord'
+              *                       (del_var v {p with bounds= VMap.add u (vlo, uup) p.bounds})
+              *  | true, true ->  *)
+                 
+
+             
   in
   fold [[]] ord pentagon
 
