@@ -307,21 +307,24 @@ let unfold_bounds_const ord pentagon =
                 ord' (del_var v p)
           | true, false -> t_handler acc ord' p w v
           | false, true -> b_handler acc ord' p u v
-          | false, false -> assert false ))(* (if ulo < vlo then fold (List.map (fun x -> (v, V u, V w) :: x) acc) ord' (del_var v p)))
-              * fold (List.map (fun x -> (v, V u, V w) :: x) acc) ord' (del_var v p))) *)
-                     
-             (* (match (ulo < vlo, vup < wup) with
-              *  | false, false -> fold (List.map (fun x -> (v, V u, V w) :: x) acc) ord' (del_var v p)
-              *  | false, true -> fold acc ord {p with bounds= VMap.add w (vup, wup) p.bounds}
-              *                   @ fold (List.map (fun x -> (v, V u, V w) :: x) acc) ord'
-              *                       (del_var v {p with bounds= VMap.add w (wlo, vup) p.bounds})
-              *  | true, false -> fold acc ord {p with bounds= VMap.add u (ulo, vlo) p.bounds}
-              *                   @ fold (List.map (fun x -> (v, V u, V w) :: x) acc) ord'
-              *                       (del_var v {p with bounds= VMap.add u (vlo, uup) p.bounds})
-              *  | true, true ->  *)
-                 
-
-             
+          | false, false -> (match ulo < vlo, vup < wup with
+                             | false, false -> fold (List.map (fun x -> (v, V u, V w) :: x) acc) ord' (del_var v p)
+                             | true, false -> fold (List.map (fun x -> (v, N vlo, V w) :: x) acc) ord' (del_var v {p with bounds = VMap.add u (ulo,vlo) p.bounds})
+                                              @ fold (List.map (fun x -> (v, V u, V w) :: x) acc) ord' (del_var v {p with bounds = VMap.add u (vlo,uup) p.bounds})
+                             | false, true -> fold (List.map (fun x -> (v, V u, N vup) :: x) acc) ord' (del_var v {p with bounds = VMap.add w (vup,wup) p.bounds})
+                                              @ fold (List.map (fun x -> (v, V u, V w) :: x) acc) ord' (del_var v {p with bounds = VMap.add w (wlo,vup) p.bounds})
+                             | true, true -> fold (List.map (fun x -> (v, N vlo, N vup) :: x) acc) ord' (del_var v {p with bounds = p.bounds
+                                                                                                                                    |> VMap.add w (vup,wup)
+                                                                                                                                    |> VMap.add u (ulo,vlo)})
+                                             @ fold (List.map (fun x -> (v, V u, V w) :: x) acc) ord' (del_var v {p with bounds = p.bounds
+                                                                                                                                 |> VMap.add w (wlo, vup)
+                                                                                                                                 |> VMap.add u (vlo, uup)})
+                                             @ fold (List.map (fun x -> (v, N vlo, V w) :: x) acc) ord' (del_var v {p with bounds = p.bounds
+                                                                                                                                 |> VMap.add w (wlo, vup)
+                                                                                                                                 |> VMap.add u (ulo, vlo)})
+                                             @ fold (List.map (fun x -> (v, V u, N vup) :: x) acc) ord' (del_var v {p with bounds = p.bounds
+                                                                                                                                 |> VMap.add w (vup, wup)
+                                                                                                                                 |> VMap.add u (vlo, uup)}))))
   in
   fold [[]] ord pentagon
 
@@ -335,6 +338,18 @@ let latex_of_formula formula =
                              (str_of_scalar up) inner_formula v in
        aux inner_formula f
   in aux "" formula
+
+let sage_of_formula formula =
+  let rec aux vars inner_formula = function
+    | [] -> vars, inner_formula
+    | (v, lo, up) :: f ->
+       let inner_formula = Printf.sprintf "integral(%s,%s,%s,%s)" inner_formula v
+                             (str_of_scalar lo) (str_of_scalar up) in
+       aux (VSet.add v vars) inner_formula f
+  in
+  let vars, formula = aux VSet.empty "1" formula in
+  "var('" ^ (String.concat "," (VSet.elements vars)) ^ "')\n" ^ formula
+
 
 let p =
   empty
@@ -363,12 +378,18 @@ let _ =
   (* let decomp = unfold_bit_decomp p in
    * List.iter (fun x -> print_endline @@ str_of_bit_decomp x) decomp ; *)
   (* print_endline (str_of_pentagon p_simple); *)
+  (* let decomp = [[I "x1"; T "x0"; E "x2"], p_simple] in
+   * Printf.printf "\\documentclass{article}\n\\begin{document}\n$$\\begin{array}{l}\n" ;
+   * List.iter
+   *   (fun x -> print_endline ("\\displaystyle" ^ (latex_of_formula x) ^ "\\\\"))
+   *   (List.concat_map (fun (ord, p) -> unfold_bounds_const ord p) decomp) ;
+   * Printf.printf "\\end{array}\n$$\n\\end{document}\n" *)
+
   let decomp = [[I "x1"; T "x0"; E "x2"], p_simple] in
-  Printf.printf "\\documentclass{article}\n\\begin{document}\n$$\\begin{array}{l}\n" ;
   List.iter
-    (fun x -> print_endline ("\\displaystyle" ^ (latex_of_formula x) ^ "\\\\"))
+    (fun x -> print_endline (sage_of_formula x))
     (List.concat_map (fun (ord, p) -> unfold_bounds_const ord p) decomp) ;
-  Printf.printf "\\end{array}\n$$\n\\end{document}\n"
+
 
 (* let _ =
  *   show p;
