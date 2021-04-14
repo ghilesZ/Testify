@@ -178,3 +178,6 @@ let print_longident fmt l =
 
 let print_pat fmt p =
   Format.fprintf fmt "%a" Pprintast.pattern (Conv.copy_pattern p)
+
+let print_coretype fmt t =
+  Format.fprintf fmt "%a" Pprintast.core_type (Conv.copy_core_type t)

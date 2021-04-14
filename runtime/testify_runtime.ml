@@ -17,6 +17,8 @@ let run_test () =
   List.rev !tests |>
   QCheck_base_runner.run_tests ~colors:true ~verbose:true |> ignore
 
+let set_seed = QCheck_base_runner.set_seed
+
 (* input -> output utilities *)
 let opt_pred pred = function None -> true | Some x -> pred x
 

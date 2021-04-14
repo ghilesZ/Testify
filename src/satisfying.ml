@@ -12,6 +12,11 @@ let number = ref 10000
 (* log file generation *)
 let log = ref false
 
+(* seed for reproducibility*)
+let seed : int option ref = ref None
+
+let set_seed x = seed := Some x
+
 (* name of the module being rewritten *)
 let filename : Format.formatter option ref = ref None
 
@@ -43,6 +48,9 @@ let test (name : string) (args : expression list) =
   letunit
     (open_runtime
        (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args)))
+
+(* call to set_seed *)
+let gen_set_seed x = letunit (apply_runtime "set_seed" [int_ x])
 
 (* call to run_test*)
 let run () = letunit (apply_runtime "run_test" [unit])
@@ -355,10 +363,9 @@ let get_generator s td =
   let id = lparse td.ptype_name.txt in
   ( match gen with
   | None ->
-      print_log "failing to derive a generator for type %a\n%!"
-        print_longident id
+      print_log "No generator derived for type %a\n%!" print_longident id
   | Some g ->
-      print_log "registering a generator for type %a\n%a\n%!" print_longident
+      print_log "Registering a generator for type %a\n%a\n%!" print_longident
         id print_expression g ) ;
   gen
 
@@ -367,9 +374,9 @@ let get_property s td =
   let id = lparse td.ptype_name.txt in
   ( match prop with
   | None ->
-      print_log "no constraint attached to type %a\n%!" print_longident id
+      print_log "No constraint attached to type %a\n%!" print_longident id
   | Some g ->
-      print_log "registering a constraint for type %a\n%a\n%!"
+      print_log "Registering a constraint for type %a\n%a\n%!"
         print_longident id print_expression g ) ;
   prop
 
@@ -405,23 +412,34 @@ let check_print vb (s : State.t) =
   | _ -> failwith "bad print attribute"
 
 let get_infos (s : State.t) e =
-  let helper pat =
+  let get_gen_print pat =
     match pat.ppat_desc with
     | Ppat_construct ({txt= Lident "()"; _}, _) ->
         (* allow to omit the explicit type annotation for the unit type*)
-        (State.get_gen s (lparse "unit"), State.get_print s (lparse "unit"))
-    | Ppat_constraint (_, t) -> (get_gen s t, get_print s t)
-    | _ -> (None, None)
+        ( State.get_gen s (lparse "unit")
+        , State.get_print s (lparse "unit")
+        , "unit" )
+    | Ppat_constraint (_, t) ->
+        (get_gen s t, get_print s t, Format.asprintf "%a" print_coretype t)
+    | _ ->
+        ( None
+        , None
+        , Format.asprintf "missing type annotation for %a" print_pat pat )
   in
   let rec aux res = function
-    | Pexp_fun (Nolabel, None, pat, exp) -> (
-      match helper pat with
-      | Some g, Some p -> aux ((g, p) :: res) exp.pexp_desc
-      | _ -> raise Exit )
+    | Pexp_fun (Nolabel, None, pat, exp) ->
+        aux (get_gen_print pat :: res) exp.pexp_desc
     | Pexp_constraint (_, ct) -> (List.rev res, ct)
     | _ -> raise Exit
   in
-  try Some (aux [] e) with Exit -> None
+  try
+    let infos, ct = aux [] e in
+    Some
+      ( List.map
+          (function Some g, Some p, _ -> (g, p) | _ -> raise Exit)
+          infos
+      , ct )
+  with Exit -> None
 
 (* compute a list of tests to be added to the AST. handles: explicitly typed
    constants and (fully) explicitly typed functions *)
@@ -431,18 +449,26 @@ let gather_tests vb state =
   (* let constant:typ = val*)
   | Ppat_constraint ({ppat_desc= Ppat_var {txt; _}; _}, typ) ->
       get_prop state typ
-      |> Option.fold ~none:[] ~some:(fun p -> [test_constant txt loc p])
+      |> Option.fold ~none:[] ~some:(fun p ->
+             print_log "Trying to generate a test for the constant %a\n"
+               print_pat vb.pvb_pat ;
+             [test_constant txt loc p])
   (* let fn (arg1:typ1) (arg2:typ2) ... : return_typ = body *)
   | Ppat_var {txt; _} -> (
     match get_infos state vb.pvb_expr.pexp_desc with
     | None -> []
-    | Some (args, ct) ->
+    | Some (args, ct) -> (
         let p =
           get_print state ct |> Option.value ~default:default_printer
         in
         let name = Format.asprintf "%s in %s" (bold_blue txt) (blue loc) in
-        get_prop state ct |> Option.to_list
-        |> List.map (generate txt args p name) )
+        let prop = get_prop state ct in
+        match prop with
+        | Some prop ->
+            print_log "Trying to generate a test for the function %a\n"
+              print_pat vb.pvb_pat ;
+            [generate txt args p name prop]
+        | _ -> [] ) )
   | _ -> []
 
 (* actual mapper *)
@@ -450,7 +476,11 @@ let mapper =
   let in_attribute = ref false in
   let handle_str mapper str =
     let rec aux res state = function
-      | [] -> List.rev (if !in_attribute then res else run () :: res)
+      | [] ->
+          let tests =
+            match !seed with None -> res | Some x -> gen_set_seed x :: res
+          in
+          List.rev (if !in_attribute then res else run () :: tests)
       (* type declaration *)
       | ({pstr_desc= Pstr_type (_, [t]); _} as h) :: tl ->
           aux (h :: res) (declare_type state t) tl

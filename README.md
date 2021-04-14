@@ -42,7 +42,7 @@ thus you can simply add the following to your stanza in your dune file
 
 and run the generated tests by doing `dune runtest`.  You might need
 to add the `--no-buffer` option in case dune messes with the colored
-output.
+output. You can see examples of utilisation in the examples directory.
 
 Also, Testify accepts the `-nb` option to change the number of runs per generated test, which you can pass through dune by doing:
 
@@ -58,6 +58,11 @@ or using shell environment variables with dune's syntax :
 
 which sets the number of runs to `$(NB)` if the variable `NB` is defined, and to `42` otherwise.
 You can then do for example `NB=100 dune runtest`
+
+#### Complete list of options:
+- `-nb x` Sets the number of runs per test to `x`
+- `-log`  Ouputs a pre-processing report
+- `-seed s` Sets the random seedto `s`
 
 ### Why a PPX for test generations?
 - because no one likes writing tests;

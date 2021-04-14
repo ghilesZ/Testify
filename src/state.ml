@@ -10,6 +10,12 @@ module Types = Map.Make (struct
   let compare = compare
 end)
 
+type info =
+  { printer: expression option
+  ; generator: expression option
+  ; specification: expression option
+  ; cardinality: Z.t option }
+
 (* main type, for rewritting state *)
 type t =
   { props: expression Types.t (* constraints*)
