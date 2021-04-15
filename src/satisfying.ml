@@ -102,13 +102,10 @@ let derive_ctype get_env ~tuple ~sat =
       | Ptyp_var s -> get_env (lparse s)
       | Ptyp_constr ({txt; _}, []) -> get_env txt
       | Ptyp_poly ([], ct) -> aux ct
+      | Ptyp_tuple [] -> assert false
+      | Ptyp_tuple [x] -> aux x
       | Ptyp_tuple tup -> (
-        match tup with
-        | [] -> assert false
-        | [x] -> aux x
-        | tup -> (
-          try Some (tuple (List.map aux tup))
-          with Invalid_argument _ -> None ) )
+        try Some (tuple (List.map aux tup)) with Invalid_argument _ -> None )
       | _ -> None )
   in
   aux
@@ -360,24 +357,22 @@ let rec get_property s =
 
 let get_generator s td =
   let gen = get_generator s td in
-  let id = lparse td.ptype_name.txt in
+  let id = td.ptype_name.txt in
   ( match gen with
-  | None ->
-      print_log "No generator derived for type %a\n%!" print_longident id
+  | None -> print_log "No generator derived for type %s\n%!" id
   | Some g ->
-      print_log "Registering a generator for type %a\n%a\n%!" print_longident
-        id print_expression g ) ;
+      print_log "Registering a generator for type %s\n%a\n%!" id
+        print_expression g ) ;
   gen
 
 let get_property s td =
   let prop = get_property s td in
-  let id = lparse td.ptype_name.txt in
+  let id = td.ptype_name.txt in
   ( match prop with
-  | None ->
-      print_log "No constraint attached to type %a\n%!" print_longident id
+  | None -> print_log "No constraint attached to type %s\n%!" id
   | Some g ->
-      print_log "Registering a constraint for type %a\n%a\n%!"
-        print_longident id print_expression g ) ;
+      print_log "Registering a constraint for type %s\n%a\n%!" id
+        print_expression g ) ;
   prop
 
 let derive (s : State.t) (td : type_declaration) =
