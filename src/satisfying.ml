@@ -92,20 +92,18 @@ let generate fn args out_print testname satisfy =
         ; apply_nolbl_s "opt_gen" [go]
         ; apply_nolbl_s "sat_output" [satisfy] ]
 
-(* generic derivation function for core types *)
-let derive_ctype get_env ~tuple ~sat =
+let derive_ctype (state : State.t) of_info ~tuple ~constrained =
   let rec aux ct =
     match get_attribute_pstr "satisfying" ct.ptyp_attributes with
-    | Some e -> sat ct e
+    | Some e -> constrained ct e
     | None -> (
       match ct.ptyp_desc with
-      | Ptyp_var s -> get_env (lparse s)
-      | Ptyp_constr ({txt; _}, []) -> get_env txt
+      | Ptyp_var s -> of_info (State.get (lparse s) state)
+      | Ptyp_constr ({txt; _}, []) -> of_info (State.get txt state)
       | Ptyp_poly ([], ct) -> aux ct
       | Ptyp_tuple [] -> assert false
       | Ptyp_tuple [x] -> aux x
-      | Ptyp_tuple tup -> (
-        try Some (tuple (List.map aux tup)) with Invalid_argument _ -> None )
+      | Ptyp_tuple tup -> tuple (List.map aux tup)
       | _ -> None )
   in
   aux
@@ -114,20 +112,28 @@ let default_printer = lambda_s "_" (string_ (gray "undefined"))
 
 (* builds a n-tuple generator from a list of n generators *)
 let gen_tuple gens =
-  List.map (fun g -> apply_nolbl (Option.get g) [exp_id "x"]) gens
-  |> Exp.tuple |> lambda_s "x"
+  try
+    List.map
+      (function Some g -> apply_nolbl g [exp_id "x"] | None -> raise Exit)
+      gens
+    |> Exp.tuple |> lambda_s "x" |> Option.some
+  with Exit -> None
 
 (* builds a n-tuple printer from a list of n printers *)
 let print_tuple p =
   let get_name = id_gen_gen () in
-  let np p =
-    let n, id = get_name () in
-    (apply_nolbl (Option.value ~default:default_printer p) [id], pat_s n)
+  let np = function
+    | Some p ->
+        let n, id = get_name () in
+        (apply_nolbl p [id], pat_s n)
+    | None -> raise Exit
   in
-  let names, pats = List.split (List.map np p) in
-  let b = string_concat ~sep:", " names in
-  let b' = string_concat [string_ "("; b; string_ ")"] in
-  lambda (Pat.tuple pats) b'
+  try
+    let names, pats = List.split (List.map np p) in
+    let b = string_concat ~sep:", " names in
+    let b' = string_concat [string_ "("; b; string_ ")"] in
+    lambda (Pat.tuple pats) b' |> Option.some
+  with Exit -> None
 
 (* builds a n-tuple satisfying predicate from a list of n satisfying
    predicates *)
@@ -146,10 +152,13 @@ let sat_tuple p =
         (pat_s name :: pats, Some (p &&@ app))
   in
   let pats, body = List.fold_left compose ([], None) p in
-  lambda (Pat.tuple (List.rev pats)) (Option.get body)
+  Option.map (lambda (Pat.tuple (List.rev pats))) body
 
 let rec get_gen s =
-  derive_ctype (State.get_gen s) ~tuple:gen_tuple ~sat:(fun ct e ->
+  derive_ctype s
+    (fun i -> Option.bind i Info.get_generator)
+    ~tuple:gen_tuple
+    ~constrained:(fun ct e ->
       match Gegen.solve_ct ct e with
       | None ->
           let rejection pred gen = apply_runtime "reject" [pred; gen] in
@@ -157,8 +166,10 @@ let rec get_gen s =
       | x -> x)
 
 let rec get_print s =
-  derive_ctype (State.get_print s) ~tuple:print_tuple ~sat:(fun ct _ ->
-      get_print s {ct with ptyp_attributes= []})
+  derive_ctype s
+    (fun i -> Option.bind i Info.get_printer)
+    ~tuple:print_tuple
+    ~constrained:(fun ct _ -> get_print s {ct with ptyp_attributes= []})
 
 (*TODO: complete*)
 let unify_patterns p p' =
@@ -184,8 +195,10 @@ let compose_properties p p' =
         (apply_nolbl p [exp_id "x"] &&@ apply_nolbl p' [exp_id "x"])
 
 let rec get_prop s ct =
-  derive_ctype (State.get_prop s) ~tuple:sat_tuple
-    ~sat:(fun ct p ->
+  derive_ctype s
+    (fun i -> Option.bind i Info.get_specification)
+    ~tuple:sat_tuple
+    ~constrained:(fun ct p ->
       match get_prop s {ct with ptyp_attributes= []} with
       | None -> Some p
       | Some p' -> Some (compose_properties p p'))
@@ -246,7 +259,7 @@ let rec get_generator s =
       | l ->
           lambda_s "rs"
             (Exp.construct (lid_loc n.txt)
-               (Some (apply_nolbl (gen_tuple l) [exp_id "rs"]))))
+               (Some (apply_nolbl (gen_tuple l |> Option.get) [exp_id "rs"]))))
     ~sum:(fun gs ->
       Some (apply_nolbl_s "one_of" [list_of_list (List.map Option.get gs)]))
     ~sat:(fun td e ->
@@ -295,7 +308,7 @@ let get_printer s td =
             in
             Exp.case
               (constr (Some (Pat.tuple pat)))
-              (apply_nolbl (print_tuple p) [Exp.tuple exp]))
+              (apply_nolbl (print_tuple p |> Option.get) [Exp.tuple exp]))
       ~sum:(fun (cl : case option list) ->
         Some
           (Exp.function_
@@ -339,7 +352,7 @@ let rec get_property s =
           in
           Exp.case
             (constr (Some (Pat.tuple pat)))
-            (apply_nolbl (sat_tuple p) [Exp.tuple exp]))
+            (apply_nolbl (sat_tuple p |> Option.get) [Exp.tuple exp]))
     ~sum:(fun (cl : case option list) ->
       if List.for_all (( = ) None) cl then None
       else

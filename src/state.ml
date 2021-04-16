@@ -108,6 +108,8 @@ let register_prop (s : t) lid spec =
 
 (* getters *)
 
+let get = Types.find_opt
+
 let get_print s lid = Option.bind (Types.find_opt lid s) Info.get_printer
 
 let get_gen s lid = Option.bind (Types.find_opt lid s) Info.get_generator
