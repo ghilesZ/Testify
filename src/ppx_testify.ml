@@ -1,7 +1,7 @@
 let args =
   let open Satisfying in
   [ ("-nb", Arg.Int (( := ) number), "Sets the number of runs per test")
-  ; ("-log", Arg.Set log, "Enables the generation of a report")
+  ; ("-log", Arg.Set Log.log, "Enables the generation of a report")
   ; ("-seed", Arg.Int set_seed, "Sets the random seed") ]
 
 (* registering the mappers *)

@@ -9,33 +9,10 @@ open State
 (* number of generation per test *)
 let number = ref 10000
 
-(* log file generation *)
-let log = ref false
-
 (* seed for reproducibility*)
 let seed : int option ref = ref None
 
 let set_seed x = seed := Some x
-
-(* name of the module being rewritten *)
-let filename : Format.formatter option ref = ref None
-
-let get_output () =
-  match !filename with
-  | None -> failwith "ouput for log not set"
-  | Some f -> f
-
-let set_output s =
-  if !log then
-    match !filename with
-    | None ->
-        let s = Filename.(chop_extension (basename s)) ^ ".log" in
-        filename := Some (Format.formatter_of_out_channel (open_out s))
-    | Some _ -> ()
-
-let print_log x =
-  if !log then Format.fprintf (get_output ()) x
-  else Format.ifprintf Format.std_formatter x
 
 (* test generation for constants *)
 let test_constant (name : string) loc (f : expression) =
@@ -91,6 +68,61 @@ let generate fn args out_print testname satisfy =
         [ apply_nolbl_s "opt_print" [exp_id "snd"]
         ; apply_nolbl_s "opt_gen" [go]
         ; apply_nolbl_s "sat_output" [satisfy] ]
+
+let product typs =
+  let open Info in
+  let generator =
+    try
+      List.map
+        (function
+          | {generator= Some g; _} -> apply_nolbl g [exp_id "x"]
+          | _ -> raise Exit)
+        typs
+      |> Exp.tuple |> lambda_s "x" |> Option.some
+    with Exit -> None
+  in
+  let cardinality =
+    try
+      List.fold_left
+        (fun acc -> function {cardinality= Some c; _} -> Z.mul acc c
+          | _ -> raise Exit)
+        Z.one typs
+      |> Option.some
+    with Exit -> None
+  in
+  let specification =
+    let get_name = id_gen_gen () in
+    let compose (pats, prop) p =
+      match (prop, p.specification) with
+      | x, None -> (Pat.any () :: pats, x)
+      | None, Some p ->
+          let name, id = get_name () in
+          let app = apply_nolbl p [id] in
+          (pat_s name :: pats, Some app)
+      | Some p', Some p ->
+          let name, id = get_name () in
+          let app = apply_nolbl p' [id] in
+          (pat_s name :: pats, Some (p &&@ app))
+    in
+    let pats, body = List.fold_left compose ([], None) typs in
+    Option.map (lambda (Pat.tuple (List.rev pats))) body
+  in
+  let printer =
+    let get_name = id_gen_gen () in
+    let np = function
+      | {printer= Some p; _} ->
+          let n, id = get_name () in
+          (apply_nolbl p [id], pat_s n)
+      | {printer= None; _} -> raise Exit
+    in
+    try
+      let names, pats = List.split (List.map np typs) in
+      let b = string_concat ~sep:", " names in
+      let b' = string_concat [string_ "("; b; string_ ")"] in
+      lambda (Pat.tuple pats) b' |> Option.some
+    with Exit -> None
+  in
+  Info.make printer generator specification cardinality
 
 let derive_ctype (state : State.t) of_info ~tuple ~constrained =
   let rec aux ct =
@@ -372,9 +404,9 @@ let get_generator s td =
   let gen = get_generator s td in
   let id = td.ptype_name.txt in
   ( match gen with
-  | None -> print_log "No generator derived for type %s\n%!" id
+  | None -> Log.print "No generator derived for type %s\n%!" id
   | Some g ->
-      print_log "Registering a generator for type %s\n%a\n%!" id
+      Log.print "Registering a generator for type %s\n%a\n%!" id
         print_expression g ) ;
   gen
 
@@ -382,9 +414,9 @@ let get_property s td =
   let prop = get_property s td in
   let id = td.ptype_name.txt in
   ( match prop with
-  | None -> print_log "No constraint attached to type %s\n%!" id
+  | None -> Log.print "No constraint attached to type %s\n%!" id
   | Some g ->
-      print_log "Registering a constraint for type %s\n%a\n%!" id
+      Log.print "Registering a constraint for type %s\n%a\n%!" id
         print_expression g ) ;
   prop
 
@@ -405,7 +437,7 @@ let check_gen vb (s : State.t) : State.t =
   match get_attribute_pstr "gen" vb.pvb_attributes with
   | None -> s
   | Some {pexp_desc= Pexp_ident l; _} ->
-      print_log "setting %a as a generator for %a\n%!" print_pat vb.pvb_pat
+      Log.print "setting %a as a generator for %a\n%!" print_pat vb.pvb_pat
         print_longident l.txt ;
       register_gen s l.txt vb.pvb_expr
   | _ -> failwith "bad gen attribute"
@@ -414,7 +446,7 @@ let check_print vb (s : State.t) =
   match get_attribute_pstr "print" vb.pvb_attributes with
   | None -> s
   | Some {pexp_desc= Pexp_ident l; _} ->
-      print_log "setting %a as a printer for %a\n%!" print_pat vb.pvb_pat
+      Log.print "setting %a as a printer for %a\n%!" print_pat vb.pvb_pat
         print_longident l.txt ;
       register_print s l.txt vb.pvb_expr
   | _ -> failwith "bad print attribute"
@@ -458,7 +490,7 @@ let gather_tests vb state =
   | Ppat_constraint ({ppat_desc= Ppat_var {txt; _}; _}, typ) ->
       get_prop state typ
       |> Option.fold ~none:[] ~some:(fun p ->
-             print_log "Trying to generate a test for the constant %a\n"
+             Log.print "Trying to generate a test for the constant %a\n"
                print_pat vb.pvb_pat ;
              [test_constant txt loc p])
   (* let fn (arg1:typ1) (arg2:typ2) ... : return_typ = body *)
@@ -473,7 +505,7 @@ let gather_tests vb state =
         let prop = get_prop state ct in
         match prop with
         | Some prop ->
-            print_log "Trying to generate a test for the function %a\n"
+            Log.print "Trying to generate a test for the function %a\n"
               print_pat vb.pvb_pat ;
             [generate txt args p name prop]
         | _ -> [] ) )
@@ -504,7 +536,7 @@ let mapper =
     | [] -> ()
     | h :: _ ->
         let s, _, _ = Location.get_pos_info h.pstr_loc.loc_start in
-        set_output s ) ;
+        Log.set_output s ) ;
     aux [] State.s0 str
   in
   let handle_attr m a =

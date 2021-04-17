@@ -46,6 +46,9 @@ module Info = struct
     ; specification= Some s
     ; cardinality= Some c }
 
+  let make printer generator specification cardinality =
+    {generator; specification; cardinality; printer}
+
   let unit =
     free (exp_id "QCheck.Gen.unit") Z.one (exp_id "QCheck.Print.unit")
 
