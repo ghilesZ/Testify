@@ -6,6 +6,8 @@ open Ast_helper
 open Helper
 open State
 
+(** {1 AST management for test} *)
+
 (* number of generation per test *)
 let number = ref 10000
 
@@ -21,7 +23,7 @@ let test_constant (name : string) loc (f : expression) =
   letunit (open_runtime (apply_nolbl_s "add_const" [one; string_ n; f]))
 
 (* test generation for functions *)
-let test (name : string) (args : expression list) =
+let test (name : string) args =
   letunit
     (open_runtime
        (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args)))
@@ -68,61 +70,6 @@ let generate fn args out_print testname satisfy =
         [ apply_nolbl_s "opt_print" [exp_id "snd"]
         ; apply_nolbl_s "opt_gen" [go]
         ; apply_nolbl_s "sat_output" [satisfy] ]
-
-let product typs =
-  let open Info in
-  let generator =
-    try
-      List.map
-        (function
-          | {generator= Some g; _} -> apply_nolbl g [exp_id "x"]
-          | _ -> raise Exit)
-        typs
-      |> Exp.tuple |> lambda_s "x" |> Option.some
-    with Exit -> None
-  in
-  let cardinality =
-    try
-      List.fold_left
-        (fun acc -> function {cardinality= Some c; _} -> Z.mul acc c
-          | _ -> raise Exit)
-        Z.one typs
-      |> Option.some
-    with Exit -> None
-  in
-  let specification =
-    let get_name = id_gen_gen () in
-    let compose (pats, prop) p =
-      match (prop, p.specification) with
-      | x, None -> (Pat.any () :: pats, x)
-      | None, Some p ->
-          let name, id = get_name () in
-          let app = apply_nolbl p [id] in
-          (pat_s name :: pats, Some app)
-      | Some p', Some p ->
-          let name, id = get_name () in
-          let app = apply_nolbl p' [id] in
-          (pat_s name :: pats, Some (p &&@ app))
-    in
-    let pats, body = List.fold_left compose ([], None) typs in
-    Option.map (lambda (Pat.tuple (List.rev pats))) body
-  in
-  let printer =
-    let get_name = id_gen_gen () in
-    let np = function
-      | {printer= Some p; _} ->
-          let n, id = get_name () in
-          (apply_nolbl p [id], pat_s n)
-      | {printer= None; _} -> raise Exit
-    in
-    try
-      let names, pats = List.split (List.map np typs) in
-      let b = string_concat ~sep:", " names in
-      let b' = string_concat [string_ "("; b; string_ ")"] in
-      lambda (Pat.tuple pats) b' |> Option.some
-    with Exit -> None
-  in
-  Info.make printer generator specification cardinality
 
 let derive_ctype (state : State.t) of_info ~tuple ~constrained =
   let rec aux ct =
@@ -188,7 +135,7 @@ let sat_tuple p =
 
 let rec get_gen s =
   derive_ctype s
-    (fun i -> Option.bind i Info.get_generator)
+    (fun i -> Option.bind i Typrepr.get_generator)
     ~tuple:gen_tuple
     ~constrained:(fun ct e ->
       match Gegen.solve_ct ct e with
@@ -199,7 +146,7 @@ let rec get_gen s =
 
 let rec get_print s =
   derive_ctype s
-    (fun i -> Option.bind i Info.get_printer)
+    (fun i -> Option.bind i Typrepr.get_printer)
     ~tuple:print_tuple
     ~constrained:(fun ct _ -> get_print s {ct with ptyp_attributes= []})
 
@@ -228,7 +175,7 @@ let compose_properties p p' =
 
 let rec get_prop s ct =
   derive_ctype s
-    (fun i -> Option.bind i Info.get_specification)
+    (fun i -> Option.bind i Typrepr.get_specification)
     ~tuple:sat_tuple
     ~constrained:(fun ct p ->
       match get_prop s {ct with ptyp_attributes= []} with
