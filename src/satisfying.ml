@@ -2,7 +2,6 @@ open Migrate_parsetree
 open Ast_410
 open Parsetree
 open Ast_mapper
-open Ast_helper
 open Helper
 open State
 
@@ -71,306 +70,62 @@ let generate fn args out_print testname satisfy =
         ; apply_nolbl_s "opt_gen" [go]
         ; apply_nolbl_s "sat_output" [satisfy] ]
 
-let derive_ctype (state : State.t) of_info ~tuple ~constrained =
+let derive_ctype (state : State.t) =
   let rec aux ct =
     match get_attribute_pstr "satisfying" ct.ptyp_attributes with
-    | Some e -> constrained ct e
+    | Some e ->
+        Option.map
+          (fun t -> Typrepr.Constrained.make ct t e)
+          (aux {ct with ptyp_attributes= []})
     | None -> (
       match ct.ptyp_desc with
-      | Ptyp_var s -> of_info (State.get (lparse s) state)
-      | Ptyp_constr ({txt; _}, []) -> of_info (State.get txt state)
+      | Ptyp_var _ -> None
+      | Ptyp_constr ({txt; _}, []) -> State.get txt state
       | Ptyp_poly ([], ct) -> aux ct
-      | Ptyp_tuple [] -> assert false
-      | Ptyp_tuple [x] -> aux x
-      | Ptyp_tuple tup -> tuple (List.map aux tup)
+      | Ptyp_tuple tup -> (
+        try
+          Some
+            (Typrepr.Product.make
+               (List.map
+                  (fun t -> match aux t with Some t -> t | _ -> raise Exit)
+                  tup))
+        with Exit -> None )
       | _ -> None )
   in
   aux
 
 let default_printer = lambda_s "_" (string_ (gray "undefined"))
 
-(* builds a n-tuple generator from a list of n generators *)
-let gen_tuple gens =
-  try
-    List.map
-      (function Some g -> apply_nolbl g [exp_id "x"] | None -> raise Exit)
-      gens
-    |> Exp.tuple |> lambda_s "x" |> Option.some
-  with Exit -> None
-
-(* builds a n-tuple printer from a list of n printers *)
-let print_tuple p =
-  let get_name = id_gen_gen () in
-  let np = function
-    | Some p ->
-        let n, id = get_name () in
-        (apply_nolbl p [id], pat_s n)
-    | None -> raise Exit
-  in
-  try
-    let names, pats = List.split (List.map np p) in
-    let b = string_concat ~sep:", " names in
-    let b' = string_concat [string_ "("; b; string_ ")"] in
-    lambda (Pat.tuple pats) b' |> Option.some
-  with Exit -> None
-
-(* builds a n-tuple satisfying predicate from a list of n satisfying
-   predicates *)
-let sat_tuple p =
-  let get_name = id_gen_gen () in
-  let compose (pats, prop) p =
-    match (prop, p) with
-    | x, None -> (Pat.any () :: pats, x)
-    | None, Some p ->
-        let name, id = get_name () in
-        let app = apply_nolbl p [id] in
-        (pat_s name :: pats, Some app)
-    | Some p', Some p ->
-        let name, id = get_name () in
-        let app = apply_nolbl p' [id] in
-        (pat_s name :: pats, Some (p &&@ app))
-  in
-  let pats, body = List.fold_left compose ([], None) p in
-  Option.map (lambda (Pat.tuple (List.rev pats))) body
-
-let rec get_gen s =
-  derive_ctype s
-    (fun i -> Option.bind i Typrepr.get_generator)
-    ~tuple:gen_tuple
-    ~constrained:(fun ct e ->
-      match Gegen.solve_ct ct e with
-      | None ->
-          let rejection pred gen = apply_runtime "reject" [pred; gen] in
-          Option.map (rejection e) (get_gen s {ct with ptyp_attributes= []})
-      | x -> x)
-
-let rec get_print s =
-  derive_ctype s
-    (fun i -> Option.bind i Typrepr.get_printer)
-    ~tuple:print_tuple
-    ~constrained:(fun ct _ -> get_print s {ct with ptyp_attributes= []})
-
-(*TODO: complete*)
-let unify_patterns p p' =
-  match (p.ppat_desc, p'.ppat_desc) with
-  | Ppat_any, _ -> Some p'
-  | _, Ppat_any -> Some p
-  | Ppat_var s, Ppat_var s' -> if s.txt = s'.txt then Some p else None
-  | _ -> None
-
-let compose_properties p p' =
-  match (p.pexp_desc, p'.pexp_desc) with
-  | Pexp_fun (_, _, pat, expr), Pexp_fun (_, _, pat', expr') -> (
-    match unify_patterns pat pat' with
-    | None ->
-        lambda_s "x"
-          (apply_nolbl p [exp_id "x"] &&@ apply_nolbl p' [exp_id "x"])
-    | Some pat ->
-        let newexpr = expr &&@ expr' in
-        let newp = lambda pat newexpr in
-        lambda_s "x" (apply_nolbl newp [exp_id "x"]) )
-  | _ ->
-      lambda_s "x"
-        (apply_nolbl p [exp_id "x"] &&@ apply_nolbl p' [exp_id "x"])
-
-let rec get_prop s ct =
-  derive_ctype s
-    (fun i -> Option.bind i Typrepr.get_specification)
-    ~tuple:sat_tuple
-    ~constrained:(fun ct p ->
-      match get_prop s {ct with ptyp_attributes= []} with
-      | None -> Some p
-      | Some p' -> Some (compose_properties p p'))
-    ct
-
 (* generic derivation function for type declaration *)
-let derive_decl (s : State.t) ~core_type ~field ~record ~constr ~sum ~sat
-    ({ptype_kind; ptype_manifest; ptype_attributes; ptype_params; _} as td) =
-  let field f =
-    field (core_type s f.pld_type |> Option.get) f.pld_name.txt
-  in
-  let s =
-    List.fold_left
-      (fun s (ct, _var) -> State.register_param s ct)
-      s ptype_params
-  in
-  let right =
-    try
-      match get_attribute_pstr "satisfying" ptype_attributes with
-      | Some e -> sat td e
-      | None -> (
-        match ptype_kind with
-        | Ptype_abstract -> Option.(join (map (core_type s) ptype_manifest))
-        | Ptype_variant constructors ->
-            let constr_f c =
-              match c.pcd_args with
-              | Pcstr_tuple ct ->
-                  Some (constr (List.map (core_type s) ct) c.pcd_name)
-              | Pcstr_record _labs -> None
-            in
-            sum (List.map constr_f constructors)
-        | Ptype_record labs -> Some (record (List.map field labs))
-        | Ptype_open -> None )
-    with Invalid_argument _ -> None
-  in
-  match ptype_params with
-  | [] -> right
-  | (ct, _variance) :: t ->
-      let func =
-        List.fold_left
-          (fun acc (t, _var) x -> acc (lambda_s (typ_var_of_ct t) x))
-          (lambda_s (typ_var_of_ct ct))
-          t
-      in
-      Option.map func right
-
-let rec get_generator s =
-  derive_decl s ~core_type:get_gen
-    ~field:(fun gen name -> (lid_loc name, apply_nolbl gen [exp_id "rs"]))
-    ~record:(fun fields -> Exp.record fields None |> lambda_s "rs")
-    ~constr:(fun gs n ->
-      match gs with
-      | [] -> lambda_s "_" (Exp.construct (lid_loc n.txt) None)
-      | [x] ->
-          lambda_s "rs"
-            (Exp.construct (lid_loc n.txt)
-               (Some (apply_nolbl (Option.get x) [exp_id "rs"])))
-      | l ->
-          lambda_s "rs"
-            (Exp.construct (lid_loc n.txt)
-               (Some (apply_nolbl (gen_tuple l |> Option.get) [exp_id "rs"]))))
-    ~sum:(fun gs ->
-      Some (apply_nolbl_s "one_of" [list_of_list (List.map Option.get gs)]))
-    ~sat:(fun td e ->
-      match Gegen.solve_td td e with
-      | None ->
-          Option.map (rejection e)
-            (get_generator s {td with ptype_attributes= []})
-      | Some x -> x)
-
-(* Given a rewritting state [rs] and and a type [t], search for the printer
-   associated to [t] in [rs]. Returns a Parsetree.expression (corresponding
-   to a printer) option. *)
-let get_printer s td =
-  let rec aux s td =
-    derive_decl s ~core_type:get_print
-      ~field:(fun print name ->
-        let field = apply_nolbl print [exp_id name] in
-        let field_name = string_ name in
-        ( string_concat ~sep:"=" [field_name; field]
-        , (lid_loc name, pat_s name) ))
-      ~record:(fun l ->
-        let fields, pat = List.split l in
-        let app = string_concat ~sep:"; " fields in
-        let app = string_concat [string_ "{"; app; string_ "}"] in
-        lambda (Pat.record pat Closed) app)
-      ~constr:(fun p n : case ->
-        let constr pat = Pat.construct (lid_loc n.txt) pat in
-        let id = id_gen_gen () in
-        match p with
-        | [] -> Exp.case (constr None) (string_ n.txt)
-        | [print] ->
-            let print = Option.value ~default:default_printer print in
-            let p, e = id () in
-            Exp.case
-              (constr (Some (pat_s p)))
-              (string_concat
-                 [string_ (n.txt ^ "("); apply_nolbl print [e]; string_ ")"])
-        | p ->
-            let pat, exp =
-              List.map
-                (fun _ ->
-                  let p, e = id () in
-                  (pat_s p, e))
-                p
-              |> List.split
-            in
-            Exp.case
-              (constr (Some (Pat.tuple pat)))
-              (apply_nolbl (print_tuple p |> Option.get) [Exp.tuple exp]))
-      ~sum:(fun (cl : case option list) ->
+let rec derive_decl (s : State.t)
+    ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) =
+  try
+    match get_attribute_pstr "satisfying" ptype_attributes with
+    | Some e ->
         Some
-          (Exp.function_
-             (List.map
-                (Option.value
-                   ~default:(Exp.case (Pat.any ()) default_printer))
-                cl)))
-      ~sat:(fun td _ -> aux s {td with ptype_attributes= []})
-      td
-  in
-  aux s td |> Option.value ~default:default_printer
-
-let rec get_property s =
-  derive_decl s ~core_type:get_prop
-    ~field:(fun prop name ->
-      (apply_nolbl prop [exp_id name], (lid_loc name, pat_s name)))
-    ~record:(fun l ->
-      let fields, pat = List.split l in
-      match fields with
-      | h :: tl ->
-          List.fold_left ( &&@ ) h tl |> lambda (Pat.record pat Closed)
-      | _ -> (*record with 0 field*) assert false)
-    ~constr:(fun p n : case ->
-      let constr pat = Pat.construct (lid_loc n.txt) pat in
-      match p with
-      | [] -> Exp.case (constr None) true_
-      | [prop] ->
-          let prop = Option.get prop in
-          let id = id_gen_gen () in
-          let p, e = id () in
-          Exp.case (constr (Some (pat_s p))) (apply_nolbl prop [e])
-      | p ->
-          let id = id_gen_gen () in
-          let pat, exp =
-            List.map
-              (fun _ ->
-                let p, e = id () in
-                (pat_s p, e))
-              p
-            |> List.split
+          (Typrepr.Constrained.make_td td
+             (derive_decl s {td with ptype_attributes= []} |> Option.get)
+             e)
+    | None -> (
+      match ptype_kind with
+      | Ptype_abstract -> Option.(join (map (derive_ctype s) ptype_manifest))
+      | Ptype_variant constructors ->
+          let constr_f c =
+            match c.pcd_args with
+            | Pcstr_tuple ct ->
+                ( c.pcd_name
+                , List.map (fun ct -> derive_ctype s ct |> Option.get) ct )
+            | Pcstr_record _labs -> raise Exit
           in
-          Exp.case
-            (constr (Some (Pat.tuple pat)))
-            (apply_nolbl (sat_tuple p |> Option.get) [Exp.tuple exp]))
-    ~sum:(fun (cl : case option list) ->
-      if List.for_all (( = ) None) cl then None
-      else
-        Some
-          (Exp.function_
-             (List.map
-                (function
-                  | None -> Exp.case (Pat.any ()) true_ | Some c -> c)
-                cl)))
-    ~sat:(fun td p ->
-      let p' = get_property s {td with ptype_attributes= []} in
-      match p' with
-      | None -> Some p
-      | Some p' -> Some (compose_properties p p'))
-
-let get_generator s td =
-  let gen = get_generator s td in
-  let id = td.ptype_name.txt in
-  ( match gen with
-  | None -> Log.print "No generator derived for type %s\n%!" id
-  | Some g ->
-      Log.print "Registering a generator for type %s\n%a\n%!" id
-        print_expression g ) ;
-  gen
-
-let get_property s td =
-  let prop = get_property s td in
-  let id = td.ptype_name.txt in
-  ( match prop with
-  | None -> Log.print "No constraint attached to type %s\n%!" id
-  | Some g ->
-      Log.print "Registering a constraint for type %s\n%a\n%!" id
-        print_expression g ) ;
-  prop
+          Some (Typrepr.Sum.make (List.map constr_f constructors))
+      | Ptype_record labs -> Some (Typrepr.Record.make labs)
+      | Ptype_open -> None )
+  with Invalid_argument _ | Exit -> None
 
 let derive (s : State.t) (td : type_declaration) =
-  let infos = (get_generator s td, get_printer s td, get_property s td) in
+  let infos = derive_decl s td in
   let id = lparse td.ptype_name.txt in
-  State.update s id infos
+  match infos with None -> s | Some infos -> update s id infos
 
 (* update the rewritting state according to a type declaration *)
 let declare_type state t =
@@ -379,7 +134,7 @@ let declare_type state t =
   | None -> state
   | Some e -> register_prop state (lparse t.ptype_name.txt) e
 
-(* annotation handling *)
+(** {1 annotation handling} *)
 let check_gen vb (s : State.t) : State.t =
   match get_attribute_pstr "gen" vb.pvb_attributes with
   | None -> s
@@ -402,16 +157,12 @@ let get_infos (s : State.t) e =
   let get_gen_print pat =
     match pat.ppat_desc with
     | Ppat_construct ({txt= Lident "()"; _}, _) ->
-        (* allow to omit the explicit type annotation for the unit type*)
-        ( State.get_gen s (lparse "unit")
-        , State.get_print s (lparse "unit")
-        , "unit" )
+        (* allow to omit the explicit type annotation for the unit pattern*)
+        (State.get (lparse "unit") s, "()")
     | Ppat_constraint (_, t) ->
-        (get_gen s t, get_print s t, Format.asprintf "%a" print_coretype t)
+        (derive_ctype s t, Format.asprintf "%a" print_coretype t)
     | _ ->
-        ( None
-        , None
-        , Format.asprintf "missing type annotation for %a" print_pat pat )
+        (None, Format.asprintf "missing type annotation for %a" print_pat pat)
   in
   let rec aux res = function
     | Pexp_fun (Nolabel, None, pat, exp) ->
@@ -420,10 +171,13 @@ let get_infos (s : State.t) e =
     | _ -> raise Exit
   in
   try
+    let open Typrepr in
     let infos, ct = aux [] e in
     Some
       ( List.map
-          (function Some g, Some p, _ -> (g, p) | _ -> raise Exit)
+          (function
+            | Some {gen= Some g; print= Some p; _}, _ -> (g, p)
+            | _, s -> Log.print "%s\n" s ; raise Exit)
           infos
       , ct )
   with Exit -> None
@@ -434,24 +188,26 @@ let gather_tests vb state =
   let loc = Format.asprintf "%a" Location.print_loc vb.pvb_loc in
   match vb.pvb_pat.ppat_desc with
   (* let constant:typ = val*)
-  | Ppat_constraint ({ppat_desc= Ppat_var {txt; _}; _}, typ) ->
-      get_prop state typ
-      |> Option.fold ~none:[] ~some:(fun p ->
-             Log.print "Trying to generate a test for the constant %a\n"
-               print_pat vb.pvb_pat ;
-             [test_constant txt loc p])
+  | Ppat_constraint ({ppat_desc= Ppat_var {txt; _}; _}, typ) -> (
+      let info = derive_ctype state typ in
+      match info with
+      | Some {spec= Some p; _} ->
+          Log.print "Trying to generate a test for the constant %a\n"
+            print_pat vb.pvb_pat ;
+          [test_constant txt loc p]
+      | _ -> [] )
   (* let fn (arg1:typ1) (arg2:typ2) ... : return_typ = body *)
   | Ppat_var {txt; _} -> (
     match get_infos state vb.pvb_expr.pexp_desc with
     | None -> []
     | Some (args, ct) -> (
-        let p =
-          get_print state ct |> Option.value ~default:default_printer
-        in
-        let name = Format.asprintf "%s in %s" (bold_blue txt) (blue loc) in
-        let prop = get_prop state ct in
-        match prop with
-        | Some prop ->
+        let info = derive_ctype state ct in
+        match info with
+        | Some {spec= Some prop; print; _} ->
+            let p = print |> Option.value ~default:default_printer in
+            let name =
+              Format.asprintf "%s in %s" (bold_blue txt) (blue loc)
+            in
             Log.print "Trying to generate a test for the function %a\n"
               print_pat vb.pvb_pat ;
             [generate txt args p name prop]

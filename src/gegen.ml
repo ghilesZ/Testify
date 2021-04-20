@@ -103,7 +103,7 @@ let solve_td td sat =
   try
     match td.ptype_kind with
     | Ptype_abstract ->
-        Option.map (fun ct -> solve_ct ct sat) td.ptype_manifest
+        Option.bind td.ptype_manifest (fun ct -> solve_ct ct sat)
     | Ptype_record _labs -> (* todo records *) None
     | Ptype_variant _ -> None
     | Ptype_open -> None

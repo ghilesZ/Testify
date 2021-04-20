@@ -59,18 +59,6 @@ module Make (D : Signatures.Abs) = struct
 
   let ratio {inner_volume; total_volume; _} = inner_volume /. total_volume
 
-  let satisfies _instance _constr = false
-
-  let accept_rate _abs _constr =
-    (* let rec aux nb nb_in =
-     *   if nb <= 1000 then
-     *     aux (nb + 1)
-     *       (if satisfies (D.spawn abs) constr then nb_in + 1 else nb_in)
-     *   else float nb_in /. float nb
-     * in
-     * aux 0 0 *)
-    1.
-
   let compile is fs cover =
     let inner_gens =
       List.rev_map (fun (abs, weight) -> (weight, D.compile abs)) cover.inner
@@ -78,9 +66,7 @@ module Make (D : Signatures.Abs) = struct
     let outer_gens =
       List.map
         (fun (abs, weight, constr) ->
-          ( weight *. accept_rate abs constr
-          , Lang.to_ocaml is fs constr
-          , D.compile abs ))
+          (weight, Lang.to_ocaml is fs constr, D.compile abs))
         cover.outer
     in
     (inner_gens, outer_gens)

@@ -47,18 +47,14 @@ let register_prop (s : t) lid spec =
 
 let get = Env.find_opt
 
+let update s id infos = Env.add id infos s
+
 let get_print s lid = Option.bind (Env.find_opt lid s) Typrepr.get_printer
 
 let get_gen s lid = Option.bind (Env.find_opt lid s) Typrepr.get_generator
 
 let get_prop s lid =
   Option.bind (Env.find_opt lid s) Typrepr.get_specification
-
-(* updates a state according to a gen option, a print opt and a prop opt *)
-let update s id (gen, print, prop) =
-  let s = Option.(value ~default:s (map (register_gen s id) gen)) in
-  let s = register_print s id print in
-  Option.(value ~default:s (map (register_prop s id) prop))
 
 (* TODO: make sure no name conflict can occur *)
 let register_param s ct =

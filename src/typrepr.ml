@@ -244,3 +244,75 @@ module Sum = struct
     let s = specification variants in
     make p g s c
 end
+
+module Record = struct
+  let cardinality _fields = None
+
+  let generator _fields = None
+
+  let printer _fields = None
+
+  let specification _fields = None
+
+  let make fields =
+    let c = cardinality fields in
+    let g = generator fields in
+    let p = printer fields in
+    let s = specification fields in
+    make p g s c
+end
+
+module Constrained = struct
+  (*TODO: complete *)
+  let rec unify_patterns p p' =
+    match (p.ppat_desc, p'.ppat_desc) with
+    | Ppat_any, _ -> Some p'
+    | _, Ppat_any -> Some p
+    | Ppat_var s, Ppat_var s' -> if s.txt = s'.txt then Some p else None
+    | Ppat_tuple t, Ppat_tuple t' -> (
+      try
+        Some
+          ( List.map2 (fun e1 e2 -> Option.get (unify_patterns e1 e2)) t t'
+          |> Pat.tuple )
+      with Invalid_argument _ -> None )
+    | _ -> None
+
+  let compose_properties p p' =
+    match (p.pexp_desc, p'.pexp_desc) with
+    | Pexp_fun (_, _, pat, expr), Pexp_fun (_, _, pat', expr') -> (
+      match unify_patterns pat pat' with
+      | None ->
+          lambda_s "x"
+            (apply_nolbl p [exp_id "x"] &&@ apply_nolbl p' [exp_id "x"])
+      | Some pat ->
+          let newexpr = expr &&@ expr' in
+          let newp = lambda pat newexpr in
+          lambda_s "x" (apply_nolbl newp [exp_id "x"]) )
+    | _ ->
+        lambda_s "x"
+          (apply_nolbl p [exp_id "x"] &&@ apply_nolbl p' [exp_id "x"])
+
+  let rejection pred gen = apply_runtime "reject" [pred; gen]
+
+  let make ct typ e =
+    let spec =
+      match typ.spec with
+      | Some p -> Some (compose_properties p e)
+      | None -> Some e
+    in
+    match Gegen.solve_ct ct e with
+    | None ->
+        {typ with gen= Option.map (rejection e) typ.gen; spec; card= None}
+    | x -> {typ with gen= x; spec}
+
+  let make_td td typ e =
+    let spec =
+      match typ.spec with
+      | Some p -> Some (compose_properties p e)
+      | None -> Some e
+    in
+    match Gegen.solve_td td e with
+    | None ->
+        {typ with gen= Option.map (rejection e) typ.gen; spec; card= None}
+    | x -> {typ with gen= x; spec}
+end
