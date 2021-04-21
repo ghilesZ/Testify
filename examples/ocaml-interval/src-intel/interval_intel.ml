@@ -373,7 +373,7 @@ let mod_I_f x y =
 
 let inv_I x = try I.inv x with Division_by_zero -> invalid_arg "inv_I"
 
-type pos_itv = t [@@satisfying fun {low; high} -> low <= high && low >= 0.]
+type pos_itv = t [@@satisfying fun {low; high} -> low <=. high && low >=. 0.]
 
 let sqrt_I (x : pos_itv) : pos_itv =
   try I.sqrt x with Domain_error _ -> invalid_arg "sqrt_I"

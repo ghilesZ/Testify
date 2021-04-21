@@ -31,9 +31,6 @@ let add_specification info s = {info with spec= Some s}
 
 let free g c p = {print= Some p; gen= Some g; spec= None; card= Some c}
 
-let constrained g s c p =
-  {print= Some p; gen= Some g; spec= Some s; card= Some c}
-
 let make print gen spec card = {gen; spec; card; print}
 
 (* Predefined types *)
@@ -248,11 +245,41 @@ end
 module Record = struct
   let cardinality _fields = None
 
-  let generator _fields = None
+  let generator fields =
+    let field name t =
+      (lid_loc name, apply_nolbl (t.gen |> Option.get) [exp_id "rs"])
+    in
+    let fields = List.map (fun (n, t) -> field n t) fields in
+    Exp.record fields None |> lambda_s "rs" |> Option.some
 
-  let printer _fields = None
+  let printer fields =
+    let field (n, t) =
+      let field = apply_nolbl (t.print |> Option.get) [exp_id n] in
+      let field_name = string_ n in
+      (string_concat ~sep:"=" [field_name; field], (lid_loc n, pat_s n))
+    in
+    try
+      let fields = List.map field fields in
+      let fields, pat = List.split fields in
+      let app = string_concat ~sep:"; " fields in
+      let app = string_concat [string_ "{"; app; string_ "}"] in
+      lambda (Pat.record pat Closed) app |> Option.some
+    with Invalid_argument _ -> None
 
-  let specification _fields = None
+  let specification fields =
+    let field (n, t) =
+      (apply_nolbl (t.spec |> Option.get) [exp_id n], (lid_loc n, pat_s n))
+    in
+    try
+      let fields = List.map field fields in
+      let fields, pat = List.split fields in
+      match fields with
+      | h :: tl ->
+          List.fold_left ( &&@ ) h tl
+          |> lambda (Pat.record pat Closed)
+          |> Option.some
+      | _ -> (*record with 0 field*) assert false
+    with Invalid_argument _ -> None
 
   let make fields =
     let c = cardinality fields in

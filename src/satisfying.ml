@@ -33,8 +33,6 @@ let gen_set_seed x = letunit (apply_runtime "set_seed" [int_ x])
 (* call to run_test*)
 let run () = letunit (apply_runtime "run_test" [unit])
 
-let rejection pred gen = apply_nolbl_s "reject" [pred; gen]
-
 (* function application generator *)
 let generate fn args out_print testname satisfy =
   let testname = Format.asprintf "function: %s" testname in
@@ -70,6 +68,7 @@ let generate fn args out_print testname satisfy =
         ; apply_nolbl_s "opt_gen" [go]
         ; apply_nolbl_s "sat_output" [satisfy] ]
 
+(* derivation function for core types *)
 let derive_ctype (state : State.t) =
   let rec aux ct =
     match get_attribute_pstr "satisfying" ct.ptyp_attributes with
@@ -94,9 +93,7 @@ let derive_ctype (state : State.t) =
   in
   aux
 
-let default_printer = lambda_s "_" (string_ (gray "undefined"))
-
-(* generic derivation function for type declaration *)
+(* derivation function for type declaration *)
 let rec derive_decl (s : State.t)
     ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) =
   try
@@ -118,7 +115,14 @@ let rec derive_decl (s : State.t)
             | Pcstr_record _labs -> raise Exit
           in
           Some (Typrepr.Sum.make (List.map constr_f constructors))
-      | Ptype_record labs -> Some (Typrepr.Record.make labs)
+      | Ptype_record labs ->
+          let labs =
+            List.map
+              (fun {pld_name; pld_type; _} ->
+                (pld_name.txt, derive_ctype s pld_type |> Option.get))
+              labs
+          in
+          Some (Typrepr.Record.make labs)
       | Ptype_open -> None )
   with Invalid_argument _ | Exit -> None
 
@@ -126,13 +130,6 @@ let derive (s : State.t) (td : type_declaration) =
   let infos = derive_decl s td in
   let id = lparse td.ptype_name.txt in
   match infos with None -> s | Some infos -> update s id infos
-
-(* update the rewritting state according to a type declaration *)
-let declare_type state t =
-  let state = derive state t in
-  match get_attribute_pstr "satisfying" t.ptype_attributes with
-  | None -> state
-  | Some e -> register_prop state (lparse t.ptype_name.txt) e
 
 (** {1 annotation handling} *)
 let check_gen vb (s : State.t) : State.t =
@@ -203,8 +200,7 @@ let gather_tests vb state =
     | Some (args, ct) -> (
         let info = derive_ctype state ct in
         match info with
-        | Some {spec= Some prop; print; _} ->
-            let p = print |> Option.value ~default:default_printer in
+        | Some {spec= Some prop; print= Some p; _} ->
             let name =
               Format.asprintf "%s in %s" (bold_blue txt) (blue loc)
             in
@@ -226,7 +222,7 @@ let mapper =
           List.rev (if !in_attribute then res else run () :: tests)
       (* type declaration *)
       | ({pstr_desc= Pstr_type (_, [t]); _} as h) :: tl ->
-          aux (h :: res) (declare_type state t) tl
+          aux (h :: res) (derive state t) tl
       (* value declaration *)
       | ({pstr_desc= Pstr_value (_, [pvb]); _} as h) :: tl ->
           let tests = gather_tests pvb state in
