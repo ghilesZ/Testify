@@ -1,6 +1,6 @@
 module Make (D : Signatures.Abs) = struct
   (* TODO: define a more serious volume *)
-  type vol = float
+  type vol = Z.t
 
   type t =
     { inner: (D.t * vol) list (* sorted, increasing volume *)
@@ -20,7 +20,11 @@ module Make (D : Signatures.Abs) = struct
       outer
 
   let empty =
-    {inner= []; outer= []; inner_volume= 0.; total_volume= 0.; nb_elem= 0}
+    { inner= []
+    ; outer= []
+    ; inner_volume= Z.zero
+    ; total_volume= Z.zero
+    ; nb_elem= 0 }
 
   (* true if the cover is a partition, ie the problem is solved *)
   let is_partition {outer; _} = outer = []
@@ -32,7 +36,7 @@ module Make (D : Signatures.Abs) = struct
     | ((_, vol, _) as h) :: tl ->
         ( h
         , { c with
-            total_volume= c.total_volume -. vol
+            total_volume= Z.sub c.total_volume vol
           ; outer= tl
           ; nb_elem= c.nb_elem - 1 } )
 
@@ -40,8 +44,8 @@ module Make (D : Signatures.Abs) = struct
     let v = D.volume elm in
     { c with
       inner= (elm, v) :: c.inner
-    ; inner_volume= c.inner_volume +. v
-    ; total_volume= c.total_volume +. v
+    ; inner_volume= Z.add c.inner_volume v
+    ; total_volume= Z.add c.total_volume v
     ; nb_elem= c.nb_elem + 1 }
 
   (* insertion maintaining the order *)
@@ -54,10 +58,11 @@ module Make (D : Signatures.Abs) = struct
     in
     { cover with
       outer= add_outer (elm, v, c) cover.outer
-    ; total_volume= cover.total_volume +. v
+    ; total_volume= Z.add cover.total_volume v
     ; nb_elem= cover.nb_elem + 1 }
 
-  let ratio {inner_volume; total_volume; _} = inner_volume /. total_volume
+  let ratio {inner_volume; total_volume; _} =
+    Q.(div (of_bigint inner_volume) (of_bigint total_volume) |> to_float)
 
   let compile is fs cover =
     let inner_gens =
@@ -119,7 +124,8 @@ module Make (D : Signatures.Abs) = struct
     let abs = D.init i_s f_s in
     let c = solve abs constr in
     (* show c (Tools.SSet.max_elt i_s) (Tools.SSet.min_elt i_s) ; *)
-    compile i_s f_s c
+    let inner, outer = compile i_s f_s c in
+    (inner, outer, c.total_volume)
 end
 
 module BoxCover = Make (Boolean.Make (Boxes))

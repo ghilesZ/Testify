@@ -19,7 +19,29 @@ let split (l, h) =
     let mid = Q.add l (Q.div (Q.sub h l) q2) in
     [(l, mid); (mid, h)]
 
-let range (l, h) = Q.sub h l |> Q.to_float
+(* both non-zero *)
+let how_many low high =
+  if low < 0. && 0. < high then
+    (*not same sign *)
+    Int64.(
+      add
+        (sub (bits_of_float high) (bits_of_float min_float))
+        (sub (bits_of_float (abs_float low)) (bits_of_float min_float)))
+  else if (*same sign*) high < 0. then
+    (*both negative*)
+    Int64.(
+      sub (bits_of_float (abs_float low)) (bits_of_float (abs_float high)))
+  else
+    (* both positive *)
+    Int64.(sub (bits_of_float high) (bits_of_float low))
+
+let how_many low high =
+  if low = high then 1L
+  else if low = 0. then how_many min_float high |> Int64.succ
+  else if high = 0. then how_many low (-.min_float) |> Int64.succ
+  else how_many low high
+
+let range (l, h) = how_many (Q.to_float l) (Q.to_float h) |> Z.of_int64
 
 (* Forward operators *)
 
@@ -81,4 +103,4 @@ let compile ((inf, sup) : t) =
   let s = sup |> Q.to_float |> float_ in
   lambda_s "rs"
     (apply_nolbl_s "mk_float"
-       [[exp_id "rs"] |> apply_nolbl (apply_nolbl_s "float_range" [i; s])])
+       [apply_nolbl_s "float_range" [i; s; exp_id "rs"]])

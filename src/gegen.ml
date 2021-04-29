@@ -39,7 +39,11 @@ let flatten core_type pattern =
         (lambda_s "i" (Exp.tuple b), i_s, f_s)
     | _ -> raise (OutOfSubset "core_type or pattern")
   in
-  aux SSet.empty SSet.empty core_type pattern
+  let ((_, _i, _r) as res) = aux SSet.empty SSet.empty core_type pattern in
+  match (SSet.cardinal _i, SSet.cardinal _r) with
+  | 1, 0 -> (exp_id "to_int", _i, _r)
+  | 0, 1 -> (exp_id "to_float", _i, _r)
+  | _ -> res
 
 (* fills the '_' of a pattern *)
 let fill =
@@ -63,9 +67,28 @@ let split_fun f =
         Pprintast.expression (Conv.copy_expression f)
       |> failwith
 
+(* over-approximation of the actual cardinality as outer elements are likely
+   to have less inhabittants *)
+let cardinality inner outer =
+  Z.add
+    (List.to_seq inner |> Seq.map fst |> Seq.fold_left Z.add Z.zero)
+    (List.to_seq outer |> Seq.map fst |> Seq.fold_left Z.add Z.zero)
+
 (* builds a generator list, sorted by probability of being chosen (from most
    likely to less likely) *)
-let craft_generator inner outer pattern r =
+let craft_generator inner outer total pattern r =
+  let inner =
+    List.map
+      (fun (w, g) ->
+        (Q.div (Q.of_bigint w) (Q.of_bigint total) |> Q.to_float, g))
+      inner
+  in
+  let outer =
+    List.map
+      (fun (w, g, r) ->
+        (Q.div (Q.of_bigint w) (Q.of_bigint total) |> Q.to_float, g, r))
+      outer
+  in
   match (inner, outer) with
   | [(_, g)], [] ->
       r |><| g
@@ -94,8 +117,8 @@ let solve_ct ct sat =
     let pat' = fill pat in
     let unflatten, i_s, f_s = flatten ct pat' in
     let constr = Lang.of_ocaml body in
-    let inner, outer = Solve.get_generators i_s f_s constr in
-    Some (craft_generator inner outer pat' unflatten)
+    let inner, outer, total = Solve.get_generators i_s f_s constr in
+    Some (craft_generator inner outer total pat' unflatten)
   with OutOfSubset _ -> None
 
 (* generator for constrained type declarations *)

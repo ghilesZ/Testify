@@ -82,13 +82,13 @@ let max_range_f (a : t) : (string * ItvF.t) option =
 let max_range_i (a : t) : (string * ItvI.t) option =
   max_range a.ints ItvI.range
 
-let volume_f (a : t) : float =
-  SMap.fold (fun _ x v -> ItvF.range x *. v) a.floats 1.
+let volume_f (a : t) : Z.t =
+  SMap.fold (fun _ x v -> Z.mul (ItvF.range x) v) a.floats Z.one
 
 let volume_i (a : t) : Z.t =
   SMap.fold (fun _ x v -> Z.mul (ItvI.range x) v) a.ints Z.one
 
-let volume a = volume_f a *. Z.to_float (volume_i a)
+let volume a = Z.mul (volume_f a) (volume_i a)
 
 let find v a =
   try SMap.find v a.ints |> eval_int
@@ -225,7 +225,7 @@ let join (a : t) (b : t) : t =
   ; floats= SMap.merge (fun _ -> join_opt_f) a.floats b.floats }
 
 let split_along_f (a : t) (v : string) itv : t list =
-  if ItvF.range itv = 0. then failwith "cannot split atom" ;
+  if Z.leq (ItvF.range itv) Z.one then failwith "cannot split atom" ;
   let i_list = ItvF.split itv in
   List.fold_left
     (fun acc b -> {a with floats= SMap.add v b a.floats} :: acc)
@@ -246,7 +246,7 @@ let split (a : t) : t list =
   | Some (v_f, i_f), Some (v_i, i_i) ->
       let r_f = ItvF.range i_f in
       let r_i = ItvI.range i_i in
-      if Q.of_float r_f > Q.of_bigint r_i then split_along_f a v_f i_f
+      if Z.gt r_f r_i then split_along_f a v_f i_f
       else split_along_i a v_i i_i
   | None, None -> failwith "cannot split anymore"
 
@@ -267,9 +267,13 @@ let compile (a : t) =
         instance := cons_exp pair !instance)
       map
   in
-  aux ItvI.compile a.ints ;
-  aux ItvF.compile a.floats ;
-  lambda_s "rs" !instance
+  match (SMap.bindings a.ints, SMap.bindings a.floats) with
+  | [(_, i)], [] -> ItvI.compile i
+  | [], [(_, f)] -> ItvF.compile f
+  | _ ->
+      aux ItvI.compile a.ints ;
+      aux ItvF.compile a.floats ;
+      lambda_s "rs" !instance
 
 let print fmt {ints; floats} =
   Format.fprintf fmt "{" ;

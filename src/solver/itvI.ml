@@ -81,5 +81,4 @@ let compile ((inf, sup) : t) =
   let i = inf |> Z.to_int |> int_ in
   let s = sup |> Z.to_int |> int_ in
   lambda_s "rs"
-    (apply_nolbl_s "mk_int"
-       [[exp_id "rs"] |> apply_nolbl (apply_nolbl_s "int_range" [i; s])])
+    (apply_nolbl_s "mk_int" [apply_nolbl_s "int_range" [i; s; exp_id "rs"]])

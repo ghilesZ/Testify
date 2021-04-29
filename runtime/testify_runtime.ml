@@ -40,14 +40,18 @@ let mk_int x = GInt x
 
 let mk_float x = GFloat x
 
+let to_int = function GInt i -> i | _ -> failwith "type error"
+
+let to_float = function GFloat f -> f | _ -> failwith "type error"
+
 (* Type of random concretizations *)
 type instance = (string * generable) list
 
 let get_int name (l : instance) =
-  match List.assoc name l with GInt i -> i | _ -> failwith "type error"
+  List.assoc name l |> to_int
 
 let get_float name (l : instance) =
-  match List.assoc name l with GFloat f -> f | _ -> failwith "type error"
+   List.assoc name l |> to_float
 
 (* GENERATORS *)
 

@@ -15,7 +15,7 @@ module type Numeric = sig
 
   val split : t -> t list
 
-  val volume : t -> float
+  val volume : t -> Z.t
 
   val print : Format.formatter -> t -> unit
 
