@@ -132,7 +132,7 @@ let rec derive_decl (s : State.t)
   with Invalid_argument _ | Exit -> None
 
 let derive (s : State.t) (td : type_declaration) =
-  Log.print "### Declaration of type %s\n" td.ptype_name.txt ;
+  Log.print "### Declaration of type *%s*\n" td.ptype_name.txt ;
   let infos = derive_decl s td in
   Log.print "- Kind: %s%s\n"
     ( if Option.is_none (get_attribute_pstr "satisfying" td.ptype_attributes)
@@ -172,15 +172,30 @@ let check_print vb (s : State.t) =
   | _ -> failwith "bad print attribute"
 
 let get_infos (s : State.t) e =
+  let open Typrepr in
   let get_gen_print pat =
     match pat.ppat_desc with
     | Ppat_construct ({txt= Lident "()"; _}, _) ->
         (* allow to omit the explicit type annotation for the unit pattern*)
-        (State.get (lparse "unit") s, "()")
-    | Ppat_constraint (_, t) ->
-        (derive_ctype s t, Format.asprintf "%a" print_coretype t)
+        let {gen; print; _} = Option.get (State.get (lparse "unit") s) in
+        (gen |> Option.get, print |> Option.get)
+    | Ppat_constraint (_, t) -> (
+        let {gen; print; _} = Option.get (derive_ctype s t) in
+        match (gen, print) with
+        | None, None ->
+            Log.print "Missing generator and printer for type %a\n"
+              print_coretype t ;
+            raise Exit
+        | None, _ ->
+            Log.print "Missing generator type %a\n" print_coretype t ;
+            raise Exit
+        | _, None ->
+            Log.print "Missing printer type %a\n" print_coretype t ;
+            raise Exit
+        | Some g, Some p -> (g, p) )
     | _ ->
-        (None, Format.asprintf "missing type annotation for %a" print_pat pat)
+        Log.print "missing type annotation for %a\n" print_pat pat ;
+        raise Exit
   in
   let rec aux res = function
     | Pexp_fun (Nolabel, None, pat, exp) ->
@@ -189,16 +204,9 @@ let get_infos (s : State.t) e =
     | _ -> raise Exit
   in
   try
-    let open Typrepr in
     let infos, ct = aux [] e in
-    Some
-      ( List.map
-          (function
-            | Some {gen= Some g; print= Some p; _}, _ -> (g, p)
-            | _ -> raise Exit)
-          infos
-      , ct )
-  with Exit -> None
+    Some (infos, ct)
+  with Exit | Invalid_argument _ -> None
 
 (* compute a list of tests to be added to the AST. handles: explicitly typed
    constants and (fully) explicitly typed functions *)
@@ -207,27 +215,30 @@ let gather_tests vb state =
   match vb.pvb_pat.ppat_desc with
   (* let constant:typ = val*)
   | Ppat_constraint ({ppat_desc= Ppat_var {txt; _}; _}, typ) -> (
+      Log.print " #### Declaration of constant: *%a*\n" print_pat vb.pvb_pat ;
       let info = derive_ctype state typ in
       match info with
-      | Some {spec= Some p; _} ->
-          Log.print "Test generation for constant %a\n" print_pat vb.pvb_pat ;
-          [test_constant txt loc p]
+      | Some {spec= Some p; _} -> [test_constant txt loc p]
       | _ -> [] )
   (* let fn (arg1:typ1) (arg2:typ2) ... : return_typ = body *)
   | Ppat_var {txt; _} -> (
     match get_infos state vb.pvb_expr.pexp_desc with
     | None -> []
     | Some (args, ct) -> (
+        Log.print "#### Declaration of function *%a*\n%!" print_pat
+          vb.pvb_pat ;
         let info = derive_ctype state ct in
+        Log.print "Return type `%a`%!" print_coretype ct ;
         match info with
         | Some {spec= Some prop; print= Some p; _} ->
+            Log.print " is attached a specification. Generating a test.\n%!" ;
             let name =
               Format.asprintf "%s in %s" (bold_blue txt) (blue loc)
             in
-            Log.print "### Test generation for function %a\n%!" print_pat
-              vb.pvb_pat ;
             [generate txt args p name prop]
-        | _ -> [] ) )
+        | _ ->
+            Log.print " is not attached a specification.\n%!" ;
+            [] ) )
   | _ -> []
 
 (* actual mapper *)
