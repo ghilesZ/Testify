@@ -8,8 +8,7 @@ open Location
 (** representation of an OCaml type *)
 
 type t =
-  { name: string
-  ; gen: expression option
+  { gen: expression option
   ; spec: expression option
   ; card: Z.t option
   ; print: expression option }
@@ -17,8 +16,7 @@ type t =
 let print_expr fmt e =
   Format.fprintf fmt "```ocaml@.@[%a@]\n```" print_expression e
 
-let print fmt {name; gen; spec; card; print} =
-  Format.fprintf fmt "- Identifier: **%s**\n" name ;
+let print fmt {gen; spec; card; print} =
   Format.fprintf fmt "- Printer: " ;
   ( match print with
   | None -> Format.fprintf fmt "no printer derived"
@@ -47,7 +45,7 @@ let get_cardinality p = p.card
 
 let get_printer p = p.print
 
-let empty = {name= ""; gen= None; spec= None; card= None; print= None}
+let empty = {gen= None; spec= None; card= None; print= None}
 
 let add_printer info p = {info with print= Some p}
 
@@ -55,33 +53,27 @@ let add_generator info g = {info with gen= Some g}
 
 let add_specification info s = {info with spec= Some s}
 
-let free name g c p =
-  {name; print= Some p; gen= Some g; spec= None; card= Some c}
+let free g c p = {print= Some p; gen= Some g; spec= None; card= Some c}
 
-let make name print gen spec card = {name; gen; spec; card; print}
+let make print gen spec card = {gen; spec; card; print}
 
 (* Predefined types *)
 
-let unit =
-  free "unit" (exp_id "QCheck.Gen.unit") Z.one (exp_id "QCheck.Print.unit")
+let unit = free (exp_id "QCheck.Gen.unit") Z.one (exp_id "QCheck.Print.unit")
 
 let bool =
-  free "bool"
-    (exp_id "QCheck.Gen.bool")
-    (Z.of_int 2) (exp_id "string_of_bool")
+  free (exp_id "QCheck.Gen.bool") (Z.of_int 2) (exp_id "string_of_bool")
 
 let char =
-  free "char"
-    (exp_id "QCheck.Gen.char")
-    (Z.of_int 256) (exp_id "string_of_char")
+  free (exp_id "QCheck.Gen.char") (Z.of_int 256) (exp_id "string_of_char")
 
 let int =
-  free "int" (exp_id "QCheck.Gen.int")
-    (Z.pow (Z.of_int 2) Sys.int_size)
+  free (exp_id "QCheck.Gen.int")
+    (Z.pow (Z.of_int 2) (Sys.int_size - 1))
     (exp_id "string_of_int")
 
 let float =
-  free "float"
+  free
     (exp_id "QCheck.Gen.float")
     (Z.pow (Z.of_int 2) Sys.int_size)
     (exp_id "string_of_float")
@@ -141,13 +133,9 @@ module Product = struct
       lambda (Pat.tuple pats) b' |> Option.some
     with Exit -> None
 
-  let make name typs =
-    let t =
-      make name (printer typs) (generator typs) (specification typs)
-        (cardinality typs)
-    in
-    Log.print "%a\n%!" print t ;
-    t
+  let make typs =
+    make (printer typs) (generator typs) (specification typs)
+      (cardinality typs)
 end
 
 (** ADTs *)
@@ -272,15 +260,12 @@ module Sum = struct
                 cases))
     with Exit | Invalid_argument _ -> None
 
-  let make name variants =
-    Log.print "### Declaration of sum type:\n" ;
+  let make variants =
     let c = cardinality variants in
     let g = generator variants c in
     let p = printer variants in
     let s = specification variants in
-    let t = make name p g s c in
-    Log.print "%a\n%!" print t ;
-    t
+    make p g s c
 end
 
 module Record = struct
@@ -322,15 +307,12 @@ module Record = struct
       | _ -> (*record with 0 field*) assert false
     with Invalid_argument _ -> None
 
-  let make name fields =
-    Log.print "Declaration of record type\n" ;
+  let make fields =
     let c = cardinality fields in
     let g = generator fields in
     let p = printer fields in
     let s = specification fields in
-    let t = make name p g s c in
-    Log.print "%a\n%!" print t ;
-    t
+    make p g s c
 end
 
 module Constrained = struct
@@ -363,7 +345,7 @@ module Constrained = struct
         lambda_s "x"
           (apply_nolbl p [exp_id "x"] &&@ apply_nolbl p' [exp_id "x"])
 
-  let rejection pred gen = apply_runtime "reject" [pred; gen]
+  let rejection pred gen = apply_nolbl_s "reject" [pred; gen]
 
   let make ct typ e =
     let spec =
@@ -377,18 +359,13 @@ module Constrained = struct
     | x -> {typ with gen= x; spec}
 
   let make_td td typ e =
-    Log.print "Declaration of constrained type\n" ;
     let spec =
       match typ.spec with
       | Some p -> Some (compose_properties p e)
       | None -> Some e
     in
-    let t =
-      match Gegen.solve_td td e with
-      | None ->
-          {typ with gen= Option.map (rejection e) typ.gen; spec; card= None}
-      | x -> {typ with gen= x; spec}
-    in
-    Log.print "%a\n%!" print t ;
-    t
+    match Gegen.solve_td td e with
+    | None ->
+        {typ with gen= Option.map (rejection e) typ.gen; spec; card= None}
+    | x -> {typ with gen= x; spec}
 end

@@ -8,4 +8,4 @@ _obuild
 .merlin
 
 /rewrite
-*.log
+*.markdown

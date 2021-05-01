@@ -85,7 +85,6 @@ let derive_ctype (state : State.t) =
         try
           Some
             (Typrepr.Product.make
-               (Format.asprintf "%a" print_coretype ct)
                (List.map
                   (fun t ->
                     match aux t with
@@ -101,7 +100,7 @@ let derive_ctype (state : State.t) =
 
 (* derivation function for type declaration *)
 let rec derive_decl (s : State.t)
-    ({ptype_kind; ptype_manifest; ptype_attributes; ptype_name; _} as td) =
+    ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) =
   try
     match get_attribute_pstr "satisfying" ptype_attributes with
     | Some e ->
@@ -120,9 +119,7 @@ let rec derive_decl (s : State.t)
                 , List.map (fun ct -> derive_ctype s ct |> Option.get) ct )
             | Pcstr_record _labs -> raise Exit
           in
-          Some
-            (Typrepr.Sum.make ptype_name.txt
-               (List.map constr_f constructors))
+          Some (Typrepr.Sum.make (List.map constr_f constructors))
       | Ptype_record labs ->
           let labs =
             List.map
@@ -130,16 +127,30 @@ let rec derive_decl (s : State.t)
                 (pld_name.txt, derive_ctype s pld_type |> Option.get))
               labs
           in
-          Some (Typrepr.Record.make ptype_name.txt labs)
+          Some (Typrepr.Record.make labs)
       | Ptype_open -> None )
-  with Invalid_argument _ | Exit ->
-    Log.print "No info found for %s\n%!" ptype_name.txt ;
-    None
+  with Invalid_argument _ | Exit -> None
 
 let derive (s : State.t) (td : type_declaration) =
+  Log.print "### Declaration of type %s\n" td.ptype_name.txt ;
   let infos = derive_decl s td in
+  Log.print "- Kind: %s%s\n"
+    ( if Option.is_none (get_attribute_pstr "satisfying" td.ptype_attributes)
+    then ""
+    else "constrained " )
+    ( match td.ptype_kind with
+    | Ptype_abstract -> "core type"
+    | Ptype_variant _ -> "sum type"
+    | Ptype_record _ -> "record type"
+    | Ptype_open -> "extensible type" ) ;
   let id = lparse td.ptype_name.txt in
-  match infos with None -> s | Some infos -> update s id infos
+  match infos with
+  | None ->
+      Log.print "No info found\n%!" ;
+      s
+  | Some infos ->
+      Log.print "%a\n%!" Typrepr.print infos ;
+      update s id infos
 
 (** {1 annotation handling} *)
 let check_gen vb (s : State.t) : State.t =

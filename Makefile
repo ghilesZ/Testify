@@ -14,5 +14,6 @@ clean:
 	@rm -f $(BIN)
 	@rm -f *.log
 	@dune clean
+	@rm -f *.markdown
 
 .PHONY: build test clean $(BIN)
