@@ -85,8 +85,14 @@ let derive_ctype (state : State.t) =
         try
           Some
             (Typrepr.Product.make
+               (Format.asprintf "%a" print_coretype ct)
                (List.map
-                  (fun t -> match aux t with Some t -> t | _ -> raise Exit)
+                  (fun t ->
+                    match aux t with
+                    | Some t -> t
+                    | _ ->
+                        Log.print "No info found for %a\n%!" print_coretype t ;
+                        raise Exit)
                   tup))
         with Exit -> None )
       | _ -> None )
@@ -95,7 +101,7 @@ let derive_ctype (state : State.t) =
 
 (* derivation function for type declaration *)
 let rec derive_decl (s : State.t)
-    ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) =
+    ({ptype_kind; ptype_manifest; ptype_attributes; ptype_name; _} as td) =
   try
     match get_attribute_pstr "satisfying" ptype_attributes with
     | Some e ->
@@ -114,7 +120,9 @@ let rec derive_decl (s : State.t)
                 , List.map (fun ct -> derive_ctype s ct |> Option.get) ct )
             | Pcstr_record _labs -> raise Exit
           in
-          Some (Typrepr.Sum.make (List.map constr_f constructors))
+          Some
+            (Typrepr.Sum.make ptype_name.txt
+               (List.map constr_f constructors))
       | Ptype_record labs ->
           let labs =
             List.map
@@ -122,9 +130,11 @@ let rec derive_decl (s : State.t)
                 (pld_name.txt, derive_ctype s pld_type |> Option.get))
               labs
           in
-          Some (Typrepr.Record.make labs)
+          Some (Typrepr.Record.make ptype_name.txt labs)
       | Ptype_open -> None )
-  with Invalid_argument _ | Exit -> None
+  with Invalid_argument _ | Exit ->
+    Log.print "No info found for %s\n%!" ptype_name.txt ;
+    None
 
 let derive (s : State.t) (td : type_declaration) =
   let infos = derive_decl s td in
@@ -136,7 +146,7 @@ let check_gen vb (s : State.t) : State.t =
   match get_attribute_pstr "gen" vb.pvb_attributes with
   | None -> s
   | Some {pexp_desc= Pexp_ident l; _} ->
-      Log.print "setting %a as a generator for %a\n%!" print_pat vb.pvb_pat
+      Log.print "Setting %a as a generator for %a\n%!" print_pat vb.pvb_pat
         print_longident l.txt ;
       register_gen s l.txt vb.pvb_expr
   | _ -> failwith "bad gen attribute"
@@ -174,7 +184,7 @@ let get_infos (s : State.t) e =
       ( List.map
           (function
             | Some {gen= Some g; print= Some p; _}, _ -> (g, p)
-            | _, s -> Log.print "%s\n" s ; raise Exit)
+            | _ -> raise Exit)
           infos
       , ct )
   with Exit -> None
@@ -189,8 +199,7 @@ let gather_tests vb state =
       let info = derive_ctype state typ in
       match info with
       | Some {spec= Some p; _} ->
-          Log.print "Trying to generate a test for the constant %a\n"
-            print_pat vb.pvb_pat ;
+          Log.print "Test generation for constant %a\n" print_pat vb.pvb_pat ;
           [test_constant txt loc p]
       | _ -> [] )
   (* let fn (arg1:typ1) (arg2:typ2) ... : return_typ = body *)
@@ -204,8 +213,8 @@ let gather_tests vb state =
             let name =
               Format.asprintf "%s in %s" (bold_blue txt) (blue loc)
             in
-            Log.print "Trying to generate a test for the function %a\n"
-              print_pat vb.pvb_pat ;
+            Log.print "### Test generation for function %a\n%!" print_pat
+              vb.pvb_pat ;
             [generate txt args p name prop]
         | _ -> [] ) )
   | _ -> []
@@ -235,7 +244,8 @@ let mapper =
     | [] -> ()
     | h :: _ ->
         let s, _, _ = Location.get_pos_info h.pstr_loc.loc_start in
-        Log.set_output s ) ;
+        Log.set_output s ;
+        Log.print "# Module **%s**\n" s ) ;
     aux [] State.s0 str
   in
   let handle_attr m a =

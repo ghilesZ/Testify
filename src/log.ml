@@ -13,7 +13,7 @@ let set_output s =
   if !log then
     match !filename with
     | None ->
-        let s = Filename.(chop_extension (basename s)) ^ ".log" in
+        let s = Filename.(chop_extension (basename s)) ^ ".markdown" in
         filename := Some (Format.formatter_of_out_channel (open_out s))
     | Some _ -> ()
 

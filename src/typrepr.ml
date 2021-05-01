@@ -8,10 +8,36 @@ open Location
 (** representation of an OCaml type *)
 
 type t =
-  { gen: expression option
+  { name: string
+  ; gen: expression option
   ; spec: expression option
   ; card: Z.t option
   ; print: expression option }
+
+let print_expr fmt e =
+  Format.fprintf fmt "```ocaml@.@[%a@]\n```" print_expression e
+
+let print fmt {name; gen; spec; card; print} =
+  Format.fprintf fmt "- Identifier: **%s**\n" name ;
+  Format.fprintf fmt "- Printer: " ;
+  ( match print with
+  | None -> Format.fprintf fmt "no printer derived"
+  | Some e -> Format.fprintf fmt "\n%a" print_expr e ) ;
+  Format.fprintf fmt "\n" ;
+  Format.fprintf fmt "- Specification: " ;
+  ( match spec with
+  | None -> Format.fprintf fmt " no specification derived"
+  | Some e -> Format.fprintf fmt "\n%a" print_expr e ) ;
+  Format.fprintf fmt "\n" ;
+  Format.fprintf fmt "- Cardinality: " ;
+  ( match card with
+  | None -> Format.fprintf fmt " no cardinality derived"
+  | Some c -> Format.fprintf fmt "%a (estimation)" Z.pp_print c ) ;
+  Format.fprintf fmt "\n" ;
+  Format.fprintf fmt "- Generator: " ;
+  match gen with
+  | None -> Format.fprintf fmt " no generator derived"
+  | Some e -> Format.fprintf fmt "\n%a" print_expr e
 
 let get_generator p = p.gen
 
@@ -21,7 +47,7 @@ let get_cardinality p = p.card
 
 let get_printer p = p.print
 
-let empty = {gen= None; spec= None; card= None; print= None}
+let empty = {name= ""; gen= None; spec= None; card= None; print= None}
 
 let add_printer info p = {info with print= Some p}
 
@@ -29,27 +55,33 @@ let add_generator info g = {info with gen= Some g}
 
 let add_specification info s = {info with spec= Some s}
 
-let free g c p = {print= Some p; gen= Some g; spec= None; card= Some c}
+let free name g c p =
+  {name; print= Some p; gen= Some g; spec= None; card= Some c}
 
-let make print gen spec card = {gen; spec; card; print}
+let make name print gen spec card = {name; gen; spec; card; print}
 
 (* Predefined types *)
 
-let unit = free (exp_id "QCheck.Gen.unit") Z.one (exp_id "QCheck.Print.unit")
+let unit =
+  free "unit" (exp_id "QCheck.Gen.unit") Z.one (exp_id "QCheck.Print.unit")
 
 let bool =
-  free (exp_id "QCheck.Gen.bool") (Z.of_int 2) (exp_id "string_of_bool")
+  free "bool"
+    (exp_id "QCheck.Gen.bool")
+    (Z.of_int 2) (exp_id "string_of_bool")
 
 let char =
-  free (exp_id "QCheck.Gen.char") (Z.of_int 256) (exp_id "string_of_char")
+  free "char"
+    (exp_id "QCheck.Gen.char")
+    (Z.of_int 256) (exp_id "string_of_char")
 
 let int =
-  free (exp_id "QCheck.Gen.int")
+  free "int" (exp_id "QCheck.Gen.int")
     (Z.pow (Z.of_int 2) Sys.int_size)
     (exp_id "string_of_int")
 
 let float =
-  free
+  free "float"
     (exp_id "QCheck.Gen.float")
     (Z.pow (Z.of_int 2) Sys.int_size)
     (exp_id "string_of_float")
@@ -58,14 +90,15 @@ let float =
 
 (** tuples *)
 module Product = struct
+  let gen_body typs =
+    List.map
+      (function
+        | {gen= Some g; _} -> apply_nolbl g [exp_id "rs"] | _ -> raise Exit)
+      typs
+    |> Exp.tuple
+
   let generator typs =
-    try
-      List.map
-        (function
-          | {gen= Some g; _} -> apply_nolbl g [exp_id "x"] | _ -> raise Exit)
-        typs
-      |> Exp.tuple |> lambda_s "x" |> Option.some
-    with Exit -> None
+    try gen_body typs |> lambda_s "rs" |> Option.some with Exit -> None
 
   let specification typs =
     let get_name = id_gen_gen () in
@@ -108,9 +141,13 @@ module Product = struct
       lambda (Pat.tuple pats) b' |> Option.some
     with Exit -> None
 
-  let make typs =
-    make (printer typs) (generator typs) (specification typs)
-      (cardinality typs)
+  let make name typs =
+    let t =
+      make name (printer typs) (generator typs) (specification typs)
+        (cardinality typs)
+    in
+    Log.print "%a\n%!" print t ;
+    t
 end
 
 (** ADTs *)
@@ -134,11 +171,9 @@ module Sum = struct
         lambda_s "rs" (constr (Some (apply_nolbl g [exp_id "rs"])))
         |> Option.some
     | [{gen= None; _}] -> raise Exit
-    | l ->
-        Option.map
-          (fun g ->
-            lambda_s "rs" (constr (Some (apply_nolbl g [exp_id "rs"]))))
-          (Product.generator l)
+    | l -> (
+      try lambda_s "rs" (constr (Some (Product.gen_body l))) |> Option.some
+      with Exit -> None )
 
   let generator variants totalcard =
     try
@@ -195,7 +230,7 @@ module Sum = struct
       List.map (fun (constr, args) -> constr_printer constr args) variants
     in
     try Some (Exp.function_ (List.map Option.get cases))
-    with Invalid_argument _ -> None
+    with Exit | Invalid_argument _ -> None
 
   let constr_spec {txt; _} args =
     let constr pat = Pat.construct (lid_loc txt) pat in
@@ -225,21 +260,27 @@ module Sum = struct
           (Product.specification args)
 
   let specification variants =
-    let cases = List.map (fun (c, a) -> constr_spec c a) variants in
-    if List.for_all (( = ) None) cases then None
-    else
-      Some
-        (Exp.function_
-           (List.map
-              (function None -> Exp.case (Pat.any ()) true_ | Some c -> c)
-              cases))
+    try
+      let cases = List.map (fun (c, a) -> constr_spec c a) variants in
+      if List.for_all (( = ) None) cases then None
+      else
+        Some
+          (Exp.function_
+             (List.map
+                (function
+                  | None -> Exp.case (Pat.any ()) true_ | Some c -> c)
+                cases))
+    with Exit | Invalid_argument _ -> None
 
-  let make variants =
+  let make name variants =
+    Log.print "### Declaration of sum type:\n" ;
     let c = cardinality variants in
     let g = generator variants c in
     let p = printer variants in
     let s = specification variants in
-    make p g s c
+    let t = make name p g s c in
+    Log.print "%a\n%!" print t ;
+    t
 end
 
 module Record = struct
@@ -281,12 +322,15 @@ module Record = struct
       | _ -> (*record with 0 field*) assert false
     with Invalid_argument _ -> None
 
-  let make fields =
+  let make name fields =
+    Log.print "Declaration of record type\n" ;
     let c = cardinality fields in
     let g = generator fields in
     let p = printer fields in
     let s = specification fields in
-    make p g s c
+    let t = make name p g s c in
+    Log.print "%a\n%!" print t ;
+    t
 end
 
 module Constrained = struct
@@ -333,13 +377,18 @@ module Constrained = struct
     | x -> {typ with gen= x; spec}
 
   let make_td td typ e =
+    Log.print "Declaration of constrained type\n" ;
     let spec =
       match typ.spec with
       | Some p -> Some (compose_properties p e)
       | None -> Some e
     in
-    match Gegen.solve_td td e with
-    | None ->
-        {typ with gen= Option.map (rejection e) typ.gen; spec; card= None}
-    | x -> {typ with gen= x; spec}
+    let t =
+      match Gegen.solve_td td e with
+      | None ->
+          {typ with gen= Option.map (rejection e) typ.gen; spec; card= None}
+      | x -> {typ with gen= x; spec}
+    in
+    Log.print "%a\n%!" print t ;
+    t
 end
