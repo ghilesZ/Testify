@@ -181,3 +181,6 @@ let print_pat fmt p =
 
 let print_coretype fmt t =
   Format.fprintf fmt "%a" Pprintast.core_type (Conv.copy_core_type t)
+
+(* markdown escaping *)
+let md str = String.split_on_char '*' str |> String.concat "\\*"

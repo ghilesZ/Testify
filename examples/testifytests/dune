@@ -1,5 +1,5 @@
 (library
   (name testifytests)
-  (preprocess (pps ppx_testify -- -nb %{env:NB=10000}))
+  (preprocess (pps ppx_testify -- -log -nb %{env:NB=10000}))
   (inline_tests (backend ppx_testify)))
 

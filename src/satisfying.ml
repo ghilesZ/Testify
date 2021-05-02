@@ -86,12 +86,7 @@ let derive_ctype (state : State.t) =
           Some
             (Typrepr.Product.make
                (List.map
-                  (fun t ->
-                    match aux t with
-                    | Some t -> t
-                    | _ ->
-                        Log.print "No info found for %a\n%!" print_coretype t ;
-                        raise Exit)
+                  (fun t -> match aux t with Some t -> t | _ -> raise Exit)
                   tup))
         with Exit -> None )
       | _ -> None )
@@ -146,7 +141,7 @@ let derive (s : State.t) (td : type_declaration) =
   let id = lparse td.ptype_name.txt in
   match infos with
   | None ->
-      Log.print "No info found\n%!" ;
+      Log.print "- No info found\n\n%!" ;
       s
   | Some infos ->
       Log.print "%a\n%!" Typrepr.print infos ;
@@ -183,18 +178,19 @@ let get_infos (s : State.t) e =
         let {gen; print; _} = Option.get (derive_ctype s t) in
         match (gen, print) with
         | None, None ->
-            Log.print "Missing generator and printer for type %a\n"
+            Log.print "Missing generator and printer for type `%a`\n%!"
               print_coretype t ;
             raise Exit
         | None, _ ->
-            Log.print "Missing generator type %a\n" print_coretype t ;
+            Log.print "Missing generator for type `%a`\n%!" print_coretype t ;
             raise Exit
         | _, None ->
-            Log.print "Missing printer type %a\n" print_coretype t ;
+            Log.print "Missing printer for type `%a`\n%!" print_coretype t ;
             raise Exit
         | Some g, Some p -> (g, p) )
     | _ ->
-        Log.print "missing type annotation for %a\n" print_pat pat ;
+        Log.print "Missing type annotation for argument `%a`\n%!" print_pat
+          pat ;
         raise Exit
   in
   let rec aux res = function
@@ -215,30 +211,37 @@ let gather_tests vb state =
   match vb.pvb_pat.ppat_desc with
   (* let constant:typ = val*)
   | Ppat_constraint ({ppat_desc= Ppat_var {txt; _}; _}, typ) -> (
-      Log.print " #### Declaration of constant: *%a*\n" print_pat vb.pvb_pat ;
+      Log.print " #### Declaration of typed constant: *%s*\n" (md txt) ;
       let info = derive_ctype state typ in
+      Log.print "Type: `%a`%!" print_coretype typ ;
       match info with
-      | Some {spec= Some p; _} -> [test_constant txt loc p]
-      | _ -> [] )
+      | Some {spec= Some p; _} ->
+          Log.print " is attached a specification. Generating a test.\n%!" ;
+          [test_constant txt loc p]
+      | _ ->
+          Log.print " is not attached a specification.\n%!" ;
+          [] )
   (* let fn (arg1:typ1) (arg2:typ2) ... : return_typ = body *)
   | Ppat_var {txt; _} -> (
-    match get_infos state vb.pvb_expr.pexp_desc with
-    | None -> []
-    | Some (args, ct) -> (
-        Log.print "#### Declaration of function *%a*\n%!" print_pat
-          vb.pvb_pat ;
-        let info = derive_ctype state ct in
-        Log.print "Return type `%a`%!" print_coretype ct ;
-        match info with
-        | Some {spec= Some prop; print= Some p; _} ->
-            Log.print " is attached a specification. Generating a test.\n%!" ;
-            let name =
-              Format.asprintf "%s in %s" (bold_blue txt) (blue loc)
-            in
-            [generate txt args p name prop]
-        | _ ->
-            Log.print " is not attached a specification.\n%!" ;
-            [] ) )
+      Log.print "#### Declaration of a value *%s*\n%!" (md txt) ;
+      match get_infos state vb.pvb_expr.pexp_desc with
+      | None ->
+          Log.print "No type information for value `%s`\n%!" (md txt) ;
+          []
+      | Some (args, ct) -> (
+          let info = derive_ctype state ct in
+          Log.print "Return type `%a`%!" print_coretype ct ;
+          match info with
+          | Some {spec= Some prop; print= Some p; _} ->
+              Log.print
+                " is attached a specification. Generating a test.\n%!" ;
+              let name =
+                Format.asprintf "%s in %s" (bold_blue txt) (blue loc)
+              in
+              [generate txt args p name prop]
+          | _ ->
+              Log.print " is not attached a specification.\n%!" ;
+              [] ) )
   | _ -> []
 
 (* actual mapper *)

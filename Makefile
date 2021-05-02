@@ -5,7 +5,7 @@ all:
 	@$(MAKE) -s $(BIN)
 
 $(BIN):
-	@cp ./_build/default/.ppx/*/ppx.exe $@
+	@cp -f ./_build/default/.ppx/*/ppx.exe $@
 
 test:
 	@dune runtest --force -j 1 --no-buffer

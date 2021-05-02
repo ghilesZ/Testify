@@ -36,7 +36,7 @@ let print fmt {gen; spec; card; print} =
   ( match gen with
   | None -> Format.fprintf fmt " no generator derived"
   | Some e -> Format.fprintf fmt "\n%a" print_expr e ) ;
-  Format.fprintf fmt "\n"
+  Format.fprintf fmt "\n\n"
 
 let get_generator p = p.gen
 
@@ -224,13 +224,13 @@ module Sum = struct
   let constr_spec {txt; _} args =
     let constr pat = Pat.construct (lid_loc txt) pat in
     match args with
-    | [] -> Exp.case (constr None) true_ |> Option.some
+    | [] -> (constr None, None)
     | [{spec; _}] ->
         let prop = Option.get spec in
         let id = id_gen_gen () in
         let p, e = id () in
-        Exp.case (constr (Some (pat_s p))) (apply_nolbl prop [e])
-        |> Option.some
+        let pat = constr (Some (pat_s p)) in
+        (pat, Exp.case pat (apply_nolbl prop [e]) |> Option.some)
     | p ->
         let id = id_gen_gen () in
         let pat, exp =
@@ -241,23 +241,22 @@ module Sum = struct
             p
           |> List.split
         in
-        Option.map
-          (fun spec ->
-            Exp.case
-              (constr (Some (Pat.tuple pat)))
-              (apply_nolbl spec [Exp.tuple exp]))
-          (Product.specification args)
+        let pat = Pat.tuple pat in
+        ( pat
+        , Option.map
+            (fun spec ->
+              Exp.case (constr (Some pat)) (apply_nolbl spec [Exp.tuple exp]))
+            (Product.specification args) )
 
   let specification variants =
     try
       let cases = List.map (fun (c, a) -> constr_spec c a) variants in
-      if List.for_all (( = ) None) cases then None
+      if List.for_all (fun (_, c) -> c = None) cases then None
       else
         Some
           (Exp.function_
              (List.map
-                (function
-                  | None -> Exp.case (Pat.any ()) true_ | Some c -> c)
+                (function p, None -> Exp.case p true_ | _, Some c -> c)
                 cases))
     with Exit | Invalid_argument _ -> None
 

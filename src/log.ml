@@ -13,8 +13,11 @@ let set_output s =
   if !log then
     match !filename with
     | None ->
-        let s = Filename.(chop_extension (basename s)) ^ ".markdown" in
-        filename := Some (Format.formatter_of_out_channel (open_out s))
+        let s = Filename.(chop_extension (basename s)) in
+        let fn = s ^ ".markdown" in
+        let oc = open_out fn in
+        at_exit (fun () -> close_out oc) ;
+        filename := Some (Format.formatter_of_out_channel oc)
     | Some _ -> ()
 
 let print x =

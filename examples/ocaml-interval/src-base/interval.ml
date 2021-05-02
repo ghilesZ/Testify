@@ -610,7 +610,7 @@ let inv ({low= a; high= b} : t) : t =
 
 type 'a one_or_two = One of 'a | Two of 'a * 'a
 
-let invx {low= a; high= b} =
+let invx ({low= a; high= b} : t) : t one_or_two =
   let sa = compare a 0. and sb = compare b 0. in
   if sa = 0 then
     if sb = 0 then raise Division_by_zero
