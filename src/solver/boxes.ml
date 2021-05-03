@@ -133,7 +133,11 @@ let rec eval (a : t) : arith -> arith_annot = function
         | Sub -> ItvI.sub (coerce_int i1) (coerce_int i2) |> eval_int
         | AddF -> ItvF.add (coerce_float i1) (coerce_float i2) |> eval_float
         | SubF -> ItvF.sub (coerce_float i1) (coerce_float i2) |> eval_float
-        | _ -> failwith " mul div pow not implemented yet"
+        | Mul -> ItvI.mul (coerce_int i1) (coerce_int i2) |> eval_int
+        | Div -> ItvI.div (coerce_int i1) (coerce_int i2) |> eval_int
+        | MulF -> ItvF.mul (coerce_float i1) (coerce_float i2) |> eval_float
+        | DivF -> ItvF.div (coerce_float i1) (coerce_float i2) |> eval_float
+        | _ -> failwith "pow not implemented yet"
       in
       (ABinop (b1, o, b2), r)
   | Neg e ->
@@ -268,8 +272,8 @@ let compile (a : t) =
       map
   in
   match (SMap.bindings a.ints, SMap.bindings a.floats) with
-  | [(_, i)], [] -> ItvI.compile i
-  | [], [(_, f)] -> ItvF.compile f
+  (* | [(_, i)], [] -> ItvI.compile i
+   * | [], [(_, f)] -> ItvF.compile f *)
   | _ ->
       aux ItvI.compile a.ints ;
       aux ItvF.compile a.floats ;

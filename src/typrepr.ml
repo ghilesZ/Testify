@@ -16,6 +16,12 @@ type t =
 let print_expr fmt e =
   Format.fprintf fmt "```ocaml@.@[%a@]\n```" print_expression e
 
+let print_card =
+  let z12 = Z.of_int 4096 in
+  fun fmt z ->
+    if Z.gt z z12 then Format.fprintf fmt "~2<sup>%i</sup>" (Z.log2 z)
+    else Format.fprintf fmt "%a" Z.pp_print z
+
 let print fmt {gen; spec; card; print} =
   Format.fprintf fmt "- Printer: " ;
   ( match print with
@@ -27,10 +33,10 @@ let print fmt {gen; spec; card; print} =
   | None -> Format.fprintf fmt " no specification derived"
   | Some e -> Format.fprintf fmt "\n%a" print_expr e ) ;
   Format.fprintf fmt "\n" ;
-  Format.fprintf fmt "- Cardinality: " ;
+  Format.fprintf fmt "- Cardinality estimation: " ;
   ( match card with
   | None -> Format.fprintf fmt " no cardinality derived"
-  | Some c -> Format.fprintf fmt "%a (estimation)" Z.pp_print c ) ;
+  | Some c -> Format.fprintf fmt "%a" print_card c ) ;
   Format.fprintf fmt "\n" ;
   Format.fprintf fmt "- Generator: " ;
   ( match gen with
@@ -356,7 +362,7 @@ module Constrained = struct
     match Gegen.solve_ct ct e with
     | None ->
         {typ with gen= Option.map (rejection e) typ.gen; spec; card= None}
-    | x -> {typ with gen= x; spec}
+    | Some (gen, card) -> {typ with gen= Some gen; spec; card= Some card}
 
   let make_td td typ e =
     let spec =
@@ -367,5 +373,5 @@ module Constrained = struct
     match Gegen.solve_td td e with
     | None ->
         {typ with gen= Option.map (rejection e) typ.gen; spec; card= None}
-    | x -> {typ with gen= x; spec}
+    | Some (gen, card) -> {typ with gen= Some gen; spec; card= Some card}
 end

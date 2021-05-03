@@ -51,6 +51,10 @@ let sub (l1, h1) (l2, h2) = (Q.sub l1 h2, Q.sub h1 l2)
 
 let neg (l1, h1) = (Q.neg h1, Q.neg l1)
 
+let mul (_l1, _h1) (_l2, _h2) = failwith "Itvf.mul"
+
+let div (_l1, _h1) (_l2, _h2) = failwith "Itvf.div"
+
 (* Backward operators *)
 
 let merge_bot2 x y =

@@ -9,22 +9,34 @@ module Conv = Convert (OCaml_410) (OCaml_current)
 module Solve = Cover.BoxCover
 open Tools
 
-(* exception we raise when we try to handle a term that does not belong to
-   the subset of type langage we can handle *)
-exception OutOfSubset of string
+let get_int s = apply_nolbl_s "get_int" [string_ s]
+
+let get_float s = apply_nolbl_s "get_float" [string_ s]
+
+(* fills the '_' of a pattern *)
+let fill =
+  let get_name = id_gen_gen () in
+  let rec aux p =
+    match p.ppat_desc with
+    (* we prefix the name with % to avoid ame clash *)
+    | Ppat_any ->
+        {p with ppat_desc= Ppat_var (none_loc ("%" ^ fst (get_name ())))}
+    | Ppat_var _ -> p
+    | Ppat_tuple ptup -> {p with ppat_desc= Ppat_tuple (List.map aux ptup)}
+    | _ -> raise (Lang.OutOfSubset "pattern")
+  in
+  aux
 
 (* given a type 't' and a pattern, builds an exepression corresponding to a
    reconstruction function of type 'instance -> t' *)
 (* TODO: handle more patterns (e.g. _, as) *)
-let flatten core_type pattern =
+let flatten_ct core_type pattern =
   let rec aux int_set float_set ct pat =
     match (ct.ptyp_desc, pat.ppat_desc) with
     | Ptyp_constr ({txt= Lident "int"; _}, []), Ppat_var {txt= ptxt; _} ->
-        let r = apply_nolbl_s "get_int" [string_ ptxt] in
-        (r, SSet.add ptxt int_set, float_set)
+        (get_int ptxt, SSet.add ptxt int_set, float_set)
     | Ptyp_constr ({txt= Lident "float"; _}, []), Ppat_var {txt= ptxt; _} ->
-        let r = apply_nolbl_s "get_float" [string_ ptxt] in
-        (r, int_set, SSet.add ptxt float_set)
+        (get_float ptxt, int_set, SSet.add ptxt float_set)
     | Ptyp_tuple ttup, Ppat_tuple ptup ->
         let sons, i_s, f_s =
           List.fold_left2
@@ -37,27 +49,32 @@ let flatten core_type pattern =
           List.map (fun f -> apply_nolbl f [exp_id "i"]) (List.rev sons)
         in
         (lambda_s "i" (Exp.tuple b), i_s, f_s)
-    | _ -> raise (OutOfSubset "core_type or pattern")
+    | _ -> raise (Lang.OutOfSubset "core_type or pattern")
   in
-  let ((_, _i, _r) as res) = aux SSet.empty SSet.empty core_type pattern in
-  match (SSet.cardinal _i, SSet.cardinal _r) with
-  | 1, 0 -> (exp_id "to_int", _i, _r)
-  | 0, 1 -> (exp_id "to_float", _i, _r)
-  | _ -> res
+  let ((_, _i, _r) as res) =
+    aux SSet.empty SSet.empty core_type (fill pattern)
+  in
+  (* match (SSet.cardinal _i, SSet.cardinal _r) with
+   * | 1, 0 -> (exp_id "to_int", _i, _r)
+   * | 0, 1 -> (exp_id "to_float", _i, _r)
+   * | _ -> *)
+  res
 
-(* fills the '_' of a pattern *)
-let fill =
-  let get_name = id_gen_gen () in
-  let rec aux p =
-    match p.ppat_desc with
-    (* we prefix the name with % to avoid ame clash *)
-    | Ppat_any ->
-        {p with ppat_desc= Ppat_var (none_loc ("%" ^ fst (get_name ())))}
-    | Ppat_var _ -> p
-    | Ppat_tuple ptup -> {p with ppat_desc= Ppat_tuple (List.map aux ptup)}
-    | _ -> raise (OutOfSubset "pattern")
-  in
-  aux
+let flatten_record labs _pattern =
+  match labs with
+  | [] -> assert false (*empty record*)
+  | _ ->
+      let r, i_s, f_s =
+        List.fold_left
+          (fun (acc, i_s, f_s) {pld_name; pld_type; _} ->
+            let r, i, f = flatten_ct pld_type (Pat.var pld_name) in
+            ( (lid_loc pld_name.txt, apply_nolbl r [exp_id "i"]) :: acc
+            , SSet.union i i_s
+            , SSet.union f f_s ))
+          ([], SSet.empty, SSet.empty)
+          labs
+      in
+      (lambda_s "i" (Exp.record r None), i_s, f_s)
 
 let split_fun f =
   match f.pexp_desc with
@@ -114,12 +131,20 @@ let craft_generator inner outer total pattern r =
 let solve_ct ct sat =
   try
     let pat, body = split_fun sat in
-    let pat' = fill pat in
-    let unflatten, i_s, f_s = flatten ct pat' in
+    let unflatten, i_s, f_s = flatten_ct ct pat in
     let constr = Lang.of_ocaml body in
     let inner, outer, total = Solve.get_generators i_s f_s constr in
-    Some (craft_generator inner outer total pat' unflatten)
-  with OutOfSubset _ -> None
+    Some (craft_generator inner outer total pat unflatten, total)
+  with Lang.OutOfSubset _ -> None
+
+let flatten_record labs sat =
+  try
+    let pat, body = split_fun sat in
+    let constr = Lang.of_ocaml body in
+    let unflatten, i_s, f_s = flatten_record labs pat in
+    let inner, outer, total = Solve.get_generators i_s f_s constr in
+    Some (craft_generator inner outer total pat unflatten, total)
+  with Lang.OutOfSubset _ -> None
 
 (* generator for constrained type declarations *)
 let solve_td td sat =
@@ -127,7 +152,7 @@ let solve_td td sat =
     match td.ptype_kind with
     | Ptype_abstract ->
         Option.bind td.ptype_manifest (fun ct -> solve_ct ct sat)
-    | Ptype_record _labs -> (* todo records *) None
+    | Ptype_record labs -> flatten_record labs sat
     | Ptype_variant _ -> None
     | Ptype_open -> None
-  with OutOfSubset _ -> None
+  with Lang.OutOfSubset _ -> None

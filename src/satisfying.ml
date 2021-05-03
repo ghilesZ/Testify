@@ -134,7 +134,7 @@ let derive (s : State.t) (td : type_declaration) =
     then ""
     else "constrained " )
     ( match td.ptype_kind with
-    | Ptype_abstract -> "core type"
+    | Ptype_abstract -> "abstract type"
     | Ptype_variant _ -> "sum type"
     | Ptype_record _ -> "record type"
     | Ptype_open -> "extensible type" ) ;
@@ -226,7 +226,7 @@ let gather_tests vb state =
       Log.print "#### Declaration of a value *%s*\n%!" (md txt) ;
       match get_infos state vb.pvb_expr.pexp_desc with
       | None ->
-          Log.print "No type information for value `%s`\n%!" (md txt) ;
+          Log.print "No type information for value `%s`\n%!" txt ;
           []
       | Some (args, ct) -> (
           let info = derive_ctype state ct in

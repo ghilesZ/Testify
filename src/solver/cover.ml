@@ -79,7 +79,7 @@ module Make (D : Signatures.Abs) = struct
   (* TODO: add option to change this *)
   let threshold = ref 0.5
 
-  let max_size = ref 2
+  let max_size = ref 5
 
   let solve abs constr : t =
     let rec aux cover =

@@ -28,6 +28,10 @@ let sub (l1, h1) (l2, h2) = (Z.sub l1 h2, Z.sub h1 l2)
 
 let neg (l1, h1) = (Z.neg h1, Z.neg l1)
 
+let mul (_l1, _h1) (_l2, _h2) = failwith "itvI.mul"
+
+let div (_l1, _h1) (_l2, _h2) = failwith "itvI.div"
+
 (* Backward operators *)
 
 let merge_bot2 x y =
