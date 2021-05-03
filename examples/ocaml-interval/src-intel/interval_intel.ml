@@ -21,7 +21,7 @@ module Low = Fpu.Low
 module High = Fpu.High
 
 type t = Interval.t = {low: float; high: float}
-[@@satisfying fun x -> x.low <=. x.high]
+[@@satisfying fun {low; high} -> low <=. high]
 
 exception Division_by_zero = Interval.Division_by_zero
 
@@ -395,8 +395,8 @@ let log_I (x : t) : t =
 
 let exp_I (x : t) : t = I.exp x
 
-type img = t
-[@@satisfying fun {low; high} -> low <=. high && low >=. -1. && high <=. 1.]
+type img = t = {low: float; high: float}
+[@@satisfying fun {low; high} -> low >=. -1. && high <=. 1.]
 
 let cos_I (x : t) : img = I.cos x
 

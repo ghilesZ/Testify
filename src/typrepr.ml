@@ -334,6 +334,23 @@ module Constrained = struct
           ( List.map2 (fun e1 e2 -> Option.get (unify_patterns e1 e2)) t t'
           |> Pat.tuple )
       with Invalid_argument _ -> None )
+    | Ppat_record (r1, c), Ppat_record (r2, _) -> (
+      try
+        Some
+          (Pat.record
+             (List.map2
+                (fun (l1, p1) (l2, p2) ->
+                  if l1.txt = l2.txt then
+                    (l1, Option.get (unify_patterns p1 p2))
+                  else
+                    Format.asprintf "label %a and %a not in same order"
+                      print_longident l1.txt print_longident l2.txt
+                    |> invalid_arg)
+                r1 r2)
+             c)
+      with Invalid_argument msg ->
+        Format.eprintf "%s\n%!" msg ;
+        None )
     | _ -> None
 
   let compose_properties p p' =
@@ -355,23 +372,27 @@ module Constrained = struct
 
   let make ct typ e =
     let spec =
-      match typ.spec with
-      | Some p -> Some (compose_properties p e)
-      | None -> Some e
+      match typ.spec with Some p -> compose_properties p e | None -> e
     in
-    match Gegen.solve_ct ct e with
+    match Gegen.solve_ct ct spec with
     | None ->
-        {typ with gen= Option.map (rejection e) typ.gen; spec; card= None}
-    | Some (gen, card) -> {typ with gen= Some gen; spec; card= Some card}
+        { typ with
+          gen= Option.map (rejection e) typ.gen
+        ; spec= Some spec
+        ; card= None }
+    | Some (gen, card) ->
+        {typ with gen= Some gen; spec= Some spec; card= Some card}
 
   let make_td td typ e =
     let spec =
-      match typ.spec with
-      | Some p -> Some (compose_properties p e)
-      | None -> Some e
+      match typ.spec with Some p -> compose_properties p e | None -> e
     in
     match Gegen.solve_td td e with
     | None ->
-        {typ with gen= Option.map (rejection e) typ.gen; spec; card= None}
-    | Some (gen, card) -> {typ with gen= Some gen; spec; card= Some card}
+        { typ with
+          gen= Option.map (rejection e) typ.gen
+        ; spec= Some spec
+        ; card= None }
+    | Some (gen, card) ->
+        {typ with gen= Some gen; spec= Some spec; card= Some card}
 end
