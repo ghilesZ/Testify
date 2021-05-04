@@ -268,9 +268,10 @@ let mapper =
     ( match str with
     | [] -> ()
     | h :: _ ->
-        let s, _, _ = Location.get_pos_info h.pstr_loc.loc_start in
-        Log.set_output s ;
-        Log.print "# Module **%s**\n" s ) ;
+        let file, _, _ = Location.get_pos_info h.pstr_loc.loc_start in
+        if file <> !Log.fn then (
+          Log.set_output file ;
+          Log.print "# File **%s**\n" file ) ) ;
     aux [] State.s0 str
   in
   let handle_attr m a =
@@ -280,4 +281,17 @@ let mapper =
     in_attribute := false ;
     res
   in
-  {default_mapper with structure= handle_str; attribute= handle_attr}
+  let handle_module mapper module_ =
+    let res = default_mapper.module_binding mapper module_ in
+    let file, _, _ = Location.get_pos_info module_.pmb_loc.loc_start in
+    if file <> !Log.fn then (
+      Log.set_output file ;
+      Log.print "# File **%s**\n" file ) ;
+    let name = match module_.pmb_name.txt with None -> "_" | Some s -> s in
+    Log.print "## Module **%s**\n" name ;
+    res
+  in
+  { default_mapper with
+    structure= handle_str
+  ; attribute= handle_attr
+  ; module_binding= handle_module }
