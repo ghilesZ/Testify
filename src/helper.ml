@@ -119,18 +119,6 @@ let string_concat ?sep l =
   let sep = Option.value ~default:"" sep in
   apply_nolbl_s "String.concat" [string_ sep; list_of_list l]
 
-(* map for type identifiers *)
-module Types = Map.Make (struct
-  type t = Longident.t
-
-  let compare = compare
-end)
-
-let typ_var_of_ct ct =
-  match ct.ptyp_desc with
-  | Ptyp_var txt -> txt
-  | _ -> invalid_arg "not a type variable"
-
 (* keeps the attributes with name 'n'*)
 let check_attributes n attrs =
   List.filter (fun a -> a.attr_name.txt = n) attrs

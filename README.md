@@ -1,31 +1,31 @@
 # Testify
 Testify is a syntactic extension that features type driven code
 generation to automatically generate test for your programs. It allows
-you to attach a property to a given type, as in the following example:
+you to *constrain* a type, that is attach to it a property that its
+inhabitants will have to respect, as in the following example:
 
 ```OCaml
-type p_int = int [@@satisfying (fun x -> x > 0)]
-```
+type p_int = int [@@satisfying (fun x -> x >= 0)]
 
-Which is to be understood as the type of *positive integers*. Of
-course, OCaml's type system cannot type-check this kind of property,
-however we can test them!  To do so, Testify uses the explicit type
-annotations of your program to generate tests for the values whose
-return type is ```p_int```, as in the following example.
-
-```OCaml
 let abs (x:int) : p_int = if x < 0 then -x else x
 ```
-is now rewritten into:
+
+Here, the type `p_int` is to be understood as the type of *positive integers*. Of
+course, OCaml's type system cannot verify this kind of property.
+however we can test them!  To do so, Testify uses the explicit type
+annotations of your program to generate tests for the values whose
+return type is constrained. The previous example becomes:
 
 ```OCaml
+type p_int = int [@@satisfying (fun x -> x >= 0)]
+
 let abs (x:int) : p_int = if x < 0 then -x else x
 
 let _ = QCheck.Test.make (QCheck.make QCheck.Gen.int) (fun x1 -> ((<) 0) (abs x1))
 ```
 
 As you noticed, a test has been added after the declaration of
-```abs``` to check that its return values are indeed positive
+`abs` to check that its return values are indeed positive
 integers. As you also noticed, Testify uses the wonderful
 [QCheck](https://github.com/c-cube/qcheck) library do the tests. Other
 examples are available in the examples directory.

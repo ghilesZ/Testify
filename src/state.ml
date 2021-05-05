@@ -1,3 +1,6 @@
+open Migrate_parsetree
+open Ast_410
+open Parsetree
 open Helper
 
 (* map for type identifiers *)
@@ -7,14 +10,26 @@ module Env = Map.Make (struct
   let compare = compare
 end)
 
-type t = Typrepr.t Env.t
+type param = {vars: string list; body: type_declaration}
 
-let empty = Env.empty
+type t = {types: Typrepr.t Env.t; params: param Env.t}
+
+let get_env (typconstr : param) (args : Typrepr.t list) =
+  List.combine typconstr.vars args
+
+let get_param l s = Env.find_opt l s.params
+
+let empty = {types= Env.empty; params= Env.empty}
 
 (* intial state *)
 let s0 : t =
-  let add_id (t : string) = Env.add (lparse t) in
-  Env.empty
+  let add_id (id : string) repr s =
+    {s with types= Env.add (lparse id) repr s.types}
+  in
+  let _add_param_td (id : string) p s =
+    {s with params= Env.add (lparse id) p s.params}
+  in
+  empty
   |> add_id "unit" Typrepr.unit
   |> add_id "bool" Typrepr.bool
   |> add_id "char" Typrepr.char
@@ -23,44 +38,46 @@ let s0 : t =
 
 (* registering functions *)
 let register_print (s : t) lid p =
-  Env.update lid
-    (function
-      | None -> Some Typrepr.(add_printer empty p)
-      | Some info -> Some Typrepr.(add_printer info p))
-    s
+  { s with
+    types=
+      Env.update lid
+        (function
+          | None -> Some Typrepr.(add_printer empty p)
+          | Some info -> Some Typrepr.(add_printer info p))
+        s.types }
 
 let register_gen (s : t) lid g =
-  Env.update lid
-    (function
-      | None -> Some Typrepr.(add_generator empty g)
-      | Some info -> Some Typrepr.(add_generator info g))
-    s
+  { s with
+    types=
+      Env.update lid
+        (function
+          | None -> Some Typrepr.(add_generator empty g)
+          | Some info -> Some Typrepr.(add_generator info g))
+        s.types }
 
 let register_prop (s : t) lid spec =
-  Env.update lid
-    (function
-      | None -> Some Typrepr.(add_specification empty spec)
-      | Some info -> Some Typrepr.(add_specification info spec))
-    s
+  { s with
+    types=
+      Env.update lid
+        (function
+          | None -> Some Typrepr.(add_specification empty spec)
+          | Some info -> Some Typrepr.(add_specification info spec))
+        s.types }
 
 (* getters *)
 
-let get = Env.find_opt
+let get lid s = Env.find_opt lid s.types
 
-let update s id infos = Env.add id infos s
+let update s id infos = {s with types= Env.add id infos s.types}
 
-let get_print s lid = Option.bind (Env.find_opt lid s) Typrepr.get_printer
-
-let get_gen s lid = Option.bind (Env.find_opt lid s) Typrepr.get_generator
-
-let get_prop s lid =
-  Option.bind (Env.find_opt lid s) Typrepr.get_specification
-
-(* TODO: make sure no name conflict can occur *)
-let register_param s ct =
-  let txt = typ_var_of_ct ct in
-  let lid = lparse txt in
-  let exp = exp_id txt in
-  let s = register_gen s lid exp in
-  let s = register_print s lid exp in
-  register_prop s lid exp
+let update_param s id td =
+  let extract_var ct =
+    match ct.ptyp_desc with Ptyp_var var -> var | _ -> raise Exit
+  in
+  try
+    let vars =
+      List.map (fun (ct, _variance) -> extract_var ct) td.ptype_params
+    in
+    let param = {vars; body= td} in
+    {s with params= Env.add id param s.params}
+  with Exit -> s
