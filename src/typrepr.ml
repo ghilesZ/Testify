@@ -18,8 +18,16 @@ let print_expr fmt e =
 
 let print_card =
   let z12 = Z.of_int 4096 in
+  let close_log z =
+    let down = Z.log2 z in
+    let up = Z.log2 z in
+    let two = Z.of_int 2 in
+    if Z.sub z (Z.shift_left two down) < Z.sub (Z.shift_left two up) z then
+      down
+    else up
+  in
   fun fmt z ->
-    if Z.gt z z12 then Format.fprintf fmt "~2<sup>%i</sup>" (Z.log2 z)
+    if Z.gt z z12 then Format.fprintf fmt "~2<sup>%i</sup>" (close_log z)
     else Format.fprintf fmt "%a" Z.pp_print z
 
 let print fmt {gen; spec; card; print} =

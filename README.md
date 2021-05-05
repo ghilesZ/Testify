@@ -101,11 +101,12 @@ Automatic derivation of generators is made for the following *Non-inductive* typ
 - for tuples
 - for records
 - for sum types
-- for types who are attached a ```[@@satisying pred]``` annotation, we
-  proceed to a rejection sampling using
-  ```QCheck.find_example```. However, this can be avoided by
-  specifying a generator to the given type **t** using the ```[@gen
-  t]``` annotation.
+- for polymorphic types
+- for constrained types, we either rely on a Abstract Interpretation
+  of the constrained type to provide generators or we proceed to a
+  rejection sampling using ```QCheck.find_example```. However, this
+  can be avoided by specifying a generator to the given type **t**
+  using the ```[@gen t]``` annotation.
 
 When one or more generator can not be derived for a given function, no
 test is generated.
@@ -113,9 +114,3 @@ test is generated.
 ### Current
 Testify is still at a very (very) early stage of developpement and is
 still very (very) unstable.
-
-##### Things that are yet to be done
-- handling of parametric types
-- handling of module path for type annotations (e.g : `Int.t`)
-- provide the user with a *standard library* of predifined types (positive integers, non-empty lists ...)
-- define a way of tagging a function as partial or total
