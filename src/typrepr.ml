@@ -100,21 +100,25 @@ module Product = struct
     try gen_body typs |> lambda_s "rs" |> Option.some with Exit -> None
 
   let specification typs =
-    let get_name = id_gen_gen () in
-    let compose (pats, prop) p =
-      match (prop, p.spec) with
-      | x, None -> (Pat.any () :: pats, x)
-      | None, Some p ->
-          let name, id = get_name () in
-          let app = apply_nolbl p [id] in
-          (pat_s name :: pats, Some app)
-      | Some p', Some p ->
-          let name, id = get_name () in
-          let app = apply_nolbl p' [id] in
-          (pat_s name :: pats, Some (p &&@ app))
-    in
-    let pats, body = List.fold_left compose ([], None) typs in
-    Option.map (lambda (Pat.tuple (List.rev pats))) body
+    match typs with
+    | [] -> assert false
+    | _ when List.for_all (fun t -> t.spec = None) typs -> None
+    | _ ->
+        let get_name = id_gen_gen () in
+        let compose (pats, body) p =
+          match (body, p.spec) with
+          | x, None -> (Pat.any () :: pats, x)
+          | None, Some p ->
+              let name, id = get_name () in
+              let app = apply_nolbl p [id] in
+              (pat_s name :: pats, Some app)
+          | Some p', Some p ->
+              let name, id = get_name () in
+              let app = apply_nolbl p [id] in
+              (pat_s name :: pats, Some (p' &&@ app))
+        in
+        let pats, body = List.fold_left compose ([], None) typs in
+        Option.map (lambda (Pat.tuple (List.rev pats))) body
 
   let cardinality typs =
     try

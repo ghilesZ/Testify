@@ -147,26 +147,28 @@ and derive_ctype (state : State.t) paramenv ct =
 
 let derive (s : State.t) (td : type_declaration) =
   Log.print "### Declaration of type *%s*\n" td.ptype_name.txt ;
-  let infos = derive_decl s [] td in
-  Log.print "- Kind: %s%s\n"
+  Log.print "- Kind: %s%s%s\n"
     ( if Option.is_none (get_attribute_pstr "satisfying" td.ptype_attributes)
     then ""
     else "constrained " )
+    (if td.ptype_params = [] then "" else "polymorphic ")
     ( match td.ptype_kind with
     | Ptype_abstract -> "abstract type"
     | Ptype_variant _ -> "sum type"
     | Ptype_record _ -> "record type"
     | Ptype_open -> "extensible type" ) ;
   let id = lparse td.ptype_name.txt in
-  match infos with
-  | None ->
-      Log.print "- No info found\n\n%!" ;
-      s
-  | Some infos -> (
-      Log.print "%a\n%!" Typrepr.print infos ;
-      match td.ptype_params with
-      | [] -> update s id infos
-      | _ -> update_param s id td )
+  match td.ptype_params with
+  | [] -> (
+      let infos = derive_decl s [] td in
+      match infos with
+      | None ->
+          Log.print "- No info found\n\n%!" ;
+          s
+      | Some infos ->
+          Log.print "%a\n%!" Typrepr.print infos ;
+          update s id infos )
+  | _ -> update_param s id td
 
 (** {1 annotation handling} *)
 let check_gen vb (s : State.t) : State.t =
