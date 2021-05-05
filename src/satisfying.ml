@@ -129,7 +129,13 @@ and derive_ctype (state : State.t) paramenv ct =
                        | _ -> raise Exit)
                      l)
               in
-              derive_decl state newenv p.body)
+              match derive_decl state newenv p.body with
+              | None -> raise Exit
+              | Some t ->
+                  Log.print "Building a representation for type %a:\n"
+                    print_coretype ct ;
+                  Log.print "%a\n%!" Typrepr.print t ;
+                  Some t)
         with Exit -> None )
     | Ptyp_poly ([], ct) -> derive_ctype state paramenv ct
     | Ptyp_tuple tup -> (
