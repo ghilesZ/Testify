@@ -132,7 +132,7 @@ and derive_ctype (state : State.t) paramenv ct =
               match derive_decl state newenv p.body with
               | None -> raise Exit
               | Some t ->
-                  Log.print "Building a representation for type %a:\n"
+                  Log.print "Building a representation for type `%a`:\n"
                     print_coretype ct ;
                   Log.print "%a\n%!" Typrepr.print t ;
                   Some t)
@@ -153,6 +153,7 @@ and derive_ctype (state : State.t) paramenv ct =
 
 let derive (s : State.t) (td : type_declaration) =
   Log.print "### Declaration of type *%s*\n" td.ptype_name.txt ;
+  Log.print "- Declaration: `%a`\n" print_td td ;
   Log.print "- Kind: %s%s%s\n"
     ( if Option.is_none (get_attribute_pstr "satisfying" td.ptype_attributes)
     then ""
@@ -164,17 +165,20 @@ let derive (s : State.t) (td : type_declaration) =
     | Ptype_record _ -> "record type"
     | Ptype_open -> "extensible type" ) ;
   let id = lparse td.ptype_name.txt in
-  match td.ptype_params with
-  | [] -> (
-      let infos = derive_decl s [] td in
-      match infos with
-      | None ->
-          Log.print "- No info found\n\n%!" ;
-          s
-      | Some infos ->
-          Log.print "%a\n%!" Typrepr.print infos ;
-          update s id infos )
-  | _ -> update_param s id td
+  let res =
+    match td.ptype_params with
+    | [] -> (
+        let infos = derive_decl s [] td in
+        match infos with
+        | None ->
+            Log.print "- No info found\n\n%!" ;
+            s
+        | Some infos ->
+            Log.print "%a\n%!" Typrepr.print infos ;
+            update s id infos )
+    | _ -> update_param s id td
+  in
+  Log.print "\n\n\n" ; res
 
 (** {1 annotation handling} *)
 let check_gen vb (s : State.t) : State.t =

@@ -39,10 +39,9 @@ let print fmt {gen; spec; card; print} =
   | Some c -> Format.fprintf fmt "%a" print_card c ) ;
   Format.fprintf fmt "\n" ;
   Format.fprintf fmt "- Generator: " ;
-  ( match gen with
+  match gen with
   | None -> Format.fprintf fmt " no generator derived"
-  | Some e -> Format.fprintf fmt "\n%a" print_expr e ) ;
-  Format.fprintf fmt "\n\n"
+  | Some e -> Format.fprintf fmt "\n%a" print_expr e
 
 let get_generator p = p.gen
 
