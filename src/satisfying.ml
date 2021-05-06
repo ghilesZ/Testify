@@ -28,7 +28,7 @@ let test (name : string) args =
        (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args)))
 
 (* call to set_seed *)
-let set_seed x = letunit (apply_runtime "set_seed" [int_ x])
+let gen_set_seed x = letunit (apply_runtime "set_seed" [int_ x])
 
 (* call to run_test*)
 let run () = letunit (apply_runtime "run_test" [unit])
@@ -284,7 +284,7 @@ let mapper =
     let rec aux res state = function
       | [] ->
           let t =
-            match !seed with None -> res | Some x -> set_seed x :: res
+            match !seed with None -> res | Some x -> gen_set_seed x :: res
           in
           List.rev (if !in_attribute > 0 then res else run () :: t)
       (* type declaration *)
