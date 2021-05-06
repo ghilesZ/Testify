@@ -128,5 +128,5 @@ module Make (D : Signatures.Abs) = struct
     (inner, outer, c.total_volume)
 end
 
-module BoxCover = Make (Boolean.Make (Boxes))
-module PolyCover = Make (Boolean.Make (Polyhedra))
+module Box = Make (Boolean.Make (Boxes))
+module Pol = Make (Boolean.Make (Polyhedra))

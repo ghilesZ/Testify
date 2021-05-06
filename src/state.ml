@@ -10,11 +10,9 @@ module Env = Map.Make (struct
   let compare = compare
 end)
 
-type param = {vars: string list; body: type_declaration}
+type t = {types: Typrepr.t Env.t; params: Typrepr.param Env.t}
 
-type t = {types: Typrepr.t Env.t; params: param Env.t}
-
-let get_env (typconstr : param) (args : Typrepr.t list) =
+let get_env (typconstr : Typrepr.param) (args : Typrepr.t list) =
   List.combine typconstr.vars args
 
 let get_param l s = Env.find_opt l s.params
@@ -26,7 +24,7 @@ let s0 : t =
   let add_id (id : string) repr s =
     {s with types= Env.add (lparse id) repr s.types}
   in
-  let _add_param_td (id : string) p s =
+  let add_param_td (id : string) p s =
     {s with params= Env.add (lparse id) p s.params}
   in
   empty
@@ -35,6 +33,8 @@ let s0 : t =
   |> add_id "char" Typrepr.char
   |> add_id "int" Typrepr.int
   |> add_id "float" Typrepr.float
+  |> add_param_td "option" Typrepr.option_
+  |> add_param_td "ref" Typrepr.ref_
 
 (* registering functions *)
 let register_print (s : t) lid p =
@@ -78,6 +78,7 @@ let update_param s id td =
     let vars =
       List.map (fun (ct, _variance) -> extract_var ct) td.ptype_params
     in
+    let open Typrepr in
     let param = {vars; body= td} in
     {s with params= Env.add id param s.params}
   with Exit -> s

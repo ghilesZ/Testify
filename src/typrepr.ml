@@ -92,6 +92,51 @@ let float =
     (Z.pow (Z.of_int 2) Sys.int_size)
     (exp_id "string_of_float")
 
+let param list = List.map (fun s -> (Typ.var s, Asttypes.Invariant)) list
+
+let ptype ?manifest name params kind =
+  { ptype_name= none_loc name
+  ; ptype_params= List.map (fun s -> (Typ.var s, Asttypes.Invariant)) params
+  ; ptype_cstrs= []
+  ; ptype_kind= kind
+  ; ptype_private= Asttypes.Public
+  ; ptype_manifest= manifest
+  ; ptype_attributes= []
+  ; ptype_loc= Location.none }
+
+(** {1 Polymorphic types} *)
+
+type param = {vars: string list; body: type_declaration}
+
+let option_ =
+  let vars = ["a"] in
+  let alpha = [Typ.var "a"] in
+  let body =
+    let none = Type.constructor (none_loc "None") in
+    let some =
+      Type.constructor ~args:(Pcstr_tuple alpha) (none_loc "Some")
+    in
+    let kind = Ptype_variant [none; some] in
+    ptype
+      ~manifest:
+        (Typ.poly [none_loc "a"] (Typ.constr (lid_loc "option") alpha))
+      "option" vars kind
+  in
+  {vars; body}
+
+let ref_ =
+  let vars = ["a"] in
+  let alpha = Typ.var "a" in
+  let body =
+    let contents = Type.field ~mut:Mutable (none_loc "contents") alpha in
+    let kind = Ptype_record [contents] in
+    ptype
+      ~manifest:
+        (Typ.poly [none_loc "a"] (Typ.constr (lid_loc "ref") [alpha]))
+      "ref" vars kind
+  in
+  {vars; body}
+
 (** {1 Type composition} *)
 
 (** tuples *)

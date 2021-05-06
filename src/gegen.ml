@@ -6,7 +6,6 @@ open Parsetree
 open Ast_helper
 open Helper
 module Conv = Convert (OCaml_410) (OCaml_current)
-module Solve = Cover.BoxCover
 open Tools
 
 let get_int s = apply_nolbl_s "get_int" [string_ s]
@@ -127,13 +126,25 @@ let craft_generator inner outer total pattern r =
       in
       apply_nolbl_s "weighted" [inner_outer_gens]
 
+let dom = ref "box"
+
+let set_dom = function
+  | ("box" | "poly") as x -> dom := x
+  | x -> Format.asprintf "Invalid domain %s" x |> invalid_arg
+
+let get_generators i_s f_s constr =
+  match !dom with
+  | "box" -> Cover.Box.get_generators i_s f_s constr
+  | "poly" -> Cover.Pol.get_generators i_s f_s constr
+  | _ -> assert false
+
 (* generator for constrained core types *)
 let solve_ct ct sat =
   try
     let pat, body = split_fun sat in
     let unflatten, i_s, f_s = flatten_ct ct pat in
     let constr = Lang.of_ocaml body in
-    let inner, outer, total = Solve.get_generators i_s f_s constr in
+    let inner, outer, total = get_generators i_s f_s constr in
     Some (craft_generator inner outer total pat unflatten, total)
   with Lang.OutOfSubset _ -> None
 
@@ -142,7 +153,7 @@ let flatten_record labs sat =
     let pat, body = split_fun sat in
     let constr = Lang.of_ocaml body in
     let unflatten, i_s, f_s = flatten_record labs pat in
-    let inner, outer, total = Solve.get_generators i_s f_s constr in
+    let inner, outer, total = get_generators i_s f_s constr in
     Some (craft_generator inner outer total pat unflatten, total)
   with Lang.OutOfSubset _ -> None
 
