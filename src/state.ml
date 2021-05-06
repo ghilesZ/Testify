@@ -3,7 +3,7 @@ open Ast_410
 open Parsetree
 open Helper
 
-(* map for type identifiers *)
+(* map for long identifiers *)
 module Env = Map.Make (struct
   type t = Longident.t
 

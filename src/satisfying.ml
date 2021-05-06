@@ -28,7 +28,7 @@ let test (name : string) args =
        (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args)))
 
 (* call to set_seed *)
-let gen_set_seed x = letunit (apply_runtime "set_seed" [int_ x])
+let set_seed x = letunit (apply_runtime "set_seed" [int_ x])
 
 (* call to run_test*)
 let run () = letunit (apply_runtime "run_test" [unit])
@@ -153,7 +153,7 @@ and derive_ctype (state : State.t) paramenv ct =
 
 let derive (s : State.t) (td : type_declaration) =
   Log.print "### Declaration of type *%s*\n" td.ptype_name.txt ;
-  Log.print "- Declaration: `%a`\n" print_td td ;
+  Log.print "- Declaration:\n ```ocaml@.@[%a@]\n```\n" print_td td ;
   Log.print "- Kind: %s%s%s\n"
     ( if Option.is_none (get_attribute_pstr "satisfying" td.ptype_attributes)
     then ""
@@ -279,14 +279,14 @@ let gather_tests vb state =
 
 (* actual mapper *)
 let mapper =
-  let in_attribute = ref false in
+  let in_attribute = ref 0 in
   let handle_str mapper str =
     let rec aux res state = function
       | [] ->
-          let tests =
-            match !seed with None -> res | Some x -> gen_set_seed x :: res
+          let t =
+            match !seed with None -> res | Some x -> set_seed x :: res
           in
-          List.rev (if !in_attribute then res else run () :: tests)
+          List.rev (if !in_attribute > 0 then res else run () :: t)
       (* type declaration *)
       | ({pstr_desc= Pstr_type (_, [t]); _} as h) :: tl ->
           aux (h :: res) (derive state t) tl
@@ -309,10 +309,9 @@ let mapper =
   in
   let handle_attr m a =
     (* deactivate test generation in attributes *)
-    in_attribute := true ;
+    incr in_attribute ;
     let res = default_mapper.attribute m a in
-    in_attribute := false ;
-    res
+    decr in_attribute ; res
   in
   let handle_module mapper module_ =
     let res = default_mapper.module_binding mapper module_ in

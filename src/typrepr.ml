@@ -89,7 +89,7 @@ let int =
 let float =
   free
     (exp_id "QCheck.Gen.float")
-    (Z.pow (Z.of_int 2) Sys.int_size)
+    (Z.pow (Z.of_int 2) 64)
     (exp_id "string_of_float")
 
 let param list = List.map (fun s -> (Typ.var s, Asttypes.Invariant)) list

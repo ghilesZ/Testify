@@ -35,24 +35,12 @@ let apply_nolbl f args = Exp.apply f (List.map (fun a -> (Nolabel, a)) args)
 (* same as apply_nolbl but function name is a string *)
 let apply_nolbl_s s = apply_nolbl (exp_id s)
 
-(* same as [apply f args1@args2] where arguments in arg2 are not labelled *)
-let apply_lab_nolab f args1 args2 =
-  let labs = List.map (fun (s, e) -> (Labelled s, e)) args1 in
-  let no_labs = List.map (fun a -> (Nolabel, a)) args2 in
-  Exp.apply f (labs @ no_labs)
-
-(* same as apply_lab_nolab but argument function name is a string *)
-let apply_lab_nolab_s s = apply_lab_nolab (exp_id s)
-
 (* opens the runtime and then build exp *)
 let open_runtime exp =
   Exp.open_ (Opn.mk (Mod.ident (lid_loc "Testify_runtime"))) exp
 
 (* calls a function defined in the runtime *)
 let apply_runtime s = apply_nolbl_s ("Testify_runtime." ^ s)
-
-(* apply_runtime for arity one functions *)
-let apply_runtime_1 s x = apply_runtime s [x]
 
 (* Same as Exp.fun_ *)
 let lambda = Exp.fun_ Nolabel None
@@ -84,11 +72,6 @@ let float_ x = Exp.constant (Const.float (string_of_float x))
 let string_ x = Exp.constant (Const.string x)
 
 let unit = Exp.construct (lid_loc "()") None
-
-(* same as Exp.construct but with list of expressions *)
-let constructor name params =
-  Exp.construct (lid_loc name)
-    (match params with [] -> None | [x] -> Some x | l -> Some (Exp.tuple l))
 
 let pair a b = Exp.tuple [a; b]
 
@@ -137,13 +120,6 @@ let get_attribute_pstr n attrs =
   | Some (PStr [{pstr_desc= Pstr_eval (e, _); _}]) -> Some e
   | Some _ -> Format.kasprintf failwith "bad %s attribute" n
   | None -> None
-
-(* fold_left over head and tail *)
-let reduce f = function
-  | [] -> invalid_arg "can not reduce an empty list"
-  | h :: t -> List.fold_left f h t
-
-let refine s f opt = Option.fold ~none:s ~some:f opt
 
 (* printing *)
 
