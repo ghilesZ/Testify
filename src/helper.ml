@@ -71,7 +71,9 @@ let int_ x =
 
 let one = int_ 1
 
-let float_ x = Exp.constant (Const.float (string_of_float x))
+let float_dec x = Exp.constant (Const.float (string_of_float x))
+
+let float_ x = Exp.constant (Pconst_float (Format.asprintf "%h" x, None))
 
 let string_ x = Exp.constant (Const.string x)
 

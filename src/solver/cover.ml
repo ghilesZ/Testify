@@ -79,7 +79,7 @@ module Make (D : Signatures.Abs) = struct
   (* TODO: add option to change this *)
   let threshold = ref 0.5
 
-  let max_size = ref 5
+  let max_size = ref 8
 
   let solve abs constr : t =
     let rec aux cover =
@@ -107,7 +107,9 @@ module Make (D : Signatures.Abs) = struct
 
   let show {inner; outer; _} x y =
     let open Picasso in
-    let render = Rendering.create ~abciss:x ~ordinate:y 600. 600. in
+    let render =
+      Rendering.create ~axis:false ~abciss:x ~ordinate:y 600. 600.
+    in
     let render =
       List.fold_left Rendering.add render
         (List.map
@@ -118,12 +120,15 @@ module Make (D : Signatures.Abs) = struct
       (List.map
          (fun (e, _, _) -> (Colors.rgb 250 200 200, D.to_drawable e))
          outer)
-    |> in_gtk_canvas
+    |> to_svg
 
   let get_generators i_s f_s constr =
     let abs = D.init i_s f_s in
     let c = solve abs constr in
-    (* show c (Tools.SSet.max_elt i_s) (Tools.SSet.min_elt i_s) ; *)
+    (*let min = try Tools.SSet.min_elt i_s with Not_found ->
+      Tools.SSet.min_elt f_s in let max = try Tools.SSet.max_elt i_s with
+      Not_found -> Tools.SSet.max_elt f_s in if !Log.log then show c max min
+      "name" ; *)
     let inner, outer = compile i_s f_s c in
     (inner, outer, c.total_volume)
 end

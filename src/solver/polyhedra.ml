@@ -1,7 +1,9 @@
 open Tools
 open Apron
 open Apronext
+open Helper
 include Apronext.Apol
+open Generator1
 
 let manager = Polka.manager_alloc_strict ()
 
@@ -102,13 +104,69 @@ let is_simplex pol =
   let nb_gen = Apol.to_generator_list pol |> List.length in
   nb_dim >= nb_gen - 1
 
-let compile pol =
-  assert (is_simplex pol) ;
-  let _gens = Apol.to_generator_list pol in
-  assert false
+let coeff_add c1 c2 =
+  let open Coeff in
+  match (c1, c2) with
+  | Scalar s1, Scalar s2 -> Scalar (Scalarext.add s1 s2)
+  | _ -> invalid_arg "non scalar coeff for generators"
 
-let vol_simplex l =
-  match l with [] -> assert false | _h :: _tl -> failwith "NIY"
+let coeff_div c d =
+  let open Coeff in
+  match c with
+  | Scalar s -> Scalar (Scalarext.div s (Scalar.of_int d))
+  | _ -> invalid_arg "non scalar coeff for generators"
+
+let barycenter = function
+  | [] -> assert false
+  | h :: tl ->
+      let add_gen g1 g2 =
+        let res = copy g1 in
+        iter
+          (fun c1 v ->
+            let c2 = get_coeff g2 v in
+            set_coeff res v (coeff_add c1 c2))
+          g1 ;
+        res
+      in
+      let g, nb =
+        List.fold_left (fun (g, nb) g' -> (add_gen g g', nb + 1)) (h, 1) tl
+      in
+      let res = copy g in
+      iter (fun c v -> set_coeff res v (coeff_div c nb)) g ;
+      res
+
+let compile_coeff typvar c =
+  let open Environment in
+  let open Coeff in
+  match (typvar, c) with
+  | REAL, Scalar s ->
+      apply_nolbl_s "mk_float" [Scalarext.to_float s |> float_]
+  | INT, Scalar s ->
+      apply_nolbl_s "mk_int" [Scalarext.to_float s |> int_of_float |> int_]
+  | _ -> invalid_arg "non scalar coeff"
+
+let gen_to_instance g =
+  let expr = ref empty_list_exp in
+  let cons c v =
+    let typ = Environment.typ_of_var g.env v in
+    let var = pair (compile_coeff typ c) (string_ (Var.to_string v)) in
+    expr := cons_exp var !expr
+  in
+  iter cons g ; !expr
+
+let compile_simplex pol =
+  match Apol.to_generator_list pol with
+  | h :: tl ->
+      let others = list_of_list (List.map gen_to_instance tl) in
+      let bary = barycenter tl |> gen_to_instance in
+      apply_nolbl_s "simplex" [gen_to_instance h; others; bary]
+  | [] -> assert false
+
+let compile pol =
+  if is_simplex pol then compile_simplex pol
+  else failwith "can not compile not simplex polyhedra"
+
+let vol_simplex = function [] -> assert false | _h :: _tl -> failwith "NIY"
 
 let default_volume abs =
   let b = A.to_box man abs in
