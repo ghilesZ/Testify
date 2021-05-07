@@ -63,7 +63,11 @@ let false_ = Exp.construct (lid_loc "false") None
 let ( &&@ ) a b = apply_nolbl_s " (&&) " [a; b]
 
 (* useful constructors *)
-let int_ x = Exp.constant (Const.int x)
+let int_ x =
+  if x > 4096 || x < -4096 then
+    let x = Format.asprintf "0x%x" x in
+    Exp.constant (Pconst_integer (x, None))
+  else Exp.constant (Const.int x)
 
 let one = int_ 1
 

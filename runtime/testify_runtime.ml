@@ -74,6 +74,12 @@ let float_range a b =
       -.Gen.float_bound_inclusive (-.a) st
     else Gen.float_bound_inclusive b st
 
+let mk_float_range down up rs =
+  float_range down up rs |> mk_float
+
+let mk_int_range down up rs =
+  int_range down up rs |> mk_int
+
 (* builds a generator from a list of weighted generators *)
 let weighted (gens : (float * 'a Gen.t) list) : 'a Gen.t =
   let total_weight = List.fold_left (fun acc (w, _) -> acc +. w) 0. gens in
@@ -90,7 +96,32 @@ let weighted (gens : (float * 'a Gen.t) list) : 'a Gen.t =
 let count = ref 1000
 
 let reject pred g =
- find_example ~f:pred ~count:!count g
+  find_example ~f:pred ~count:!count g
+
+(* Polyhedra primitives *)
+let rint i1 i2 seed =
+  let down,up = if i1 < i2 then i1,i2 else i2,i1 in
+  int_range down up seed
+
+let rfloat f1 f2 seed =
+  let down,up = if f1 < f2 then f1,f2 else f2,f1 in
+  float_range down up seed
+
+(* translation of i1 by r*i2 where r is a random factor in [0;1] *)
+let vec i1 i2 seed : instance =
+  List.map2 (fun (v1,i1) (v2,i2) ->
+      if v1 = v2 then
+        match i1,i2 with
+        | GInt i1, GInt i2 -> v1,GInt (rint i1 i2 seed)
+        | GFloat f1, GFloat f2 -> v1,GFloat (rfloat f1 f2 seed)
+        | _ -> Format.asprintf "Type mismatch for variable %s" v1
+               |> invalid_arg
+      else Format.asprintf "Wrong order for variables %s and %s" v1 v2
+           |> invalid_arg
+    ) i1 i2
+
+let random_generable (x:instance) (ys:instance list) seed =
+  List.fold_left (fun i1 i2 -> vec i1 i2 seed) x ys
 
 let (<=.) : float -> float -> bool = (<=)
 let (<.)  : float -> float -> bool = (<)

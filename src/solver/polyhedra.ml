@@ -96,8 +96,31 @@ let split pol =
   let p2 = assign_texpr pol var (Texprext.cst env i2) in
   [p1; p2]
 
-let compile _ = failwith "poly.compile"
+let is_simplex pol =
+  let env = Abstract1.env pol in
+  let nb_dim = Environmentext.size env in
+  let nb_gen = Apol.to_generator_list pol |> List.length in
+  nb_dim >= nb_gen - 1
 
-let volume _ = failwith "poly.volume"
+let compile pol =
+  assert (is_simplex pol) ;
+  let _gens = Apol.to_generator_list pol in
+  assert false
+
+let vol_simplex l =
+  match l with [] -> assert false | _h :: _tl -> failwith "NIY"
+
+let default_volume abs =
+  let b = A.to_box man abs in
+  b.A.interval_array
+  |> Array.fold_left
+       (fun v i ->
+         v * (Intervalext.range i |> Scalarext.to_float |> int_of_float))
+       1
+  |> ( * ) 100000 (*yolo*) |> Z.of_int
+
+let volume pol =
+  if is_simplex pol then vol_simplex (Apol.to_generator_list pol)
+  else default_volume pol
 
 let to_drawable = Picasso.Drawable.of_pol

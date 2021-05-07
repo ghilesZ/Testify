@@ -105,6 +105,4 @@ let compile ((inf, sup) : t) =
   let open Helper in
   let i = inf |> Q.to_float |> float_ in
   let s = sup |> Q.to_float |> float_ in
-  lambda_s "rs"
-    (apply_nolbl_s "mk_float"
-       [apply_nolbl_s "float_range" [i; s; exp_id "rs"]])
+  apply_nolbl_s "mk_float_range" [i; s]

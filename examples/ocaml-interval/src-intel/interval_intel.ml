@@ -35,7 +35,7 @@ module I = struct
   type posi = Interval.t = {low: float; high: float}
   [@@satisfying fun {low; high} -> low <=. high && high >=. 0.]
 
-  let sqrt ({low= a; high= b} : posi) : t =
+  let sqrt ({low= a; high= b} : posi) : posi =
     let open U in
     if b < 0. then raise (Domain_error "sqrt")
     else {low= (if a < 0. then 0. else Low.sqrt a); high= High.sqrt b}
@@ -190,7 +190,7 @@ module I = struct
   let atan ({low= a; high= b} : t) : t =
     {low= Low.atan2 a 1.; high= High.atan2 b 1.}
 
-  let atan2mod {low= ya; high= yb} {low= xa; high= xb} =
+  let atan2mod ({low= ya; high= yb} : t) ({low= xa; high= xb} : t) =
     let open U in
     let sya = compare ya 0. and syb = compare yb 0. in
     let sxa = compare xa 0. and sxb = compare xb 0. in
@@ -218,7 +218,7 @@ module I = struct
     else if 0 <= sxa then {low= Low.atan2 ya xa; high= High.atan2 yb xa}
     else {low= -.pi.high; high= pi.high}
 
-  let atan2 {low= ya; high= yb} {low= xa; high= xb} =
+  let atan2 ({low= ya; high= yb} : t) ({low= xa; high= xb} : t) =
     let open U in
     let sya = compare ya 0. and syb = compare yb 0. in
     let sxa = compare xa 0. and sxb = compare xb 0. in
@@ -245,7 +245,7 @@ module I = struct
     else if 0 <= sxa then {low= Low.atan2 ya xa; high= High.atan2 yb xa}
     else {low= -.pi.high; high= pi.high}
 
-  let tanh {low= a; high= b} = {low= Low.tanh a; high= High.tanh b}
+  let tanh ({low= a; high= b} : t) : t = {low= Low.tanh a; high= High.tanh b}
 
   module Arr = struct
     let size_mean v =
