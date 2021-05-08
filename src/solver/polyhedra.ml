@@ -10,7 +10,7 @@ let manager = Polka.manager_alloc_strict ()
 (* given a set of integer variables and a set of float variables, builds the
    unconstrained polyhedron defined on the given dimensions. Integers are
    bounded between Stdlib.min_int and Stdlib.max_int. Floats are bounded
-   between Stdlib.min_float Stdlib.max_float *)
+   between Stdlib.-max_float Stdlib.max_float *)
 let init =
   let i = Interval.of_int min_int max_int in
   let f = Interval.of_float min_float max_float in
@@ -26,6 +26,7 @@ let init =
     let vars = Array.concat [ivars; rvars] in
     Abstract1.of_box manager env vars itvs
 
+(* Conversion to apron constraint language *)
 let constraint_to_apron env =
   let open Lang in
   let open Apronext in
@@ -61,6 +62,7 @@ let constraint_to_apron env =
   in
   fun a1 op a2 -> (cmp op) (numeric a1) (numeric a2)
 
+(* filtering operation *)
 let filter pol e1 cmp e2 =
   let tc = constraint_to_apron Abstract1.(pol.env) e1 cmp e2 in
   let pol' = filter_tcons pol tc in
@@ -98,11 +100,25 @@ let split pol =
   let p2 = assign_texpr pol var (Texprext.cst env i2) in
   [p1; p2]
 
-let is_simplex pol =
+(* difference operator *)
+let diff p1 p2 = snd (Apol.set_diff p1 p2)
+
+let split pol =
+  Format.printf "entering split\n%!" ;
   let env = Abstract1.env pol in
   let nb_dim = Environmentext.size env in
-  let nb_gen = Apol.to_generator_list pol |> List.length in
-  nb_dim >= nb_gen - 1
+  let gens = Apol.to_generator_list pol in
+  let nb_gen = List.length gens in
+  if nb_gen <= nb_dim + 1 then (* simplex -> regular split *) split pol
+  else
+    let p' = Apol.of_generator_list (n_first gens (nb_dim + 1)) in
+    p' :: diff pol p'
+
+let nb_gen p = p |> Apol.to_generator_list |> List.length
+
+let nb_dim p = p |> Abstract1.env |> Environment.size
+
+let is_simplex pol = nb_dim pol >= nb_gen pol - 1
 
 let coeff_add c1 c2 =
   let open Coeff in
@@ -164,9 +180,12 @@ let compile_simplex pol =
 
 let compile pol =
   if is_simplex pol then compile_simplex pol
-  else failwith "can not compile not simplex polyhedra"
+  else
+    Format.asprintf "can not compile not simplex polyhedra: %i\n%a\n"
+      (nb_gen pol) Apol.print pol
+    |> failwith
 
-let vol_simplex = function [] -> assert false | _h :: _tl -> failwith "NIY"
+let vol_simplex pol = if is_simplex pol then Z.zero else Z.one
 
 let default_volume abs =
   let b = A.to_box man abs in
@@ -175,10 +194,9 @@ let default_volume abs =
        (fun v i ->
          v * (Intervalext.range i |> Scalarext.to_float |> int_of_float))
        1
-  |> ( * ) 100000 (*yolo*) |> Z.of_int
+  |> Z.of_int
 
 let volume pol =
-  if is_simplex pol then vol_simplex (Apol.to_generator_list pol)
-  else default_volume pol
+  if is_simplex pol then vol_simplex pol else default_volume pol
 
 let to_drawable = Picasso.Drawable.of_pol
