@@ -107,37 +107,33 @@ let rfloat f1 f2 seed =
   let down,up = if f1 < f2 then f1,f2 else f2,f1 in
   float_range down up seed
 
-(* translation of i1 by r*i2 where r is a random factor in [0;1] *)
-let vec i1 i2 seed : instance =
+let vec_f f_int f_float i1 i2 =
   List.map2 (fun (v1,i1) (v2,i2) ->
       if v1 = v2 then
         match i1,i2 with
-        | GInt i1, GInt i2 -> v1,GInt (rint i1 i2 seed)
-        | GFloat f1, GFloat f2 -> v1,GFloat (rfloat f1 f2 seed)
+        | GInt i1, GInt i2 -> v1,GInt (f_int i1 i2)
+        | GFloat f1, GFloat f2 -> v1,GFloat (f_float f1 f2)
         | _ -> Format.asprintf "Type mismatch for variable %s" v1
                |> invalid_arg
       else Format.asprintf "Wrong order for variables %s and %s" v1 v2
            |> invalid_arg
     ) i1 i2
 
-let symmetric i1 i2 =
-  List.map2 (fun (v1,i1) (v2,i2) ->
-      if v1 = v2 then
-        match i1,i2 with
-        | GInt i1, GInt i2 -> v1,GInt (i1 + (2* (i2 - i1)))
-        | GFloat f1, GFloat f2 -> v1,GFloat (f1 +. 2. *. (f2-.f1))
-        | _ -> Format.asprintf "Type mismatch for variable %s" v1
-               |> invalid_arg
-      else Format.asprintf "Wrong order for variables %s and %s" v1 v2
-           |> invalid_arg
-    )  i1 i2
+(* translation of i1 by r*i2 where r is a random factor in [0;1] *)
+let vec i1 i2 seed =
+  vec_f (fun i1 i2 -> rint i1 i2 seed)
+        (fun f1 f2 -> rfloat f1 f2 seed) i1 i2
+
+let symetric i1 i2 =
+  vec_f (fun i1 i2 -> (i1 + (2* (i2 - i1))))
+    (fun f1 f2 -> (f1 +. 2. *. (f2-.f1))) i1 i2
 
 let simplex (x:instance) (ys:instance list) (barycenter:instance) sat seed =
   let translated = List.fold_left (fun i1 i2 -> vec i1 i2 seed) x ys in
   if sat translated then
     translated
   else
-    symmetric translated barycenter
+    symetric translated barycenter
 
 let (<=.) : float -> float -> bool = (<=)
 let (<.)  : float -> float -> bool = (<)

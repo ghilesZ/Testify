@@ -2,8 +2,17 @@ open Tools
 open Apron
 open Apronext
 open Helper
-include Apronext.Apol
 open Generator1
+
+type t = Apol.t
+
+let join = Apol.join
+
+let print fmt pol =
+  let l = Apol.to_generator_list pol in
+  Format.pp_print_list
+    ~pp_sep:(fun fmt () -> Format.fprintf fmt ";\n")
+    Generatorext.print fmt l
 
 let manager = Polka.manager_alloc_strict ()
 
@@ -20,8 +29,8 @@ let init =
     let ivars = Array.map Var.of_string i_arr in
     let rvars = Array.map Var.of_string r_arr in
     let env = Environment.make ivars rvars in
-    let itvi = Array.make (Array.length i_arr) i in
-    let itvr = Array.make (Array.length r_arr) f in
+    let itvi = Array.map (fun _ -> i) i_arr in
+    let itvr = Array.map (fun _ -> f) r_arr in
     let itvs = Array.concat [itvi; itvr] in
     let vars = Array.concat [ivars; rvars] in
     Abstract1.of_box manager env vars itvs
@@ -65,16 +74,17 @@ let constraint_to_apron env =
 (* filtering operation *)
 let filter pol e1 cmp e2 =
   let tc = constraint_to_apron Abstract1.(pol.env) e1 cmp e2 in
-  let pol' = filter_tcons pol tc in
-  if is_bottom pol' then Consistency.Unsat
+  (* Format.printf "filtering %a\n%!" Tconsext.print tc ; *)
+  let pol' = Apol.filter_tcons pol tc in
+  if Apol.is_bottom pol' then Consistency.Unsat
   else
-    let succ = is_bottom (filter_tcons pol (Tconsext.neg tc)) in
-    Consistency.Filtered (pol, succ)
+    let succ = Apol.is_bottom (Apol.filter_tcons pol' (Tconsext.neg tc)) in
+    Consistency.Filtered (pol', succ)
 
 (* extracts the variable with the largest interval range *)
 let largest pol : Var.t * Interval.t =
   let env = pol.Abstract1.env in
-  let box = Abstract1.to_box man pol in
+  let box = Abstract1.to_box Apol.man pol in
   let itvs = box.Abstract1.interval_array in
   let len = Array.length itvs in
   let rec aux cur i_max diam_max itv_max =
@@ -96,15 +106,15 @@ let split pol =
   let mid = mid itv in
   let i1 = Coeff.i_of_scalar itv.inf mid in
   let i2 = Coeff.i_of_scalar mid itv.sup in
-  let p1 = assign_texpr pol var (Texprext.cst env i1) in
-  let p2 = assign_texpr pol var (Texprext.cst env i2) in
+  let p1 = Apol.assign_texpr pol var (Texprext.cst env i1) in
+  let p2 = Apol.assign_texpr pol var (Texprext.cst env i2) in
   [p1; p2]
 
 (* difference operator *)
 let diff p1 p2 = snd (Apol.set_diff p1 p2)
 
 let split pol =
-  Format.printf "entering split\n%!" ;
+  (* Format.printf "entering split\n%!" ; *)
   let env = Abstract1.env pol in
   let nb_dim = Environmentext.size env in
   let gens = Apol.to_generator_list pol in
@@ -180,16 +190,17 @@ let compile_simplex pol =
 
 let compile pol =
   if is_simplex pol then compile_simplex pol
-  else
-    Format.asprintf "can not compile not simplex polyhedra: %i\n%a\n"
-      (nb_gen pol) Apol.print pol
-    |> failwith
+  else (
+    Format.eprintf
+      "can not compile not simplex polyhedra. Number of gens: %i\n@.[%a@]\n"
+      (nb_gen pol) print pol ;
+    failwith "compile error" )
 
 let vol_simplex pol = if is_simplex pol then Z.zero else Z.one
 
 let default_volume abs =
-  let b = A.to_box man abs in
-  b.A.interval_array
+  let b = Abstract1.to_box Apol.man abs in
+  b.Abstract1.interval_array
   |> Array.fold_left
        (fun v i ->
          v * (Intervalext.range i |> Scalarext.to_float |> int_of_float))
