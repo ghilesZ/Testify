@@ -1,0 +1,4 @@
+(library
+  (name testifytestspoly)
+  (preprocess (pps ppx_testify -- -domain poly -nb %{env:NB=10000}))
+  (inline_tests (backend ppx_testify)))
