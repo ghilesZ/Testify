@@ -3,6 +3,9 @@ let args =
   [ ("-nb", Arg.Int (( := ) number), "Sets the number of runs per test")
   ; ("-log", Arg.Set Log.log, "Enables the generation of a report")
   ; ("-seed", Arg.Int set_seed, "Sets the random seed")
+  ; ( "-bench"
+    , Arg.Set Gegen.bench
+    , "Enables the measure of the generation rate" )
   ; ( "-domain"
     , Arg.String Gegen.set_dom
     , "Sets the abstract domain used for solving" ) ]

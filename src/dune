@@ -8,10 +8,12 @@
   (ppx_runtime_libraries testify_runtime)
   (inline_tests.backend
     (runner_libraries testify_runtime))
+  (library_flags :standard -linkall)
   (libraries
+    compiler-libs.toplevel
      zarith
      ppx_tools_versioned
      ocaml-migrate-parsetree
      apron apron.boxMPQ apron.polkaMPQ apronext
-     picasso))
-             
+     picasso)
+)             

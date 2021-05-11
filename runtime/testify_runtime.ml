@@ -139,6 +139,8 @@ let simplex (x : instance) (vectors : instance list) (nb_dim : int) seed =
     else random_vecs )
     vectors
 
+(* Redefinition of some operators to explicit types in constraints *)
+
 let ( <=. ) : float -> float -> bool = ( <= )
 
 let ( <. ) : float -> float -> bool = ( < )
@@ -162,3 +164,13 @@ let ( >= ) : int -> int -> bool = ( >= )
 let ( = ) : int -> int -> bool = ( = )
 
 let ( <> ) : int -> int -> bool = ( <> )
+
+(* Benchmarking stuff *)
+let speed_estimate nb gen =
+  let st = Random.get_state () in
+  let t = Sys.time () in
+  for _ = 0 to nb do
+    ignore (gen st)
+  done ;
+  Printf.printf "Generation rate: ~%ik/s\n"
+    (int_of_float (float nb /. (Sys.time () -. t)) / 1000)

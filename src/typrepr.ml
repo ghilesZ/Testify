@@ -16,6 +16,7 @@ type t =
 let print_expr fmt e =
   Format.fprintf fmt "```ocaml@.@[%a@]\n```" print_expression e
 
+(* if cardinality is big, we print it as a power of two to easier reading *)
 let print_card =
   let z12 = Z.of_int 4096 in
   let close_log z =
@@ -134,6 +135,25 @@ let ref_ =
       ~manifest:
         (Typ.poly [none_loc "a"] (Typ.constr (lid_loc "ref") [alpha]))
       "ref" vars kind
+  in
+  {vars; body}
+
+let result_ =
+  let vars = ["a"; "b"] in
+  let alpha = Typ.var "a" in
+  let beta = Typ.var "b" in
+  let body =
+    let ok = Type.constructor ~args:(Pcstr_tuple [alpha]) (none_loc "Ok") in
+    let error =
+      Type.constructor ~args:(Pcstr_tuple [beta]) (none_loc "Error")
+    in
+    let kind = Ptype_variant [ok; error] in
+    ptype
+      ~manifest:
+        (Typ.poly
+           [none_loc "a"; none_loc "b"]
+           (Typ.constr (lid_loc "error") [alpha; beta]))
+      "error" vars kind
   in
   {vars; body}
 

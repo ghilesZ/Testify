@@ -8,6 +8,8 @@ open Helper
 module Conv = Convert (OCaml_410) (OCaml_current)
 open Tools
 
+let bench = ref false
+
 let get_int s = apply_nolbl_s "get_int" [string_ s]
 
 let get_float s = apply_nolbl_s "get_float" [string_ s]

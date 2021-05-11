@@ -35,6 +35,7 @@ let s0 : t =
   |> add_id "float" Typrepr.float
   |> add_param_td "option" Typrepr.option_
   |> add_param_td "ref" Typrepr.ref_
+  |> add_param_td "result" Typrepr.result_
 
 (* registering functions *)
 let register_print (s : t) lid p =
