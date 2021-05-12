@@ -19,7 +19,7 @@ let fill =
   let get_name = id_gen_gen () in
   let rec aux p =
     match p.ppat_desc with
-    (* we prefix the name with % to avoid ame clash *)
+    (* we prefix the name with % to avoid name clash *)
     | Ppat_any ->
         {p with ppat_desc= Ppat_var (none_loc ("%" ^ fst (get_name ())))}
     | Ppat_var _ -> p
@@ -52,14 +52,7 @@ let flatten_ct core_type pattern =
         (lambda_s "i" (Exp.tuple b), i_s, f_s)
     | _ -> raise (Lang.OutOfSubset "core_type or pattern")
   in
-  let ((_, _i, _r) as res) =
-    aux SSet.empty SSet.empty core_type (fill pattern)
-  in
-  (* match (SSet.cardinal _i, SSet.cardinal _r) with
-   * | 1, 0 -> (exp_id "to_int", _i, _r)
-   * | 0, 1 -> (exp_id "to_float", _i, _r)
-   * | _ -> *)
-  res
+  aux SSet.empty SSet.empty core_type (fill pattern)
 
 let flatten_record labs _pattern =
   match labs with
@@ -131,9 +124,13 @@ let craft_generator inner outer total pattern r =
 
 let dom = ref "box"
 
+let max_size = ref 8
+
 let set_dom = function
   | ("box" | "poly") as x -> dom := x
   | x -> Format.asprintf "Invalid domain %s" x |> invalid_arg
+
+let set_size n = max_size := n
 
 let get_generators i_s f_s constr =
   match !dom with
@@ -147,7 +144,7 @@ let solve_ct ct sat =
     let pat, body = split_fun sat in
     let unflatten, i_s, f_s = flatten_ct ct pat in
     let constr = Lang.of_ocaml body in
-    let inner, outer, total = get_generators i_s f_s constr in
+    let inner, outer, total = get_generators i_s f_s constr !max_size in
     Some (craft_generator inner outer total pat unflatten, total)
   with Lang.OutOfSubset _ -> None
 
@@ -156,7 +153,7 @@ let flatten_record labs sat =
     let pat, body = split_fun sat in
     let constr = Lang.of_ocaml body in
     let unflatten, i_s, f_s = flatten_record labs pat in
-    let inner, outer, total = get_generators i_s f_s constr in
+    let inner, outer, total = get_generators i_s f_s constr !max_size in
     Some (craft_generator inner outer total pat unflatten, total)
   with Lang.OutOfSubset _ -> None
 

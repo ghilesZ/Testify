@@ -168,9 +168,10 @@ let ( <> ) : int -> int -> bool = ( <> )
 (* Benchmarking stuff *)
 let speed_estimate nb gen =
   let st = Random.get_state () in
-  let t = Sys.time () in
+  let start = Sys.time () in
   for _ = 0 to nb do
     ignore (gen st)
   done ;
-  Printf.printf "Generation rate: ~%ik/s\n"
-    (int_of_float (float nb /. (Sys.time () -. t)) / 1000)
+  let ending = Sys.time () in
+  Printf.printf "Generation rate: ~%i/s\n"
+    (int_of_float (float nb /. (ending -. start)))

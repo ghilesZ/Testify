@@ -76,16 +76,12 @@ module Make (D : Signatures.Abs) = struct
     in
     (inner_gens, outer_gens)
 
-  (* TODO: add option to change this *)
-  let threshold = ref 0.5
+  let threshold = ref 0.99
 
-  let max_size = ref 8
-
-  let solve abs constr : t =
+  let solve abs constr max : t =
     let rec aux cover =
       if
-        ratio cover > !threshold
-        || is_partition cover || cover.nb_elem > !max_size
+        ratio cover > !threshold || is_partition cover || cover.nb_elem > max
       then cover
       else
         let (biggest, _, constr), cover' = pop_outer cover in
@@ -122,9 +118,9 @@ module Make (D : Signatures.Abs) = struct
          outer)
     |> to_svg
 
-  let get_generators i_s f_s constr =
+  let get_generators i_s f_s constr max =
     let abs = D.init i_s f_s in
-    let c = solve abs constr in
+    let c = solve abs constr max in
     (*let min = try Tools.SSet.min_elt i_s with Not_found ->
       Tools.SSet.min_elt f_s in let max = try Tools.SSet.max_elt i_s with
       Not_found -> Tools.SSet.max_elt f_s in if !Log.log then show c max min

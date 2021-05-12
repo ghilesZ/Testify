@@ -263,7 +263,7 @@ let init =
 
 let compile (a : t) =
   let instance = ref empty_list_exp in
-  let aux comp map =
+  let fill comp map =
     SMap.iter
       (fun v i ->
         let value = apply_nolbl (comp i) [exp_id "rs"] in
@@ -271,19 +271,13 @@ let compile (a : t) =
         instance := cons_exp pair !instance)
       map
   in
-  match (SMap.bindings a.ints, SMap.bindings a.floats) with
-  (* | [(_, i)], [] -> ItvI.compile i
-   * | [], [(_, f)] -> ItvF.compile f *)
-  | _ ->
-      aux ItvI.compile a.ints ;
-      aux ItvF.compile a.floats ;
-      lambda_s "rs" !instance
+  fill ItvI.compile a.ints ;
+  fill ItvF.compile a.floats ;
+  lambda_s "rs" !instance
 
 let print fmt {ints; floats} =
-  Format.fprintf fmt "{" ;
-  SMap.iter (fun k v -> Format.printf "%s: %a;" k ItvI.print v) ints ;
-  SMap.iter (fun k v -> Format.printf "%s: %a;" k ItvF.print v) floats ;
-  Format.fprintf fmt "}"
+  Format.fprintf fmt "{%a%a}" (SMap.print ItvI.print) ints
+    (SMap.print ItvF.print) floats
 
 let to_drawable {ints; floats} =
   let open Picasso in
