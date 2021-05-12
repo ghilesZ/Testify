@@ -192,7 +192,7 @@ let str_of_rule = function
   | I v -> Printf.sprintf "I %s" v
   | T v -> Printf.sprintf "T %s" v
 
-let unfold_bit_decomp pentagon =
+let unfold_bit_decomp (pentagon:t) : (rule list * t) list =
   let rec fold acc todo =
     match todo with
     | [] -> acc
@@ -210,7 +210,7 @@ let unfold_bit_decomp pentagon =
               let uc = VSet.cardinal (VMap.find v p.upper) in
               let ul = VSet.cardinal (VMap.find v p.lower) in
               (* Printf.printf "%s %d %d\n" v uc ul; *)
-              print_endline (str_of_pentagon p) ;
+              (* print_endline (str_of_pentagon p) ; *)
               let v' =
                 match (uc, ul) with
                 | 0, 0 -> E v
@@ -231,7 +231,9 @@ let rec str_of_bit_decomp (decomp, p) =
 
 type scalar = V of Var.t | N of Num.t
 
-let unfold_bounds_const ord pentagon =
+type formula = (string * scalar * scalar) list
+
+let unfold_bounds_const (ord:rule list) (pentagon:t) : formula list =
   let rec b_handler acc ord p u v =
     let vlo, vup = VMap.find v p.bounds in
     let ulo, uup = VMap.find u p.bounds in
