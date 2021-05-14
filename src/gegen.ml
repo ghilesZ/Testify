@@ -10,6 +10,10 @@ open Tools
 
 let bench = ref false
 
+let dom = ref "box"
+
+let max_size = ref 8
+
 let get_int s = apply_nolbl_s "get_int" [string_ s]
 
 let get_float s = apply_nolbl_s "get_float" [string_ s]
@@ -122,10 +126,6 @@ let craft_generator inner outer total pattern r =
       in
       apply_nolbl_s "weighted" [inner_outer_gens]
 
-let dom = ref "box"
-
-let max_size = ref 8
-
 let set_dom = function
   | ("box" | "poly") as x -> dom := x
   | x -> Format.asprintf "Invalid domain %s" x |> invalid_arg
@@ -138,15 +138,26 @@ let get_generators i_s f_s constr =
   | "poly" -> Cover.Pol.get_generators i_s f_s constr
   | _ -> assert false
 
+let showbench gen =
+  if !bench then (
+    let fn, out = Filename.open_temp_file ~temp_dir:"." !dom ".ml" in
+    let fmt = Format.formatter_of_out_channel out in
+    Format.eprintf "Generator in file: %s\n%!" fn ;
+    Format.fprintf fmt "@.@[let gen =%a@]%!" print_expression gen )
+
 (* generator for constrained core types *)
 let solve_ct ct sat =
-  try
-    let pat, body = split_fun sat in
-    let unflatten, i_s, f_s = flatten_ct ct pat in
-    let constr = Lang.of_ocaml body in
-    let inner, outer, total = get_generators i_s f_s constr !max_size in
-    Some (craft_generator inner outer total pat unflatten, total)
-  with Lang.OutOfSubset _ -> None
+  let res =
+    try
+      let pat, body = split_fun sat in
+      let unflatten, i_s, f_s = flatten_ct ct pat in
+      let constr = Lang.of_ocaml body in
+      let inner, outer, total = get_generators i_s f_s constr !max_size in
+      Some (craft_generator inner outer total pat unflatten, total)
+    with Lang.OutOfSubset _ -> None
+  in
+  Option.iter (fun (g, _) -> showbench g) res ;
+  res
 
 let flatten_record labs sat =
   try
@@ -159,11 +170,15 @@ let flatten_record labs sat =
 
 (* generator for constrained type declarations *)
 let solve_td td sat =
-  try
-    match td.ptype_kind with
-    | Ptype_abstract ->
-        Option.bind td.ptype_manifest (fun ct -> solve_ct ct sat)
-    | Ptype_record labs -> flatten_record labs sat
-    | Ptype_variant _ -> None
-    | Ptype_open -> None
-  with Lang.OutOfSubset _ -> None
+  let res =
+    try
+      match td.ptype_kind with
+      | Ptype_abstract ->
+          Option.bind td.ptype_manifest (fun ct -> solve_ct ct sat)
+      | Ptype_record labs -> flatten_record labs sat
+      | Ptype_variant _ -> None
+      | Ptype_open -> None
+    with Lang.OutOfSubset _ -> None
+  in
+  Option.iter (fun (g, _) -> showbench g) res ;
+  res

@@ -209,7 +209,7 @@ let dist g1 g2 =
       let diff = coeff_add (Coeffext.neg c1) c2 in
       res := coeff_add !res (coeff_mul diff diff))
     g1 ;
-  !res |> Coeffext.to_mpqf |> Mpqf.to_string |> Q.of_string
+  !res |> Coeffext.to_mpqf |> Mpqf.to_string |> Q.of_string |> Q.to_bigint
 
 let vol_simplex pol =
   let rec loop dim acc = function
