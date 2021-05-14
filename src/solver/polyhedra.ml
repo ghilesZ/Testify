@@ -136,30 +136,17 @@ let coeff_add c1 c2 =
   | Scalar s1, Scalar s2 -> Scalar (Scalarext.add s1 s2)
   | _ -> invalid_arg "non scalar coeff for generators"
 
+let coeff_mul c1 c2 =
+  let open Coeff in
+  match (c1, c2) with
+  | Scalar s1, Scalar s2 -> Scalar (Scalarext.mul s1 s2)
+  | _ -> invalid_arg "non scalar coeff for generators"
+
 let coeff_div c d =
   let open Coeff in
   match c with
   | Scalar s -> Scalar (Scalarext.div s (Scalar.of_int d))
   | _ -> invalid_arg "non scalar coeff for generators"
-
-(* let barycenter = function
- *   | [] -> assert false
- *   | h :: tl ->
- *       let add_gen g1 g2 =
- *         let res = copy g1 in
- *         iter
- *           (fun c1 v ->
- *             let c2 = get_coeff g2 v in
- *             set_coeff res v (coeff_add c1 c2))
- *           g1 ;
- *         res
- *       in
- *       let g, nb =
- *         List.fold_left (fun (g, nb) g' -> (add_gen g g', nb + 1)) (h, 1) tl
- *       in
- *       let res = copy g in
- *       iter (fun c v -> set_coeff res v (coeff_div c nb)) g ;
- *       res *)
 
 let compile_coeff typvar c =
   let open Environment in
@@ -176,7 +163,7 @@ let gen_to_instance g =
   let cons c v =
     let typ = Environment.typ_of_var g.env v in
     let var = pair (string_ (Var.to_string v)) (compile_coeff typ c) in
-    expr := cons_exp var   !expr
+    expr := cons_exp var !expr
   in
   iter cons g ; !expr
 
@@ -195,7 +182,47 @@ let compile pol =
       (nb_gen pol) print pol
     |> failwith
 
-let vol_simplex pol = if is_simplex pol then Z.zero else Z.one
+let barycenter = function
+  | [] -> assert false
+  | h :: tl ->
+      let add_gen g1 g2 =
+        let res = copy g1 in
+        iter
+          (fun c1 v ->
+            let c2 = get_coeff g2 v in
+            set_coeff res v (coeff_add c1 c2))
+          g1 ;
+        res
+      in
+      let g, nb =
+        List.fold_left (fun (g, nb) g' -> (add_gen g g', nb + 1)) (h, 1) tl
+      in
+      let res = copy g in
+      iter (fun c v -> set_coeff res v (coeff_div c nb)) g ;
+      res
+
+let dist g1 g2 =
+  let res = ref (Coeffext.s_of_int 0) in
+  iter
+    (fun c1 v ->
+      let c2 = get_coeff g2 v in
+      let diff = coeff_add (Coeffext.neg c1) c2 in
+      res := coeff_add !res (coeff_mul diff diff))
+    g1 ;
+  !res |> Coeffext.to_mpqf |> Mpqf.to_string |> Q.of_string
+
+let vol_simplex pol =
+  let rec loop dim acc = function
+    | [] -> assert false
+    | [_] -> acc
+    | [g1; g2] -> Z.mul acc (dist g1 g2)
+    | h :: tl ->
+        Z.div
+          (loop (dim - 1) (Z.mul acc (dist h (barycenter tl))) tl)
+          (Z.of_int dim)
+  in
+  let l = Apol.to_generator_list pol in
+  loop (List.length l - 1) Z.one l
 
 let default_volume abs =
   let b = Abstract1.to_box Apol.man abs in
