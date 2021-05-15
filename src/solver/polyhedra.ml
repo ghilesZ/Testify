@@ -174,14 +174,6 @@ let compile_simplex pol =
       apply_nolbl_s "simplex" [gen_to_instance h; others; int_ (nb_dim pol)]
   | [] -> assert false
 
-let compile pol =
-  if is_simplex pol then compile_simplex pol
-  else
-    Format.asprintf
-      "can not compile not simplex polyhedra. Number of gens: %i\n@.[%a@]\n"
-      (nb_gen pol) print pol
-    |> failwith
-
 let barycenter = function
   | [] -> assert false
   | h :: tl ->
@@ -235,5 +227,17 @@ let default_volume abs =
 
 let volume pol =
   if is_simplex pol then vol_simplex pol else default_volume pol
+
+let compile pol =
+  if is_simplex pol then compile_simplex pol
+  else
+    let p' = split pol in
+    let _w = List.map (fun p -> (volume p, p)) p' in
+    assert false
+
+(* Format.asprintf
+ *   "can not compile not simplex polyhedra. Number of gens: %i\n@.[%a@]\n"
+ *   (nb_gen pol) print pol
+ * |> failwith *)
 
 let to_drawable = Picasso.Drawable.of_pol

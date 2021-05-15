@@ -1,4 +1,4 @@
-(* Generator generation *)
+(* Generator generation for constrained types *)
 
 open Migrate_parsetree
 open Ast_410
@@ -138,12 +138,21 @@ let get_generators i_s f_s constr =
   | "poly" -> Cover.Pol.get_generators i_s f_s constr
   | _ -> assert false
 
-let showbench gen =
+let showbench gen td =
   if !bench then (
-    let fn, out = Filename.open_temp_file ~temp_dir:"." !dom ".ml" in
+    let td =
+      match td with
+      | None -> ""
+      | Some td ->
+          Format.asprintf "%a" print_td {td with ptype_manifest= None}
+    in
+    let _fn, out = Filename.open_temp_file ~temp_dir:"gen" !dom ".ml" in
     let fmt = Format.formatter_of_out_channel out in
-    Format.eprintf "Generator in file: %s\n%!" fn ;
-    Format.fprintf fmt "@.@[let gen =%a@]%!" print_expression gen )
+    Format.fprintf fmt "%s\n" td ;
+    Format.fprintf fmt "open Testify_runtime\nlet gen=@.@[%a@]\n%s%!"
+      print_expression gen
+      ( {|let () = Format.printf "|} ^ !dom
+      ^ {| %i\n%!" (speed_estimate 1000000 gen)|} ) )
 
 (* generator for constrained core types *)
 let solve_ct ct sat =
@@ -156,7 +165,7 @@ let solve_ct ct sat =
       Some (craft_generator inner outer total pat unflatten, total)
     with Lang.OutOfSubset _ -> None
   in
-  Option.iter (fun (g, _) -> showbench g) res ;
+  Option.iter (fun (g, _) -> showbench g None) res ;
   res
 
 let flatten_record labs sat =
@@ -180,5 +189,5 @@ let solve_td td sat =
       | Ptype_open -> None
     with Lang.OutOfSubset _ -> None
   in
-  Option.iter (fun (g, _) -> showbench g) res ;
+  Option.iter (fun (g, _) -> showbench g (Some td)) res ;
   res

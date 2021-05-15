@@ -153,7 +153,9 @@ let print_coretype fmt t =
   Format.fprintf fmt "%a" Pprintast.core_type (Conv.copy_core_type t)
 
 let print_td fmt t =
-  let sig_ = {psig_desc= Psig_typesubst [t]; psig_loc= Location.none} in
+  let sig_ =
+    {psig_desc= Psig_type (Nonrecursive, [t]); psig_loc= Location.none}
+  in
   Format.fprintf fmt "%a" Pprintast.signature (Conv.copy_signature [sig_])
 
 (* markdown escaping *)

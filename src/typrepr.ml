@@ -16,9 +16,8 @@ type t =
 let print_expr fmt e =
   Format.fprintf fmt "```ocaml@.@[%a@]\n```" print_expression e
 
-(* if cardinality is big, we print it as a power of two to easier reading *)
 let print_card =
-  let z12 = Z.of_int 4096 in
+  let z15 = Z.of_int 32768 in
   let close_log z =
     let down = Z.log2 z in
     let up = Z.log2 z in
@@ -28,7 +27,9 @@ let print_card =
     else up
   in
   fun fmt z ->
-    if Z.gt z z12 then Format.fprintf fmt "~2<sup>%i</sup>" (close_log z)
+    (* if cardinality is big, we print it as a power of two for easier
+       reading *)
+    if Z.gt z z15 then Format.fprintf fmt "~2<sup>%i</sup>" (close_log z)
     else Format.fprintf fmt "%a" Z.pp_print z
 
 let print fmt {gen; spec; card; print} =
