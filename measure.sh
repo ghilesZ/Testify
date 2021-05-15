@@ -4,6 +4,7 @@ gather_generators () {
     for file in `find examples/ -name "*.ml"`; do
         ./rewrite -bench $file -domain poly > /dev/null
         ./rewrite -bench $file -domain box > /dev/null
+        ./rewrite -bench $file -domain box -cover_size 128 > /dev/null
         # ./rewrite -bench $file -domain rs
     done
 }

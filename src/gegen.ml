@@ -14,6 +14,9 @@ let dom = ref "box"
 
 let max_size = ref 8
 
+let dom_name () =
+  match !dom with "box" -> Format.asprintf "box_%i" !max_size | x -> x
+
 let get_int s = apply_nolbl_s "get_int" [string_ s]
 
 let get_float s = apply_nolbl_s "get_float" [string_ s]
@@ -138,21 +141,34 @@ let get_generators i_s f_s constr =
   | "poly" -> Cover.Pol.get_generators i_s f_s constr
   | _ -> assert false
 
-let showbench gen td =
+let print_loc fmt (l : Location.t) =
+  let fn = l.loc_start.pos_fname |> Filename.basename in
+  Format.fprintf fmt "file:%s line:%i" fn l.loc_start.pos_lnum
+
+let showbench gen td umetric =
   if !bench then (
-    let td =
+    let td, loc =
       match td with
-      | None -> ""
+      | None -> ("", "")
       | Some td ->
-          Format.asprintf "%a" print_td {td with ptype_manifest= None}
+          ( Format.asprintf "%a" print_td {td with ptype_manifest= None}
+          , Format.asprintf "%a" print_loc td.ptype_loc )
     in
-    let _fn, out = Filename.open_temp_file ~temp_dir:"gen" !dom ".ml" in
+    let _fn, out =
+      Filename.open_temp_file ~temp_dir:"gen" (dom_name ()) ".ml"
+    in
     let fmt = Format.formatter_of_out_channel out in
     Format.fprintf fmt "%s\n" td ;
-    Format.fprintf fmt "open Testify_runtime\nlet gen=@.@[%a@]\n%s%!"
+    Format.fprintf fmt "open Testify_runtime\nlet gen=@.@[%a@]\n%s %f%!"
       print_expression gen
-      ( {|let () = Format.printf "|} ^ !dom
-      ^ {| %i\n%!" (speed_estimate 1000000 gen)|} ) )
+      ( {|let () = Format.printf "|} ^ loc ^ " domain:" ^ dom_name ()
+      ^ {| rate:%i uniformity:%f\n%!" (speed_estimate 1000000 gen) |} )
+      umetric )
+
+let u_metric inner total =
+  let add = List.fold_left (fun acc (w, _e) -> Z.add acc w) Z.zero in
+  let ratio = Q.make (add inner) total in
+  Q.to_float ratio
 
 (* generator for constrained core types *)
 let solve_ct ct sat =
@@ -162,19 +178,22 @@ let solve_ct ct sat =
       let unflatten, i_s, f_s = flatten_ct ct pat in
       let constr = Lang.of_ocaml body in
       let inner, outer, total = get_generators i_s f_s constr !max_size in
-      Some (craft_generator inner outer total pat unflatten, total)
+      let g = craft_generator inner outer total pat unflatten in
+      showbench g None (u_metric inner total) ;
+      Some (g, total)
     with Lang.OutOfSubset _ -> None
   in
-  Option.iter (fun (g, _) -> showbench g None) res ;
   res
 
-let flatten_record labs sat =
+let flatten_record labs sat td =
   try
     let pat, body = split_fun sat in
     let constr = Lang.of_ocaml body in
     let unflatten, i_s, f_s = flatten_record labs pat in
     let inner, outer, total = get_generators i_s f_s constr !max_size in
-    Some (craft_generator inner outer total pat unflatten, total)
+    let g = craft_generator inner outer total pat unflatten in
+    showbench g (Some td) (u_metric inner total) ;
+    Some (g, total)
   with Lang.OutOfSubset _ -> None
 
 (* generator for constrained type declarations *)
@@ -184,10 +203,9 @@ let solve_td td sat =
       match td.ptype_kind with
       | Ptype_abstract ->
           Option.bind td.ptype_manifest (fun ct -> solve_ct ct sat)
-      | Ptype_record labs -> flatten_record labs sat
+      | Ptype_record labs -> flatten_record labs sat td
       | Ptype_variant _ -> None
       | Ptype_open -> None
     with Lang.OutOfSubset _ -> None
   in
-  Option.iter (fun (g, _) -> showbench g (Some td)) res ;
   res

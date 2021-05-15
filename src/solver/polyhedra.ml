@@ -66,8 +66,8 @@ let constraint_to_apron env =
     | Binop (a1, b, a2) -> (op b) (numeric a1) (numeric a2)
     | Neg a -> Texprext.neg ~typ:Int (numeric a)
     | NegF a -> Texprext.neg ~typ:Real (numeric a)
-    | ToInt _a -> assert false
-    | ToFloat _a -> assert false
+    | ToInt a -> Texprext.cast ~typ:Int (numeric a)
+    | ToFloat a -> Texprext.cast ~typ:Real (numeric a)
   in
   fun a1 op a2 -> (cmp op) (numeric a1) (numeric a2)
 
@@ -228,12 +228,33 @@ let default_volume abs =
 let volume pol =
   if is_simplex pol then vol_simplex pol else default_volume pol
 
+open Migrate_parsetree
+open Ast_410
+
 let compile pol =
+  let rec aux acc pol =
+    if is_simplex pol then (volume pol, pol) :: acc
+    else
+      let p' = split pol in
+      List.fold_left aux acc p'
+  in
   if is_simplex pol then compile_simplex pol
   else
-    let p' = split pol in
-    let _w = List.map (fun p -> (volume p, p)) p' in
-    assert false
+    let simplices = aux [] pol in
+    let total =
+      List.fold_left (fun acc (x, _) -> Z.add acc x) Z.zero simplices
+    in
+    let open Ast_helper in
+    let gens =
+      List.fold_left
+        (fun acc (w, p) ->
+          cons_exp
+            (Exp.tuple
+               [float_dec (Q.make w total |> Q.to_float); compile_simplex p])
+            acc)
+        empty_list_exp simplices
+    in
+    apply_nolbl_s "weighted" [gens]
 
 (* Format.asprintf
  *   "can not compile not simplex polyhedra. Number of gens: %i\n@.[%a@]\n"
