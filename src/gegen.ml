@@ -8,7 +8,7 @@ open Helper
 module Conv = Convert (OCaml_410) (OCaml_current)
 open Tools
 
-let bench = ref false
+let bench = ref ""
 
 let dom = ref "box"
 
@@ -142,11 +142,11 @@ let get_generators i_s f_s constr =
   | _ -> assert false
 
 let print_loc fmt (l : Location.t) =
-  let fn = l.loc_start.pos_fname |> Filename.basename in
-  Format.fprintf fmt "file:%s line:%i" fn l.loc_start.pos_lnum
+  let fn = Filename.(l.loc_start.pos_fname |> basename |> chop_extension) in
+  Format.fprintf fmt "%s%i" fn l.loc_start.pos_lnum
 
 let showbench gen td umetric =
-  if !bench then (
+  if !bench <> "" then (
     let td, loc =
       match td with
       | None -> ("", "")
@@ -154,16 +154,19 @@ let showbench gen td umetric =
           ( Format.asprintf "%a" print_td {td with ptype_manifest= None}
           , Format.asprintf "%a" print_loc td.ptype_loc )
     in
-    let _fn, out =
-      Filename.open_temp_file ~temp_dir:"gen" (dom_name ()) ".ml"
-    in
+    let name = "gen/" ^ !bench ^ loc ^ ".ml" in
+    Format.eprintf "outputting: %s\n%!" name ;
+    let out = open_out name in
     let fmt = Format.formatter_of_out_channel out in
     Format.fprintf fmt "%s\n" td ;
     Format.fprintf fmt "open Testify_runtime\nlet gen=@.@[%a@]\n%s %f%!"
       print_expression gen
       ( {|let () = Format.printf "|} ^ loc ^ " domain:" ^ dom_name ()
       ^ {| rate:%i uniformity:%f\n%!" (speed_estimate 1000000 gen) |} )
-      umetric )
+      umetric ;
+    Format.pp_print_flush fmt () ;
+    flush out ;
+    close_out out )
 
 let u_metric inner total =
   let add = List.fold_left (fun acc (w, _e) -> Z.add acc w) Z.zero in
@@ -179,7 +182,7 @@ let solve_ct ct sat =
       let constr = Lang.of_ocaml body in
       let inner, outer, total = get_generators i_s f_s constr !max_size in
       let g = craft_generator inner outer total pat unflatten in
-      showbench g None (u_metric inner total) ;
+      (* showbench g None (u_metric inner total) ; *)
       Some (g, total)
     with Lang.OutOfSubset _ -> None
   in

@@ -7,7 +7,7 @@ let args =
     , Arg.Int Gegen.set_size
     , "Sets the maximum size of a cover seed" )
   ; ( "-bench"
-    , Arg.Set Gegen.bench
+    , Arg.String (( := ) Gegen.bench)
     , "Enables the measure of the generation rate" )
   ; ( "-domain"
     , Arg.String Gegen.set_dom
