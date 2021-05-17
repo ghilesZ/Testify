@@ -1,38 +1,46 @@
 #!/bin/bash
 
-build () {
+buildNrun () {
     ocamlfind ocamlopt -linkpkg -package qcheck testify_runtime.ml $1 -o bench
     ./bench
 }
 
-clean () {
+setup () {
+    mkdir -p gen
     rm -f gen/*
     rm -f res.txt
 }
 
-mkdir -p gen
-clean
+generate () {
 i=1
-echo "Generating benchmark"
 nb=`find examples/ -name "*.ml" | wc -l`
 for file in `find examples/ -name "*.ml"`; do
-    echo -en "generating benchmark $i/$nb\r"
-    ./rewrite -bench rewritten_${i}_poly $file -domain poly > /dev/null
-    ./rewrite -bench rewritten_${i}_box8 $file -domain box > /dev/null
-    ./rewrite -bench rewritten_${i}_box32 $file -domain box -cover_size 32 > /dev/null
+    echo -en "\rGenerating benchmark from $nb file: $i/$nb"
+    ./rewrite -bench rewritten_poly $file -domain poly > /dev/null
+    ./rewrite -bench rewritten_box8 $file -domain box > /dev/null
+    ./rewrite -bench rewritten_box32 $file -domain box -cover_size 32 > /dev/null
    # ./rewrite -bench $file -domain rs
     i=$((i+1))
 done
-echo "Generation done"
-cd gen
-nb=$(ls *.ml | wc -l)
-i=1
-for file in `find . -name "*.ml" | sort`; do
-    echo -en "Running benchmark $i/$nb\r"
+echo ""
+}
+
+run () {
+    cd gen
+    nb=$(ls *.ml | wc -l)
+    echo "$nb generator collected"
+    files=`find . -name "*.ml" | sort`
     ln -f ../runtime/testify_runtime.ml testify_runtime.ml
-    ocamlfind ocamlopt -linkpkg -package qcheck testify_runtime.ml $file -o bench
-    ./bench >> res.txt
-    i=$((i+1))
-done
-mv res.txt ..
-echo "Ouputting results in res.txt"
+    i=1
+    for file in $files; do
+        echo -en "\rRunning benchmark $i/$nb"
+        buildNrun $file >> res.txt
+        i=$((i+1))
+    done
+echo ""
+}
+
+setup
+generate
+run
+echo "Ouputting results in gen/res.txt"

@@ -155,7 +155,8 @@ let showbench gen td umetric =
           , Format.asprintf "%a" print_loc td.ptype_loc )
     in
     let name = "gen/" ^ !bench ^ loc ^ ".ml" in
-    Format.eprintf "outputting: %s\n%!" name ;
+    if Sys.file_exists name then
+      Format.eprintf "warning overwritting file %s\n%!" name ;
     let out = open_out name in
     let fmt = Format.formatter_of_out_channel out in
     Format.fprintf fmt "%s\n" td ;
