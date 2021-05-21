@@ -16,10 +16,10 @@ i=1
 nb=`find examples/ -name "*.ml" | wc -l`
 for file in `find examples/ -name "*.ml"`; do
     echo -en "\rGenerating benchmark from $nb file: $i/$nb"
-    ./rewrite -bench rewritten_poly $file -domain poly > /dev/null
-    ./rewrite -bench rewritten_box8 $file -domain box > /dev/null
-    ./rewrite -bench rewritten_box32 $file -domain box -cover_size 32 > /dev/null
-   # ./rewrite -bench $file -domain rs
+    ./rewrite -bench reject $file -domain rs > /dev/null
+    ./rewrite -bench poly $file -domain poly > /dev/null
+    ./rewrite -bench box08 $file -domain box > /dev/null
+    ./rewrite -bench box32 $file -domain box -cover_size 32 > /dev/null
     i=$((i+1))
 done
 echo ""
@@ -32,15 +32,22 @@ run () {
     files=`find . -name "*.ml" | sort`
     ln -f ../runtime/testify_runtime.ml testify_runtime.ml
     i=1
+    echo "location domain rate mu" >> res.txt
     for file in $files; do
-        echo -en "\rRunning benchmark $i/$nb"
+        echo -en "\rSpeed estimation for generator $i/$nb"
         buildNrun $file >> res.txt
         i=$((i+1))
     done
-echo ""
+    echo ""
+    echo "Ouputting results in gen/res.txt"
+}
+
+format () {
+    q -H "SELECT location,domain,rate,mu FROM res.txt GROUP BY location,domain" > table.tex
+    echo "formatting results in gen/table.tex"
 }
 
 setup
 generate
 run
-echo "Ouputting results in gen/res.txt"
+format

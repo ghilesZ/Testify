@@ -130,7 +130,7 @@ let craft_generator inner outer total pattern r =
       apply_nolbl_s "weighted" [inner_outer_gens]
 
 let set_dom = function
-  | ("box" | "poly") as x -> dom := x
+  | ("box" | "poly" | "rs") as x -> dom := x
   | x -> Format.asprintf "Invalid domain %s" x |> invalid_arg
 
 let set_size n = max_size := n
@@ -162,8 +162,8 @@ let showbench gen td umetric =
     Format.fprintf fmt "%s\n" td ;
     Format.fprintf fmt "open Testify_runtime\nlet gen=@.@[%a@]\n%s %f%!"
       print_expression gen
-      ( {|let () = Format.printf "|} ^ loc ^ " domain:" ^ dom_name ()
-      ^ {| rate:%i uniformity:%f\n%!" (speed_estimate 1000000 gen) |} )
+      ( {|let () = Format.printf "|} ^ loc ^ " " ^ !bench
+      ^ {| %i %f\n%!" ((speed_estimate 1000000 gen)/1000) |} )
       umetric ;
     Format.pp_print_flush fmt () ;
     flush out ;
@@ -200,13 +200,29 @@ let flatten_record labs sat td =
     Some (g, total)
   with Lang.OutOfSubset _ -> None
 
+let flatten_abstract td sat =
+  Option.bind td.ptype_manifest (fun ct ->
+      let res =
+        try
+          let pat, body = split_fun sat in
+          let unflatten, i_s, f_s = flatten_ct ct pat in
+          let constr = Lang.of_ocaml body in
+          let inner, outer, total =
+            get_generators i_s f_s constr !max_size
+          in
+          let g = craft_generator inner outer total pat unflatten in
+          showbench g (Some td) (u_metric inner total) ;
+          Some (g, total)
+        with Lang.OutOfSubset _ -> None
+      in
+      res)
+
 (* generator for constrained type declarations *)
 let solve_td td sat =
   let res =
     try
       match td.ptype_kind with
-      | Ptype_abstract ->
-          Option.bind td.ptype_manifest (fun ct -> solve_ct ct sat)
+      | Ptype_abstract -> flatten_abstract td sat
       | Ptype_record labs -> flatten_record labs sat td
       | Ptype_variant _ -> None
       | Ptype_open -> None

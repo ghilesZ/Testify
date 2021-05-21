@@ -100,10 +100,9 @@ let largest pol : Var.t * Interval.t =
 
 (* split variable with largest dimension *)
 let split pol =
-  let open Intervalext in
   let env = Abstract1.env pol in
   let var, itv = largest pol in
-  let mid = mid itv in
+  let mid = Intervalext.mid itv in
   let i1 = Coeff.i_of_scalar itv.inf mid in
   let i2 = Coeff.i_of_scalar mid itv.sup in
   let p1 = Apol.assign_texpr pol var (Texprext.cst env i1) in

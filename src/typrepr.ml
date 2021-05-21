@@ -451,25 +451,35 @@ module Constrained = struct
     let spec =
       match typ.spec with Some p -> compose_properties p e | None -> e
     in
-    match Gegen.solve_ct ct spec with
-    | None ->
-        { typ with
-          gen= Option.map (rejection e) typ.gen
-        ; spec= Some spec
-        ; card= None }
-    | Some (gen, card) ->
-        {typ with gen= Some gen; spec= Some spec; card= Some card}
+    let default =
+      { typ with
+        gen= Option.map (rejection e) typ.gen
+      ; spec= Some spec
+      ; card= None }
+    in
+    if !Gegen.dom <> "rs" then
+      match Gegen.solve_ct ct spec with
+      | Some (gen, card) ->
+          {typ with gen= Some gen; spec= Some spec; card= Some card}
+      | _ -> default
+    else default
 
   let make_td td typ e =
     let spec =
       match typ.spec with Some p -> compose_properties p e | None -> e
     in
-    match Gegen.solve_td td e with
-    | None ->
-        { typ with
-          gen= Option.map (rejection e) typ.gen
-        ; spec= Some spec
-        ; card= None }
-    | Some (gen, card) ->
-        {typ with gen= Some gen; spec= Some spec; card= Some card}
+    let default =
+      { typ with
+        gen= Option.map (rejection e) typ.gen
+      ; spec= Some spec
+      ; card= None }
+    in
+    if !Gegen.dom <> "rs" then
+      match Gegen.solve_td td e with
+      | Some (gen, card) ->
+          {typ with gen= Some gen; spec= Some spec; card= Some card}
+      | _ -> default
+    else (
+      Gegen.showbench (default.gen |> Option.get) (Some td) 1. ;
+      default )
 end
