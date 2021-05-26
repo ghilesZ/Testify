@@ -480,6 +480,10 @@ module Constrained = struct
           {typ with gen= Some gen; spec= Some spec; card= Some card}
       | _ -> default
     else
-      (* Gegen.showbench (default.gen |> Option.get) (Some td) 1. ; *)
-      default
+      try
+        Gegen.showbench
+          (default.gen |> Option.get)
+          (Some td) 1. (Lang.Rejection e) Tools.SSet.empty Tools.SSet.empty ;
+        default
+      with _ -> () ; default
 end

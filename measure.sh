@@ -1,54 +1,70 @@
 #!/bin/bash
 
+declare -A CONF
+
+CONF["poly"]="-domain poly"
+CONF["box08"]="-domain box -cover_size 8"
+CONF["box64"]="-domain box -cover_size 64"
+CONF["rs"]="-domain rs"
+
+setup () {
+    mkdir -p gen
+    rm -f gen/*
+}
+
 buildNrun () {
     ocamlfind ocamlopt -linkpkg -package qcheck testify_runtime.ml $1 -o bench
     ./bench
 }
 
-setup () {
-    mkdir -p gen
-    rm -f gen/*
-    rm -f res.txt
+run () {
+    cd gen
+    files=`find . -name "*.ml" | sort`
+    nbfiles=`find . -name "*.ml" | wc -l`
+    ln -f ../runtime/testify_runtime.ml testify_runtime.ml
+    i=1
+    echo "location kind var domain rate mu" >> $1db
+    for file in $files; do
+        echo -en "\rSpeed estimation for generator $i/$nbfiles"
+        buildNrun $file >> $1db
+        i=$((i+1))
+    done
+    echo ""
+    echo "Ouputting results for $1 in gen/$1db"
+    rm -f *.ml
+    rm -f *.o
+    cd ..
 }
 
 generate () {
-    i=1
     nb=`find examples/ -name "*.ml" | wc -l`
-    for file in `find examples/ -name "*.ml"`; do
-        echo -en "\rGenerating benchmark from $nb file: $i/$nb"
-        ./rewrite -bench reject $file -domain rs > /dev/null
-        ./rewrite -bench poly $file -domain poly > /dev/null
-        ./rewrite -bench box08 $file -domain box -cover_size 8 > /dev/null
-        ./rewrite -bench box32 $file -domain box -cover_size 32 > /dev/null
-        i=$((i+1))
+    echo "Building generators from $nb files"
+    for conf in ${!CONF[@]}; do
+        i=1
+        echo "Benchmarking for configuration: $conf"
+        for file in `find examples/ -name "*.ml"`; do
+            echo -en "\r$i/$nb"
+            ./rewrite -bench $conf ${CONF[${conf}]} $file > /dev/null
+            i=$((i+1))
+        done
+        nbgen=$(ls gen/*.ml 2>/dev/null | wc -l)
+        echo -e "\n$nbgen generator collected"
+        run $conf
     done
-    echo ""
-}
-
-run () {
-    cd gen
-    nb=$(ls *.ml | wc -l)
-    echo "$nb generator collected"
-    files=`find . -name "*.ml" | sort`
-    ln -f ../runtime/testify_runtime.ml testify_runtime.ml
-    i=1
-    echo "location kind var domain rate mu" >> res.txt
-    for file in $files; do
-        echo -en "\rSpeed estimation for generator $i/$nb"
-        buildNrun $file >> res.txt
-        i=$((i+1))
-    done
-    echo ""
-    echo "Ouputting results in gen/res.txt"
 }
 
 format () {
-    q -H "SELECT rate,mu FROM res.txt GROUP BY location,domain" > tmp
+    cd gen
+    q -H "SELECT kind,var FROM box08db GROUP BY location,domain" > tmp
+    arr=(box08 box64 poly rs)
+    for conf in ${arr[@]}; do
+        q -H "SELECT rate,mu FROM ${conf}db GROUP BY location,domain" > tmp$conf
+        mv tmp tmp2
+        paste -d " " tmp2 tmp$conf > tmp
+    done
     sed -e "s/ / \& /g" < tmp > tmp2
-    sed '0~4 s/$/\\\\ \\hline/g' < tmp2 > tmp3
-    awk 'NR%4 {printf("%s & ", $0); next} {print $0} ' tmp3  > tmp4
-    awk '{printf "\\ref{type%d} & %s\n", NR, $0}' < tmp4 > table.tex
+    sed 's/$/\\\\ \\hline/g' < tmp2 > table.tex
     echo "formatting results in gen/table.tex"
 }
 
-setup; generate; run; format
+setup; generate; format
