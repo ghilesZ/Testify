@@ -145,7 +145,7 @@ let print_loc fmt (l : Location.t) =
   let fn = Filename.(l.loc_start.pos_fname |> basename |> chop_extension) in
   Format.fprintf fmt "%s%i" fn l.loc_start.pos_lnum
 
-let showbench gen td umetric =
+let showbench gen td umetric constr i f =
   if !bench <> "" then (
     let td, loc =
       match td with
@@ -155,6 +155,8 @@ let showbench gen td umetric =
           , Format.asprintf "%a" print_loc td.ptype_loc )
     in
     let name = "gen/" ^ !bench ^ loc ^ ".ml" in
+    let nb_vars = SSet.cardinal i + SSet.cardinal f in
+    let stat = Format.asprintf "%s %i" (Lang.get_kind constr) nb_vars in
     if Sys.file_exists name then
       Format.eprintf "warning overwritting file %s\n%!" name ;
     let out = open_out name in
@@ -162,8 +164,8 @@ let showbench gen td umetric =
     Format.fprintf fmt "%s\n" td ;
     Format.fprintf fmt "open Testify_runtime\nlet gen=@.@[%a@]\n%s %f%!"
       print_expression gen
-      ( {|let () = Format.printf "|} ^ loc ^ " " ^ !bench
-      ^ {| %i %f\n%!" ((speed_estimate 1000000 gen)/1000) |} )
+      ( {|let () = Format.printf "|} ^ loc ^ " " ^ stat ^ " " ^ !bench
+      ^ {| %i %.2F\n%!" ((speed_estimate 1000000 gen)/1000) |} )
       umetric ;
     Format.pp_print_flush fmt () ;
     flush out ;
@@ -196,7 +198,7 @@ let flatten_record labs sat td =
     let unflatten, i_s, f_s = flatten_record labs pat in
     let inner, outer, total = get_generators i_s f_s constr !max_size in
     let g = craft_generator inner outer total pat unflatten in
-    showbench g (Some td) (u_metric inner total) ;
+    showbench g (Some td) (u_metric inner total) constr i_s f_s ;
     Some (g, total)
   with Lang.OutOfSubset _ -> None
 
@@ -211,7 +213,7 @@ let flatten_abstract td sat =
             get_generators i_s f_s constr !max_size
           in
           let g = craft_generator inner outer total pat unflatten in
-          showbench g (Some td) (u_metric inner total) ;
+          showbench g (Some td) (u_metric inner total) constr i_s f_s ;
           Some (g, total)
         with Lang.OutOfSubset _ -> None
       in

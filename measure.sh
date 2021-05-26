@@ -12,17 +12,17 @@ setup () {
 }
 
 generate () {
-i=1
-nb=`find examples/ -name "*.ml" | wc -l`
-for file in `find examples/ -name "*.ml"`; do
-    echo -en "\rGenerating benchmark from $nb file: $i/$nb"
-    ./rewrite -bench reject $file -domain rs > /dev/null
-    ./rewrite -bench poly $file -domain poly > /dev/null
-    ./rewrite -bench box08 $file -domain box > /dev/null
-    ./rewrite -bench box32 $file -domain box -cover_size 32 > /dev/null
-    i=$((i+1))
-done
-echo ""
+    i=1
+    nb=`find examples/ -name "*.ml" | wc -l`
+    for file in `find examples/ -name "*.ml"`; do
+        echo -en "\rGenerating benchmark from $nb file: $i/$nb"
+        ./rewrite -bench reject $file -domain rs > /dev/null
+        ./rewrite -bench poly $file -domain poly > /dev/null
+        ./rewrite -bench box08 $file -domain box -cover_size 8 > /dev/null
+        ./rewrite -bench box32 $file -domain box -cover_size 32 > /dev/null
+        i=$((i+1))
+    done
+    echo ""
 }
 
 run () {
@@ -32,7 +32,7 @@ run () {
     files=`find . -name "*.ml" | sort`
     ln -f ../runtime/testify_runtime.ml testify_runtime.ml
     i=1
-    echo "location domain rate mu" >> res.txt
+    echo "location kind var domain rate mu" >> res.txt
     for file in $files; do
         echo -en "\rSpeed estimation for generator $i/$nb"
         buildNrun $file >> res.txt
@@ -43,11 +43,12 @@ run () {
 }
 
 format () {
-    q -H "SELECT location,domain,rate,mu FROM res.txt GROUP BY location,domain" > table.tex
+    q -H "SELECT rate,mu FROM res.txt GROUP BY location,domain" > tmp
+    sed -e "s/ / \& /g" < tmp > tmp2
+    sed '0~4 s/$/\\\\ \\hline/g' < tmp2 > tmp3
+    awk 'NR%4 {printf("%s & ", $0); next} {print $0} ' tmp3  > tmp4
+    awk '{printf "\\ref{type%d} & %s\n", NR, $0}' < tmp4 > table.tex
     echo "formatting results in gen/table.tex"
 }
 
-setup
-generate
-run
-format
+setup; generate; run; format
