@@ -4,7 +4,7 @@ declare -A CONF
 
 CONF["poly"]="-domain poly"
 CONF["box08"]="-domain box -cover_size 8"
-CONF["box64"]="-domain box -cover_size 64"
+CONF["box64"]="-domain box -cover_size 16"
 CONF["rs"]="-domain rs"
 
 setup () {

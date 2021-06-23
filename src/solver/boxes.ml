@@ -26,6 +26,12 @@ let coerce_int = function
   | I i -> i
   | F _ -> invalid_arg "found float but was expected of type int"
 
+let coerce_single_int = function
+  | I (l, h) ->
+      if l = h then l
+      else invalid_arg "found interval but was expected singleton"
+  | F _ -> invalid_arg "found float but was expected of type int"
+
 let coerce_float = function
   | F f -> f
   | I _ -> invalid_arg "found int but was expected of type float"
@@ -137,7 +143,8 @@ let rec eval (a : t) : arith -> arith_annot = function
         | Div -> ItvI.div (coerce_int i1) (coerce_int i2) |> eval_int
         | MulF -> ItvF.mul (coerce_float i1) (coerce_float i2) |> eval_float
         | DivF -> ItvF.div (coerce_float i1) (coerce_float i2) |> eval_float
-        | _ -> failwith "pow not implemented yet"
+        | Pow ->
+            ItvF.pow (coerce_float i1) (coerce_single_int i2) |> eval_float
       in
       (ABinop (b1, o, b2), r)
   | Neg e ->
@@ -191,7 +198,12 @@ let rec refine (a : t) e (x : eval) : t =
         | SubF ->
             ItvF.bwd_sub (coerce_float i1) (coerce_float i2) (coerce_float x)
             |> Option.get |> map_pair eval_float
-        | _ -> failwith "mul div pow not implemented yet"
+        | Pow ->
+            ItvF.bwd_pow (coerce_float i1) (coerce_single_int i2)
+              (coerce_float x)
+            |> Option.get
+            |> fun x -> (F x, i2)
+        | _ -> failwith "mul div not implemented yet"
       in
       refine (refine a e1 j1) e2 j2
   | AToInt (e, i) ->

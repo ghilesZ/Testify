@@ -57,6 +57,16 @@ let mul (_l1, _h1) (_l2, _h2) = failwith "Itvf.mul"
 
 let div (_l1, _h1) (_l2, _h2) = failwith "Itvf.div"
 
+let rec pow (l, h) i =
+  if i = 0 then (Q.one, Q.one)
+  else if i = 1 then (l, h)
+  else if i > 0 then pow (Q.mul l l, Q.mul h h) (i - 1)
+  else pow (h, l) (-i)
+
+let pow itv i =
+  let i = Z.to_int i in
+  pow itv i
+
 (* Backward operators *)
 
 let merge_bot2 x y =
@@ -71,6 +81,8 @@ let bwd_sub (i1 : t) (i2 : t) (r : t) : (t * t) option =
   merge_bot2 (meet i1 (add i2 r)) (meet i2 (sub i1 r))
 
 let bwd_neg (i : t) (r : t) : t option = meet i (neg r)
+
+let bwd_pow itv _i _r = Some itv
 
 (* Guards *)
 

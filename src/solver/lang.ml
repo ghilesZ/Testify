@@ -246,3 +246,5 @@ let get_kind c =
     | Comparison _ -> "other"
   in
   loop c
+
+exception Split of constr * constr
