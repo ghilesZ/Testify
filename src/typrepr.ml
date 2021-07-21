@@ -14,15 +14,15 @@ type t =
   ; print: expression option }
 
 let print_expr fmt e =
-  Format.fprintf fmt "```ocaml@.@[%a@]\n```" print_expression e
+  Format.fprintf fmt "\n```ocaml@.@[%a@]\n```" print_expression e
 
 let print_card =
   let z15 = Z.of_int 32768 in
   let close_log z =
     let down = Z.log2 z in
     let up = Z.log2 z in
-    let two = Z.of_int 2 in
-    if Z.sub z (Z.shift_left two down) < Z.sub (Z.shift_left two up) z then
+    let z2 = Z.of_int 2 in
+    if Z.sub z (Z.shift_left z2 down) < Z.sub (Z.shift_left z2 up) z then
       down
     else up
   in
@@ -33,25 +33,14 @@ let print_card =
     else Format.fprintf fmt "%a" Z.pp_print z
 
 let print fmt {gen; spec; card; print} =
-  Format.fprintf fmt "- Printer: " ;
-  ( match print with
-  | None -> Format.fprintf fmt "no printer derived"
-  | Some e -> Format.fprintf fmt "\n%a" print_expr e ) ;
-  Format.fprintf fmt "\n" ;
-  Format.fprintf fmt "- Specification: " ;
-  ( match spec with
-  | None -> Format.fprintf fmt " no specification derived"
-  | Some e -> Format.fprintf fmt "\n%a" print_expr e ) ;
-  Format.fprintf fmt "\n" ;
-  Format.fprintf fmt "- Cardinality estimation: " ;
-  ( match card with
-  | None -> Format.fprintf fmt " no cardinality derived"
-  | Some c -> Format.fprintf fmt "%a" print_card c ) ;
-  Format.fprintf fmt "\n" ;
-  Format.fprintf fmt "- Generator: " ;
-  match gen with
-  | None -> Format.fprintf fmt " no generator derived"
-  | Some e -> Format.fprintf fmt "\n%a" print_expr e
+  let print_opt f fmt = function
+    | None -> Format.fprintf fmt " none"
+    | Some e -> Format.fprintf fmt "%a" f e
+  in
+  Format.fprintf fmt "- Printer:%a" (print_opt print_expr) print ;
+  Format.fprintf fmt "\n- Specification:%a" (print_opt print_expr) spec ;
+  Format.fprintf fmt "\n- Cardinality: %a" (print_opt print_card) card ;
+  Format.fprintf fmt "\n- Generator: %a" (print_opt print_expr) gen
 
 let get_generator p = p.gen
 
