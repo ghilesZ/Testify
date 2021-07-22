@@ -60,8 +60,8 @@ which sets the number of runs to `$(NB)` if the variable `NB` is defined, and to
 You can then do for example `NB=100 dune runtest`
 
 ### Why a PPX for test generations?
-- because no one likes writing tests;
-- because having access to the source code during test generation is good;
+- because finding bug at compile-time is good; 
+- because writing tests is tedious and error-prone;
 - because of the 0 runtime overhead, as the *real* program and the tested one can be compiled separately.
 
 ## How is it done?

@@ -27,8 +27,7 @@ let print_card =
     else up
   in
   fun fmt z ->
-    (* if cardinality is big, we print it as a power of two for easier
-       reading *)
+    (* if cardinality is big, we print it as a power of 2 for readability *)
     if Z.gt z z15 then Format.fprintf fmt "~2<sup>%i</sup>" (close_log z)
     else Format.fprintf fmt "%a" Z.pp_print z
 
@@ -37,18 +36,16 @@ let print fmt {gen; spec; card; print} =
   ( match print with
   | None -> Format.fprintf fmt "no printer derived"
   | Some e -> Format.fprintf fmt "\n%a" print_expr e ) ;
-  Format.fprintf fmt "\n" ;
-  Format.fprintf fmt "- Specification: " ;
+  Format.fprintf fmt "\n- Specification: " ;
   ( match spec with
   | None -> Format.fprintf fmt " no specification derived"
   | Some e -> Format.fprintf fmt "\n%a" print_expr e ) ;
   Format.fprintf fmt "\n" ;
-  Format.fprintf fmt "- Cardinality estimation: " ;
+  Format.fprintf fmt "\n- Cardinality estimation: " ;
   ( match card with
   | None -> Format.fprintf fmt " no cardinality derived"
   | Some c -> Format.fprintf fmt "%a" print_card c ) ;
-  Format.fprintf fmt "\n" ;
-  Format.fprintf fmt "- Generator: " ;
+  Format.fprintf fmt "\n- Generator: " ;
   match gen with
   | None -> Format.fprintf fmt " no generator derived"
   | Some e -> Format.fprintf fmt "\n%a" print_expr e
@@ -479,11 +476,26 @@ module Constrained = struct
       | Some (gen, card) ->
           {typ with gen= Some gen; spec= Some spec; card= Some card}
       | _ -> default
-    else
-      try
-        Gegen.showbench
-          (default.gen |> Option.get)
-          (Some td) 1. (Lang.Rejection e) Tools.SSet.empty Tools.SSet.empty ;
-        default
-      with _ -> () ; default
+    else (
+      ( try
+          Gegen.showbench
+            (default.gen |> Option.get)
+            (Some td) 1. (Lang.Rejection e) Tools.SSet.empty Tools.SSet.empty
+        with _ -> () ) ;
+      default )
+end
+
+module Arrow = struct
+  let generator =
+    Option.map (fun g ->
+        lambda_s "rs" (lambda_s "_" (apply_nolbl g [exp_id "rs"])))
+
+  let printer = Some (lambda_s "_" (string_ "(_ -> _)"))
+
+  let make _input output =
+    let c = None in
+    let g = generator output.gen in
+    let p = printer in
+    let s = None in
+    make p g s c
 end

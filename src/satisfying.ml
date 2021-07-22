@@ -149,6 +149,13 @@ and derive_ctype (state : State.t) paramenv ct =
                   | _ -> raise Exit)
                 tup))
       with Exit -> None )
+    | Ptyp_arrow (Nolabel, input, output) -> (
+      match
+        ( derive_ctype state paramenv input
+        , derive_ctype state paramenv output )
+      with
+      | Some input, Some output -> Some (Typrepr.Arrow.make input output)
+      | _ -> None )
     | _ -> None )
 
 let derive (s : State.t) (td : type_declaration) =
@@ -259,7 +266,7 @@ let gather_tests vb state =
       Log.print "#### Declaration of a value *%s*\n%!" (md txt) ;
       match get_infos state vb.pvb_expr.pexp_desc with
       | None ->
-          Log.print "No type information for value `%s`\n%!" txt ;
+          Log.print "Missing requirement for value `%s`\n%!" txt ;
           []
       | Some (args, ct) -> (
           let info = derive_ctype state [] ct in

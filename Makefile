@@ -8,7 +8,7 @@ $(BIN):
 	@cp -f ./_build/default/.ppx/*/ppx.exe $@
 
 test:
-	@dune runtest --force -j 1 --no-buffer
+	@dune runtest --force -j1 --no-buffer
 
 clean:
 	@rm -f $(BIN)
