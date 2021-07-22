@@ -80,6 +80,7 @@ let weighted (gens : (float * 'a QCheck.Gen.t) list) : 'a QCheck.Gen.t =
   let total_weight = List.fold_left (fun acc (w, _) -> acc +. w) 0. gens in
   let rec aux cpt = function
     | [] -> assert false
+    | [(_, x)] -> x
     | (w, g) :: tl ->
         let cpt = cpt -. w in
         if cpt < 0. then g else aux cpt tl
@@ -92,21 +93,6 @@ let count = ref 1000
 
 let reject pred g = QCheck.find_example ~f:pred ~count:!count g
 
-(* Polyhedra primitives *)
-let f_vec f_i f_f i1 i2 =
-  List.map2
-    (fun (v1, i1) (v2, i2) ->
-      if v1 = v2 then
-        match (i1, i2) with
-        | GInt i1, GInt i2 -> (v1, GInt (f_i i1 i2))
-        | GFloat f1, GFloat f2 -> (v1, GFloat (f_f f1 f2))
-        | _ ->
-            Format.asprintf "Type mismatch for variable %s" v1 |> invalid_arg
-      else
-        Format.asprintf "Wrong order for variables %s and %s" v1 v2
-        |> invalid_arg)
-    i1 i2
-
 (* point obtained by translation of f1 by r*f1f2, r in [0;1]. FIXME: uniform
    for reals but not for floats *)
 let barycenter_f r f1 f2 = ((1. -. r) *. f1) +. (r *. f2)
@@ -115,28 +101,36 @@ let barycenter_f r f1 f2 = ((1. -. r) *. f1) +. (r *. f2)
 let barycenter_i r i1 i2 =
   ((1. -. r) *. float i1) +. (r *. float i2) |> int_of_float
 
+(* Polyhedra primitives *)
+let f_vec r i1 i2 =
+  List.map2
+    (fun (v1, i1) (_, i2) ->
+      match (i1, i2) with
+      | GInt i1, GInt i2 -> (v1, GInt (barycenter_i r i1 i2))
+      | GFloat f1, GFloat f2 -> (v1, GFloat (barycenter_f r f1 f2))
+      | _ ->
+          Format.asprintf "Type mismatch for variable %s" v1 |> invalid_arg)
+    i1 i2
+
 (* translation of i1 by r1*i1v1, r2*i1v2 ... rn*i1vn where r1 .. rn are
    random coeff in [0;1] *)
 let translate g1 (r : float list) vecs =
-  List.fold_left2
-    (fun p r v -> f_vec (barycenter_i r) (barycenter_f r) p v)
-    g1 r vecs
+  List.fold_left2 (fun p r v -> f_vec r p v) g1 r vecs
 
 let simplex (x : instance) (vectors : instance list) (nb_dim : int) seed =
   let sum = ref 0. in
   let random_vecs =
-    List.map
-      (function
-        | _ ->
-            let r = QCheck.Gen.float_bound_inclusive 1. seed in
-            sum := !sum +. r ;
-            r)
+    List.rev_map
+      (fun _ ->
+        let r = QCheck.Gen.float_bound_inclusive 1. seed in
+        sum := !sum +. r ;
+        r)
       vectors
   in
   translate x
-    ( if !sum > (nb_dim |> float_of_int) /. 2. then
-      List.map (fun f -> 1. -. f) random_vecs
-    else random_vecs )
+    ( if !sum > (nb_dim |> float) /. 2. then
+      List.rev_map (fun f -> 1. -. f) random_vecs
+    else List.rev random_vecs )
     vectors
 
 (* Redefinition of some operators to explicit types in constraints *)

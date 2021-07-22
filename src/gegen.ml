@@ -185,39 +185,31 @@ let solve_ct ct sat =
       let constr = Lang.of_ocaml body in
       let inner, outer, total = get_generators i_s f_s constr !max_size in
       let g = craft_generator inner outer total pat unflatten in
-      (* showbench g None (u_metric inner total) ; *)
       Some (g, total)
     with Lang.OutOfSubset _ -> None
   in
   res
 
-let flatten_record labs sat td =
+let flatten_record labs sat _td =
   try
     let pat, body = split_fun sat in
     let constr = Lang.of_ocaml body in
     let unflatten, i_s, f_s = flatten_record labs pat in
     let inner, outer, total = get_generators i_s f_s constr !max_size in
     let g = craft_generator inner outer total pat unflatten in
-    showbench g (Some td) (u_metric inner total) constr i_s f_s ;
     Some (g, total)
   with Lang.OutOfSubset _ -> None
 
 let flatten_abstract td sat =
   Option.bind td.ptype_manifest (fun ct ->
-      let res =
-        try
-          let pat, body = split_fun sat in
-          let unflatten, i_s, f_s = flatten_ct ct pat in
-          let constr = Lang.of_ocaml body in
-          let inner, outer, total =
-            get_generators i_s f_s constr !max_size
-          in
-          let g = craft_generator inner outer total pat unflatten in
-          showbench g (Some td) (u_metric inner total) constr i_s f_s ;
-          Some (g, total)
-        with Lang.OutOfSubset _ -> None
-      in
-      res)
+      try
+        let pat, body = split_fun sat in
+        let unflatten, i_s, f_s = flatten_ct ct pat in
+        let constr = Lang.of_ocaml body in
+        let inner, outer, total = get_generators i_s f_s constr !max_size in
+        let g = craft_generator inner outer total pat unflatten in
+        Some (g, total)
+      with Lang.OutOfSubset _ -> None)
 
 (* generator for constrained type declarations *)
 let solve_td td sat =

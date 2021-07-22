@@ -18,20 +18,18 @@ let print_exact =
 
 let print fmt = function
   | Exact z -> print_exact fmt z
-  | Approached q -> Format.fprintf fmt "%a (estimation)" Q.pp_print q
+  | Approached q -> Format.fprintf fmt "~%a" Q.pp_print q
 
-let sum c1 c2 =
+let map2 fz fq c1 c2 =
   match (c1, c2) with
-  | Exact c1, Exact c2 -> Exact (Z.add c1 c2)
+  | Exact c1, Exact c2 -> Exact (fz c1 c2)
   | Exact c1, Approached c2 | Approached c2, Exact c1 ->
       let c1 = Q.of_bigint c1 in
-      Approached (Q.add c1 c2)
-  | Approached c1, Approached c2 -> Approached (Q.add c1 c2)
+      Approached (fq c1 c2)
+  | Approached c1, Approached c2 -> Approached (fq c1 c2)
 
-let product c1 c2 =
-  match (c1, c2) with
-  | Exact c1, Exact c2 -> Exact (Z.mul c1 c2)
-  | Exact c1, Approached c2 | Approached c2, Exact c1 ->
-      let c1 = Q.of_bigint c1 in
-      Approached (Q.mul c1 c2)
-  | Approached c1, Approached c2 -> Approached (Q.mul c1 c2)
+let sum = map2 Z.add Q.add
+
+let product = map2 Z.mul Q.mul
+
+let sub = map2 Z.mul Q.mul

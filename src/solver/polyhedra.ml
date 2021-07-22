@@ -220,12 +220,13 @@ let default_volume abs =
   b.Abstract1.interval_array
   |> Array.fold_left
        (fun v i ->
-         v * (Intervalext.range i |> Scalarext.to_float |> int_of_float))
+         let r = Intervalext.range i |> Scalarext.to_float |> int_of_float in
+         if r = 0 then v else v * r)
        1
   |> Z.of_int
 
 let volume pol =
-  if is_simplex pol then vol_simplex pol else default_volume pol
+  (* if is_simplex pol then vol_simplex pol else *) default_volume pol
 
 open Migrate_parsetree
 open Ast_410
