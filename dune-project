@@ -1,2 +1,2 @@
 (lang dune 2.7)
-(name testify)
+(name ppx_testify)

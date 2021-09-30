@@ -41,14 +41,6 @@ let print fmt {gen; spec; card; print} =
   Format.fprintf fmt "\n- Cardinality: %a" (print_opt print_card) card ;
   Format.fprintf fmt "\n- Generator: %a" (print_opt print_expr) gen
 
-let get_generator p = p.gen
-
-let get_specification p = p.spec
-
-let get_cardinality p = p.card
-
-let get_printer p = p.print
-
 let empty = {gen= None; spec= None; card= None; print= None}
 
 let add_printer info p = {info with print= Some p}
