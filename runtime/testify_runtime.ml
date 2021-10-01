@@ -14,7 +14,8 @@ let add_const count name pred =
 let run_test () =
   List.rev !tests
   |> QCheck_base_runner.run_tests ~colors:true ~verbose:true
-  |> ignore
+  |> ignore ;
+  tests := []
 
 let set_seed = QCheck_base_runner.set_seed
 

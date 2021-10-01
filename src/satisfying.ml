@@ -309,9 +309,7 @@ let mapper =
     | [] -> ()
     | h :: _ ->
         let file, _, _ = Location.get_pos_info h.pstr_loc.loc_start in
-        if file <> !Log.fn then (
-          Log.set_output file ;
-          Log.print "# File **%s**\n" file ) ) ;
+        if file <> !Log.fn then Log.set_output file ) ;
     aux [] State.s0 str
   in
   let handle_attr m a =
@@ -320,14 +318,13 @@ let mapper =
     let res = default_mapper.attribute m a in
     decr in_attribute ; res
   in
-  let handle_module mapper modul =
-    let res = default_mapper.module_binding mapper modul in
-    let file, _, _ = Location.get_pos_info modul.pmb_loc.loc_start in
-    if file <> !Log.fn then (
-      Log.set_output file ;
-      Log.print "# File **%s**\n" file ) ;
-    let name = match modul.pmb_name.txt with None -> "_" | Some s -> s in
-    Log.print "## Module **%s**\n" name ;
+  let handle_module mapper module_ =
+    let name = match module_.pmb_name.txt with None -> "_" | Some s -> s in
+    let file, _, _ = Location.get_pos_info module_.pmb_loc.loc_start in
+    if file <> !Log.fn then Log.set_output file ;
+    Log.print "## Begining of module %s\n" name ;
+    let res = default_mapper.module_binding mapper module_ in
+    Log.print "## End of module %s\n" name ;
     res
   in
   { default_mapper with
