@@ -21,10 +21,26 @@ let set_output s =
     match !format with
     | None ->
         fn := s ;
+        mod_name := s ;
         let s = Filename.(chop_extension (basename s)) in
         let file = s ^ ".markdown" in
         let oc = open_out file in
         at_exit (fun () -> close_out oc) ;
         format := Some (Format.formatter_of_out_channel oc) ;
         print "# File **%s**\n" s
-    | Some _ -> ()
+    | Some _ -> print "# File **%s**\n" s
+
+let type_decl td =
+  let open Helper in
+  print "### Declaration of type\n" ;
+  print "- ```ocaml@.@[%a@]\n```\n" print_td td ;
+  print "- Kind: %s%s%s\n"
+    ( if Option.is_none (get_attribute_pstr "satisfying" td.ptype_attributes)
+    then ""
+    else "constrained " )
+    (if td.ptype_params = [] then "" else "polymorphic ")
+    ( match td.ptype_kind with
+    | Ptype_abstract -> "abstract type"
+    | Ptype_variant _ -> "sum type"
+    | Ptype_record _ -> "record type"
+    | Ptype_open -> "extensible type" )

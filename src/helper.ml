@@ -64,7 +64,9 @@ let ( &&@ ) a b = apply_nolbl_s " (&&) " [a; b]
 
 (* useful constructors *)
 let int_ x =
-  if x > 4096 || x < -4096 then
+  if x = min_int then exp_id "min_int"
+  else if x = max_int then exp_id "max_int"
+  else if x < -4096 || x > 4096 then
     let x = Format.asprintf "0x%x" x in
     Exp.constant (Pconst_integer (x, None))
   else Exp.constant (Const.int x)
@@ -73,7 +75,7 @@ let one = int_ 1
 
 let float_dec x = Exp.constant (Const.float (string_of_float x))
 
-let float_ x = Exp.constant (Pconst_float (Format.asprintf "%h" x, None))
+let float_ x = Exp.constant (Const.float (Format.asprintf "%h" x))
 
 let string_ x = Exp.constant (Const.string x)
 
@@ -144,7 +146,7 @@ let print_expression fmt e =
   Format.fprintf fmt "%a" Pprintast.expression (Conv.copy_expression e)
 
 let print_longident fmt l =
-  l |> Longident.flatten |> String.concat "" |> Format.fprintf fmt "%s"
+  l |> Longident.flatten |> String.concat "." |> Format.fprintf fmt "%s"
 
 let print_pat fmt p =
   Format.fprintf fmt "%a" Pprintast.pattern (Conv.copy_pattern p)

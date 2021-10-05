@@ -3,7 +3,6 @@ open Ast_410
 open Parsetree
 open Ast_mapper
 open Helper
-open State
 
 (** {1 AST management for test} *)
 
@@ -13,7 +12,7 @@ let number = ref 10000
 (* seed for reproducibility*)
 let seed : int option ref = ref None
 
-let set_seed x = seed := Some x
+let gen_set_seed x = seed := Some x
 
 (* test generation for constants *)
 let test_constant (name : string) loc (f : expression) =
@@ -28,7 +27,7 @@ let test (name : string) args =
        (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args)))
 
 (* call to set_seed *)
-let gen_set_seed x = letunit (apply_runtime "set_seed" [int_ x])
+let set_seed x = letunit (apply_runtime "set_seed" [int_ x])
 
 (* call to run_test*)
 let run () = letunit (apply_runtime "run_test" [unit])
@@ -69,7 +68,7 @@ let generate fn args out_print testname satisfy =
         ; apply_nolbl_s "sat_output" [satisfy] ]
 
 (* derivation function for type declaration *)
-let rec derive_decl (s : State.t) paramenv
+let rec derive_decl (s : Module_state.t) paramenv
     ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) =
   try
     match get_attribute_pstr "satisfying" ptype_attributes with
@@ -106,7 +105,7 @@ let rec derive_decl (s : State.t) paramenv
   with Invalid_argument _ | Exit -> None
 
 (* derivation function for core types *)
-and derive_ctype (state : State.t) paramenv ct =
+and derive_ctype (state : Module_state.t) paramenv ct =
   match get_attribute_pstr "satisfying" ct.ptyp_attributes with
   | Some e ->
       Option.map
@@ -115,9 +114,9 @@ and derive_ctype (state : State.t) paramenv ct =
   | None -> (
     match ct.ptyp_desc with
     | Ptyp_var var -> List.assoc_opt var paramenv
-    | Ptyp_constr ({txt; _}, []) -> State.get txt state
+    | Ptyp_constr ({txt; _}, []) -> Module_state.get txt state
     | Ptyp_constr ({txt; _}, l) -> (
-        let p = State.get_param txt state in
+        let p = Module_state.get_param txt state in
         try
           Option.bind p (fun p ->
               let newenv =
@@ -158,35 +157,6 @@ and derive_ctype (state : State.t) paramenv ct =
       | _ -> None )
     | _ -> None )
 
-let derive (s : State.t) (td : type_declaration) =
-  Log.print "### Declaration of type *%s*\n" td.ptype_name.txt ;
-  Log.print "- Declaration:\n ```ocaml@.@[%a@]\n```\n" print_td td ;
-  Log.print "- Kind: %s%s%s\n"
-    ( if Option.is_none (get_attribute_pstr "satisfying" td.ptype_attributes)
-    then ""
-    else "constrained " )
-    (if td.ptype_params = [] then "" else "polymorphic ")
-    ( match td.ptype_kind with
-    | Ptype_abstract -> "abstract type"
-    | Ptype_variant _ -> "sum type"
-    | Ptype_record _ -> "record type"
-    | Ptype_open -> "extensible type" ) ;
-  let id = lparse td.ptype_name.txt in
-  let res =
-    match td.ptype_params with
-    | [] -> (
-        let infos = derive_decl s [] td in
-        match infos with
-        | None ->
-            Log.print "- No info found\n\n%!" ;
-            s
-        | Some infos ->
-            Log.print "%a\n%!" Typrepr.print infos ;
-            update s id infos )
-    | _ -> update_param s id td
-  in
-  Log.print "\n\n\n" ; res
-
 (** {1 annotation handling} *)
 let check_gen vb (s : State.t) : State.t =
   match get_attribute_pstr "gen" vb.pvb_attributes with
@@ -194,7 +164,7 @@ let check_gen vb (s : State.t) : State.t =
   | Some {pexp_desc= Pexp_ident l; _} ->
       Log.print "Setting %a as a generator for %a\n%!" print_pat vb.pvb_pat
         print_longident l.txt ;
-      register_gen s l.txt vb.pvb_expr
+      State.register_gen s l.txt vb.pvb_expr
   | _ -> failwith "bad gen attribute"
 
 let check_print vb (s : State.t) =
@@ -203,16 +173,18 @@ let check_print vb (s : State.t) =
   | Some {pexp_desc= Pexp_ident l; _} ->
       Log.print "setting %a as a printer for %a\n%!" print_pat vb.pvb_pat
         print_longident l.txt ;
-      register_print s l.txt vb.pvb_expr
+      State.register_print s l.txt vb.pvb_expr
   | _ -> failwith "bad print attribute"
 
-let get_infos (s : State.t) e =
+let get_infos (s : Module_state.t) e =
   let open Typrepr in
   let get_gen_print pat =
     match pat.ppat_desc with
     | Ppat_construct ({txt= Lident "()"; _}, _) ->
         (* allow to omit the explicit type annotation for the unit pattern*)
-        let {gen; print; _} = Option.get (State.get (lparse "unit") s) in
+        let {gen; print; _} =
+          Option.get (Module_state.get (lparse "unit") s)
+        in
         (gen |> Option.get, print |> Option.get)
     | Ppat_constraint (_, t) -> (
         let {gen; print; _} = Option.get (derive_ctype s [] t) in
@@ -284,33 +256,54 @@ let gather_tests vb state =
               [] ) )
   | _ -> []
 
+let derive state (td : type_declaration) =
+  Log.type_decl td ;
+  let id = lparse td.ptype_name.txt in
+  let res =
+    match td.ptype_params with
+    | [] -> (
+        let infos = derive_decl state [] td in
+        match infos with
+        | None ->
+            Log.print "- No info found\n\n%!" ;
+            state
+        | Some infos ->
+            Log.print "%a\n%!" Typrepr.print infos ;
+            Module_state.update state id infos )
+    | _ -> Module_state.update_param state id td
+  in
+  Log.print "\n\n\n" ; res
+
 (* actual mapper *)
 let mapper =
   let in_attribute = ref 0 in
+  let state = ref Module_state.s0 in
   let handle_str mapper str =
-    let rec aux res state = function
+    let rec aux res = function
       | [] ->
+          (* end of structure, we run the collected tests*)
           let t =
-            match !seed with None -> res | Some x -> gen_set_seed x :: res
+            match !seed with None -> res | Some x -> set_seed x :: res
           in
           List.rev (if !in_attribute > 0 then res else run () :: t)
       (* type declaration *)
       | ({pstr_desc= Pstr_type (_, [t]); _} as h) :: tl ->
-          aux (h :: res) (derive state t) tl
+          state := derive !state t ;
+          aux (h :: res) tl
       (* value declaration *)
       | ({pstr_desc= Pstr_value (_, [pvb]); _} as h) :: tl ->
-          let tests = gather_tests pvb state in
-          let s = state |> check_gen pvb |> check_print pvb in
+          let tests = gather_tests pvb !state in
+          (* let s = global |> check_gen pvb |> check_print pvb in *)
           let h' = mapper.structure_item mapper h in
-          aux (tests @ (h' :: res)) s tl
-      | h :: tl -> aux (mapper.structure_item mapper h :: res) state tl
+          aux (tests @ (h' :: res)) tl
+      | h :: tl -> aux (mapper.structure_item mapper h :: res) tl
     in
     ( match str with
     | [] -> ()
     | h :: _ ->
         let file, _, _ = Location.get_pos_info h.pstr_loc.loc_start in
         if file <> !Log.fn then Log.set_output file ) ;
-    aux [] State.s0 str
+    aux [] str
   in
   let handle_attr m a =
     (* deactivate test generation in attributes *)
@@ -323,7 +316,9 @@ let mapper =
     let file, _, _ = Location.get_pos_info module_.pmb_loc.loc_start in
     if file <> !Log.fn then Log.set_output file ;
     Log.print "## Begining of module %s\n" name ;
+    state := Module_state.begin_ !state name ;
     let res = default_mapper.module_binding mapper module_ in
+    state := Module_state.end_ !state ;
     Log.print "## End of module %s\n" name ;
     res
   in

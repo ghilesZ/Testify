@@ -30,12 +30,18 @@ let s0 : t =
   empty
   |> add_id "unit" Typrepr.unit
   |> add_id "bool" Typrepr.bool
+  |> add_id "Bool.t" Typrepr.bool
   |> add_id "char" Typrepr.char
+  |> add_id "Char.t" Typrepr.char
   |> add_id "int" Typrepr.int
+  |> add_id "Int.t" Typrepr.int
   |> add_id "float" Typrepr.float
+  |> add_id "Float.t" Typrepr.float
   |> add_param_td "option" Typrepr.option_
+  |> add_param_td "Option.t" Typrepr.option_
   |> add_param_td "ref" Typrepr.ref_
   |> add_param_td "result" Typrepr.result_
+  |> add_param_td "Result.t" Typrepr.result_
 
 (* registering functions *)
 let register_print (s : t) lid p =
@@ -83,3 +89,28 @@ let update_param s id td =
     let param = {vars; body= td} in
     {s with params= Env.add id param s.params}
   with Exit -> s
+
+let lid_mod module_name id =
+  let id = Longident.flatten id in
+  lparse (List.fold_left (fun acc i -> acc ^ "." ^ i) module_name id)
+
+let end_scope module_name {types; params} =
+  let types =
+    let seq =
+      types |> Env.to_seq
+      |> Seq.map (fun (id, repr) -> (lid_mod module_name id, repr))
+    in
+    (* Seq.iter (fun (k, _) -> Format.printf "%a\n" print_longident k) seq ; *)
+    seq |> Env.of_seq
+  in
+  let params =
+    params |> Env.to_seq
+    |> Seq.map (fun (id, repr) -> (lid_mod module_name id, repr))
+    |> Env.of_seq
+  in
+  {types; params}
+
+let join scope1 scope2 =
+  let types = Env.fold Env.add scope1.types scope2.types in
+  let params = Env.fold Env.add scope1.params scope2.params in
+  {types; params}
