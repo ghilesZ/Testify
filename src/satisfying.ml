@@ -278,6 +278,18 @@ let derive state (td : type_declaration) =
 let mapper =
   let in_attribute = ref 0 in
   let state = ref Module_state.s0 in
+  let file = ref "" in
+  let get_file_name loc =
+    let fn, _, _ = Location.(get_pos_info loc.loc_start) in
+    if fn = "" then !Location.input_name else fn
+  in
+  let handle_location _ (loc : Location.t) =
+    let fn = get_file_name loc in
+    if Filename.check_suffix fn ".ml" && fn <> !file then (
+      Format.printf "switching from %s to %s\n" !file fn ;
+      file := fn ) ;
+    loc
+  in
   let handle_str mapper str =
     let rec aux res = function
       | [] ->
@@ -298,11 +310,6 @@ let mapper =
           aux (tests @ (h' :: res)) tl
       | h :: tl -> aux (mapper.structure_item mapper h :: res) tl
     in
-    ( match str with
-    | [] -> ()
-    | h :: _ ->
-        let file, _, _ = Location.get_pos_info h.pstr_loc.loc_start in
-        if file <> !Log.fn then Log.set_output file ) ;
     aux [] str
   in
   let handle_attr m a =
@@ -313,8 +320,6 @@ let mapper =
   in
   let handle_module mapper module_ =
     let name = match module_.pmb_name.txt with None -> "_" | Some s -> s in
-    let file, _, _ = Location.get_pos_info module_.pmb_loc.loc_start in
-    if file <> !Log.fn then Log.set_output file ;
     Log.print "## Begining of module %s\n" name ;
     state := Module_state.begin_ !state name ;
     let res = default_mapper.module_binding mapper module_ in
@@ -322,7 +327,9 @@ let mapper =
     Log.print "## End of module %s\n" name ;
     res
   in
+  Log.set_output () ;
   { default_mapper with
-    structure= handle_str
+    location= handle_location
+  ; structure= handle_str
   ; attribute= handle_attr
   ; module_binding= handle_module }
