@@ -162,3 +162,8 @@ let print_td fmt t =
 
 (* markdown escaping *)
 let md str = String.split_on_char '*' str |> String.concat "\\*"
+
+let capitalize_first_char str =
+  let b = Bytes.of_string str in
+  Bytes.set b 0 (Char.uppercase_ascii str.[0]) ;
+  Bytes.to_string b

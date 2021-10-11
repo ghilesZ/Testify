@@ -68,27 +68,27 @@ let generate fn args out_print testname satisfy =
         ; apply_nolbl_s "sat_output" [satisfy] ]
 
 (* derivation function for type declaration *)
-let rec derive_decl (s : Module_state.t) paramenv
+let rec derive_decl (s : Module_state.t) params
     ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) =
   try
     match get_attribute_pstr "satisfying" ptype_attributes with
     | Some e ->
         Some
           (Typrepr.Constrained.make_td td
-             ( derive_decl s paramenv {td with ptype_attributes= []}
+             ( derive_decl s params {td with ptype_attributes= []}
              |> Option.get )
              e)
     | None -> (
       match ptype_kind with
       | Ptype_abstract ->
-          Option.(join (map (derive_ctype s paramenv) ptype_manifest))
+          Option.(join (map (derive_ctype s params) ptype_manifest))
       | Ptype_variant constructors ->
           let constr_f c =
             match c.pcd_args with
             | Pcstr_tuple ct ->
                 ( c.pcd_name
                 , List.map
-                    (fun ct -> derive_ctype s paramenv ct |> Option.get)
+                    (fun ct -> derive_ctype s params ct |> Option.get)
                     ct )
             | Pcstr_record _labs -> raise Exit
           in
@@ -97,7 +97,7 @@ let rec derive_decl (s : Module_state.t) paramenv
           let labs =
             List.map
               (fun {pld_name; pld_type; _} ->
-                (pld_name.txt, derive_ctype s paramenv pld_type |> Option.get))
+                (pld_name.txt, derive_ctype s params pld_type |> Option.get))
               labs
           in
           Some (Typrepr.Record.make labs)
@@ -301,6 +301,7 @@ let mapper =
     in
     aux [] str
   in
+  (* load/save states at the beginning/end of each file *)
   let file_str m str =
     let fn = !Location.input_name in
     if Filename.extension fn = ".ml" && !str_depth = 0 then

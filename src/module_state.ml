@@ -1,3 +1,8 @@
+(** This module is a wrapper around the module state that handles the scoping
+    rules of OCaml modules *)
+
+(*TODO: open, aliases, includes *)
+
 type t = (string * State.t) list
 
 let print_module fmt (name, state) =
@@ -13,10 +18,8 @@ let s0 = [("stdlib", State.s0)]
 let empty name = [(name, State.empty)]
 
 let begin_ (states : t) name : t =
-  let name = Bytes.of_string name in
-  let up = Char.uppercase_ascii (Bytes.get name 0) in
-  Bytes.set name 0 up ;
-  (Bytes.to_string name, State.empty) :: states
+  let name = Helper.capitalize_first_char name in
+  (name, State.empty) :: states
 
 let end_ = function
   | (name, state) :: (name', state') :: tl ->
