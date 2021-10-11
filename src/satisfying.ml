@@ -331,7 +331,6 @@ let mapper =
     Log.print "## End of module %s\n" name ;
     res
   in
-  Log.set_output () ;
   { default_mapper with
     structure= file_str
   ; attribute= handle_attr

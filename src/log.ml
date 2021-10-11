@@ -14,11 +14,11 @@ let print x =
   else Format.ifprintf Format.std_formatter x
 
 let set_output () =
-  if !log then (
-    let file = "log.markdown" in
-    let oc = open_out file in
-    at_exit (fun () -> close_out oc) ;
-    format := Some (Format.formatter_of_out_channel oc) )
+  log := true ;
+  let file = "log.markdown" in
+  let oc = open_out file in
+  at_exit (fun () -> close_out oc) ;
+  format := Some (Format.formatter_of_out_channel oc)
 
 let type_decl td =
   let open Helper in
