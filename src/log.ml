@@ -16,7 +16,7 @@ let print x =
 let set_output () =
   log := true ;
   let file = "log.markdown" in
-  let oc = open_out file in
+  let oc = open_out_gen [Open_append; Open_creat] 0o777 file in
   at_exit (fun () -> close_out oc) ;
   format := Some (Format.formatter_of_out_channel oc)
 
