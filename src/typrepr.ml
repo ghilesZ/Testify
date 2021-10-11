@@ -16,21 +16,6 @@ type t =
 let print_expr fmt e =
   Format.fprintf fmt "\n```ocaml@.@[%a@]\n```" print_expression e
 
-let print_card =
-  let z15 = Z.of_int 32768 in
-  let close_log z =
-    let down = Z.log2 z in
-    let up = Z.log2 z in
-    let z2 = Z.of_int 2 in
-    if Z.sub z (Z.shift_left z2 down) < Z.sub (Z.shift_left z2 up) z then
-      down
-    else up
-  in
-  fun fmt z ->
-    (* if cardinality is big, we print it as a power of 2 for readability *)
-    if Z.gt z z15 then Format.fprintf fmt "~2<sup>%i</sup>" (close_log z)
-    else Format.fprintf fmt "%a" Z.pp_print z
-
 let print fmt {gen; spec; card; print} =
   let print_opt f fmt = function
     | None -> Format.fprintf fmt " none"
@@ -52,6 +37,12 @@ let add_specification info s = {info with spec= Some s}
 let free g c p = {print= Some p; gen= Some g; spec= None; card= Some c}
 
 let make print gen spec card = {gen; spec; card; print}
+
+let end_module name typ =
+  { typ with
+    gen= Option.map (let_open name) typ.gen
+  ; spec= Option.map (let_open name) typ.spec
+  ; print= Option.map (let_open name) typ.print }
 
 (* Predefined types *)
 

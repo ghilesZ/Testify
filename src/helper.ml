@@ -35,9 +35,18 @@ let apply_nolbl f args = Exp.apply f (List.map (fun a -> (Nolabel, a)) args)
 (* same as apply_nolbl but function name is a string *)
 let apply_nolbl_s s = apply_nolbl (exp_id s)
 
+let capitalize_first_char str =
+  let b = Bytes.of_string str in
+  Bytes.set b 0 (Char.uppercase_ascii str.[0]) ;
+  Bytes.to_string b
+
+(* opens locally the module "Name" and builds the expression *)
+let let_open mod_ exp =
+  let mod_ = capitalize_first_char mod_ in
+  Exp.open_ (Opn.mk (Mod.ident (lid_loc mod_))) exp
+
 (* opens the runtime and then build exp *)
-let open_runtime exp =
-  Exp.open_ (Opn.mk (Mod.ident (lid_loc "Testify_runtime"))) exp
+let open_runtime = let_open "Testify_runtime"
 
 (* calls a function defined in the runtime *)
 let apply_runtime s = apply_nolbl_s ("Testify_runtime." ^ s)
@@ -163,7 +172,18 @@ let print_td fmt t =
 (* markdown escaping *)
 let md str = String.split_on_char '*' str |> String.concat "\\*"
 
-let capitalize_first_char str =
-  let b = Bytes.of_string str in
-  Bytes.set b 0 (Char.uppercase_ascii str.[0]) ;
-  Bytes.to_string b
+(* pretty printing of large numbers: if cardinality is big, we print it as a
+   power of 2 for readability *)
+let print_card =
+  let z15 = Z.of_int 32768 in
+  let close_log z =
+    let down = Z.log2 z in
+    let up = Z.log2 z in
+    let z2 = Z.of_int 2 in
+    if Z.sub z (Z.shift_left z2 down) < Z.sub (Z.shift_left z2 up) z then
+      down
+    else up
+  in
+  fun fmt z ->
+    if Z.gt z z15 then Format.fprintf fmt "~2<sup>%i</sup>" (close_log z)
+    else Format.fprintf fmt "%a" Z.pp_print z

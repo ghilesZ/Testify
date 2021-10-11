@@ -106,7 +106,8 @@ let end_scope module_name {types; params} =
   let types =
     let seq =
       types |> Env.to_seq
-      |> Seq.map (fun (id, repr) -> (lid_mod module_name id, repr))
+      |> Seq.map (fun (id, repr) ->
+             (lid_mod module_name id, Typrepr.end_module module_name repr))
     in
     (* Seq.iter (fun (k, _) -> Format.printf "%a\n" print_longident k) seq ; *)
     seq |> Env.of_seq
