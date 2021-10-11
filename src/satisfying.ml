@@ -279,6 +279,10 @@ let mapper =
   let in_attr = ref 0 in
   let str_depth = ref 0 in
   let state = ref (Module_state.load ()) in
+  let root_of_ml_file () =
+    let fn = !Location.input_name in
+    Filename.extension fn = ".ml" && !str_depth = 0
+  in
   let handle_str mapper str =
     let rec aux res = function
       | [] ->
@@ -303,15 +307,14 @@ let mapper =
   in
   (* load/save states at the beginning/end of each file *)
   let file_str m str =
-    let fn = !Location.input_name in
-    if Filename.extension fn = ".ml" && !str_depth = 0 then
+    if root_of_ml_file () then
       state :=
         Module_state.begin_ !state
-          Filename.(fn |> basename |> chop_extension) ;
+          Filename.(!Location.input_name |> basename |> chop_extension) ;
     incr str_depth ;
     let res = handle_str m str in
     decr str_depth ;
-    if Filename.extension fn = ".ml" && !str_depth = 0 then (
+    if root_of_ml_file () then (
       state := Module_state.end_ !state ;
       Module_state.save !state ) ;
     res
@@ -324,11 +327,9 @@ let mapper =
   in
   let handle_module mapper module_ =
     let name = match module_.pmb_name.txt with None -> "_" | Some s -> s in
-    Log.print "## Begining of module %s\n" name ;
     state := Module_state.begin_ !state name ;
     let res = default_mapper.module_binding mapper module_ in
     state := Module_state.end_ !state ;
-    Log.print "## End of module %s\n" name ;
     res
   in
   { default_mapper with

@@ -19,10 +19,12 @@ let empty name = [(name, State.empty)]
 
 let begin_ (states : t) name : t =
   let name = Helper.capitalize_first_char name in
+  Log.print "## Begining of module %s\n" name ;
   (name, State.empty) :: states
 
 let end_ = function
   | (name, state) :: (name', state') :: tl ->
+      Log.print "## End of module %s\n" name ;
       let parent = (name', State.join (State.end_scope name state) state') in
       parent :: tl
   | _ -> invalid_arg "no module to end in scope"
