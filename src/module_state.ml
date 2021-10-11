@@ -1,10 +1,22 @@
 type t = (string * State.t) list
 
+let print_module fmt (name, state) =
+  Format.fprintf fmt "module:%s\n%a\n" name State.print state
+
+let print fmt t =
+  Format.pp_print_list
+    ~pp_sep:(fun fmt () -> Format.fprintf fmt "\n")
+    print_module fmt t
+
 let s0 = [("stdlib", State.s0)]
 
 let empty name = [(name, State.empty)]
 
-let begin_ (states : t) name : t = (name, State.empty) :: states
+let begin_ (states : t) name : t =
+  let name = Bytes.of_string name in
+  let up = Char.uppercase_ascii (Bytes.get name 0) in
+  Bytes.set name 0 up ;
+  (Bytes.to_string name, State.empty) :: states
 
 let end_ = function
   | (name, state) :: (name', state') :: tl ->
@@ -39,3 +51,15 @@ let update_param (s : t) id td =
   match s with
   | (name, h) :: tl -> (name, State.update_param h id td) :: tl
   | [] -> invalid_arg "no module in scope"
+
+let save (s : t) : unit =
+  let oc = open_out "lol.testify" in
+  Marshal.to_channel oc s [] ;
+  close_out oc
+
+let load () : t =
+  try
+    let ic = open_in "lol.testify" in
+    let res = Marshal.from_channel ic in
+    close_in ic ; res
+  with _ -> s0

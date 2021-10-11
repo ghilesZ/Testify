@@ -12,6 +12,14 @@ end)
 
 type t = {types: Typrepr.t Env.t; params: Typrepr.param Env.t}
 
+let print fmt t =
+  Env.iter
+    (fun lid _ -> Format.fprintf fmt "%a\n" print_longident lid)
+    t.types ;
+  Env.iter
+    (fun lid _ -> Format.fprintf fmt "_ %a\n" print_longident lid)
+    t.params
+
 let get_env (typconstr : Typrepr.param) (args : Typrepr.t list) =
   List.combine typconstr.vars args
 

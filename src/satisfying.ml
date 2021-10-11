@@ -276,20 +276,9 @@ let derive state (td : type_declaration) =
 
 (* actual mapper *)
 let mapper =
-  let in_attribute = ref 0 in
-  let state = ref Module_state.s0 in
-  let file = ref "" in
-  let get_file_name loc =
-    let fn, _, _ = Location.(get_pos_info loc.loc_start) in
-    if fn = "" then !Location.input_name else fn
-  in
-  let handle_location _ (loc : Location.t) =
-    let fn = get_file_name loc in
-    if Filename.check_suffix fn ".ml" && fn <> !file then (
-      Format.printf "switching from %s to %s\n" !file fn ;
-      file := fn ) ;
-    loc
-  in
+  let in_attr = ref 0 in
+  let str_depth = ref 0 in
+  let state = ref (Module_state.load ()) in
   let handle_str mapper str =
     let rec aux res = function
       | [] ->
@@ -297,7 +286,7 @@ let mapper =
           let t =
             match !seed with None -> res | Some x -> set_seed x :: res
           in
-          List.rev (if !in_attribute > 0 then res else run () :: t)
+          List.rev (if !in_attr > 0 then res else run () :: t)
       (* type declaration *)
       | ({pstr_desc= Pstr_type (_, [t]); _} as h) :: tl ->
           state := derive !state t ;
@@ -312,11 +301,25 @@ let mapper =
     in
     aux [] str
   in
+  let file_str m str =
+    let fn = !Location.input_name in
+    if Filename.extension fn = ".ml" && !str_depth = 0 then
+      state :=
+        Module_state.begin_ !state
+          Filename.(fn |> basename |> chop_extension) ;
+    incr str_depth ;
+    let res = handle_str m str in
+    decr str_depth ;
+    if Filename.extension fn = ".ml" && !str_depth = 0 then (
+      state := Module_state.end_ !state ;
+      Module_state.save !state ) ;
+    res
+  in
   let handle_attr m a =
     (* deactivate test generation in attributes *)
-    incr in_attribute ;
+    incr in_attr ;
     let res = default_mapper.attribute m a in
-    decr in_attribute ; res
+    decr in_attr ; res
   in
   let handle_module mapper module_ =
     let name = match module_.pmb_name.txt with None -> "_" | Some s -> s in
@@ -329,7 +332,6 @@ let mapper =
   in
   Log.set_output () ;
   { default_mapper with
-    location= handle_location
-  ; structure= handle_str
+    structure= file_str
   ; attribute= handle_attr
   ; module_binding= handle_module }
