@@ -134,6 +134,15 @@ let simplex (x : instance) (vectors : instance list) (nb_dim : int) seed =
     else List.rev random_vecs )
     vectors
 
+let memo f =
+  let tbl = Hashtbl.create 1000 in
+  fun arg ->
+    match Hashtbl.find_opt tbl arg with
+    | None ->
+        let value = f arg in
+        Hashtbl.add tbl arg value ; value
+    | Some value -> value
+
 (* Redefinition of some operators to explicit types in constraints *)
 
 let ( <=. ) : float -> float -> bool = ( <= )
@@ -159,15 +168,3 @@ let ( >= ) : int -> int -> bool = ( >= )
 let ( = ) : int -> int -> bool = ( = )
 
 let ( <> ) : int -> int -> bool = ( <> )
-
-(* Benchmarking stuff *)
-let speed_estimate nb gen =
-  let st = Random.get_state () in
-  let start = Unix.gettimeofday () in
-  for _ = 0 to nb do
-    let _ = gen st in
-    ()
-  done ;
-  let ending = Unix.gettimeofday () in
-  let elapsed = ending -. start in
-  int_of_float (float nb /. elapsed)

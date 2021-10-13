@@ -69,7 +69,7 @@ let filter_eq ((l1, h1) : t) ((l2, h2) : t) : t Consistency.t =
   if l1 = h1 && l2 = h2 && l1 = l2 then Sat
   else
     let l = max l1 l2 and h = min h1 h2 in
-    if l <= h then Filtered ((l, h), false) else Unsat
+    if l <= h then Filtered ((l, h), l1 = h1 || l2 = h2) else Unsat
 
 let filter_diseq ((l1, h1) as i1 : t) ((l2, h2) as i2 : t) :
     (t * t) Consistency.t =

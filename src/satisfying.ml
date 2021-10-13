@@ -307,10 +307,11 @@ let mapper =
   in
   (* load/save states at the beginning/end of each file *)
   let file_str m str =
-    if root_of_ml_file () then
+    if root_of_ml_file () then (
+      Log.print "new file: %s\n" !Location.input_name ;
       state :=
         Module_state.begin_ !state
-          Filename.(!Location.input_name |> basename |> chop_extension) ;
+          Filename.(!Location.input_name |> basename |> chop_extension) ) ;
     incr str_depth ;
     let res = handle_str m str in
     decr str_depth ;

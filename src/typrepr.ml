@@ -462,7 +462,8 @@ end
 module Arrow = struct
   let generator =
     Option.map (fun g ->
-        lambda_s "rs" (lambda_s "_" (apply_nolbl g [exp_id "rs"])))
+        lambda_s "rs"
+          (apply_nolbl_s "memo" [lambda_s "_" (apply_nolbl g [exp_id "rs"])]))
 
   let printer = Some (lambda_s "_" (string_ "(_ -> _)"))
 
