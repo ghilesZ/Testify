@@ -8,8 +8,6 @@ open Helper
 module Conv = Convert (OCaml_410) (OCaml_current)
 open Tools
 
-let bench = ref ""
-
 let dom = ref "box"
 
 let max_size = ref 8
@@ -144,32 +142,6 @@ let get_generators i_s f_s constr =
 let print_loc fmt (l : Location.t) =
   let fn = Filename.(l.loc_start.pos_fname |> basename |> chop_extension) in
   Format.fprintf fmt "%s%i" fn l.loc_start.pos_lnum
-
-let showbench gen td umetric constr i f =
-  if !bench <> "" then (
-    let td, loc =
-      match td with
-      | None -> ("", "")
-      | Some td ->
-          ( Format.asprintf "%a" print_td {td with ptype_manifest= None}
-          , Format.asprintf "%a" print_loc td.ptype_loc )
-    in
-    let name = "gen/" ^ !bench ^ loc ^ ".ml" in
-    let nb_vars = SSet.cardinal i + SSet.cardinal f in
-    let stat = Format.asprintf "%s %i" (Lang.get_kind constr) nb_vars in
-    if Sys.file_exists name then
-      Format.eprintf "warning overwritting file %s\n%!" name ;
-    let out = open_out name in
-    let fmt = Format.formatter_of_out_channel out in
-    Format.fprintf fmt "%s\n" td ;
-    Format.fprintf fmt "open Testify_runtime\nlet gen=@.@[%a@]\n%s %f%!"
-      print_expression gen
-      ( {|let () = Format.printf "|} ^ loc ^ " " ^ stat ^ " " ^ !bench
-      ^ {| %i %.2F\n%!" ((speed_estimate 1000000 gen)/1000) |} )
-      umetric ;
-    Format.pp_print_flush fmt () ;
-    flush out ;
-    close_out out )
 
 let u_metric inner total =
   let add = List.fold_left (fun acc (w, _e) -> Z.add acc w) Z.zero in

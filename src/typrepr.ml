@@ -445,18 +445,10 @@ module Constrained = struct
       ; spec= Some spec
       ; card= None }
     in
-    if !Gegen.dom <> "rs" then
-      match Gegen.solve_td td e with
-      | Some (gen, card) ->
-          {typ with gen= Some gen; spec= Some spec; card= Some card}
-      | _ -> default
-    else (
-      ( try
-          Gegen.showbench
-            (default.gen |> Option.get)
-            (Some td) 1. (Lang.Rejection e) Tools.SSet.empty Tools.SSet.empty
-        with _ -> () ) ;
-      default )
+    match Gegen.solve_td td e with
+    | Some (gen, card) ->
+        {typ with gen= Some gen; spec= Some spec; card= Some card}
+    | _ -> default
 end
 
 module Arrow = struct

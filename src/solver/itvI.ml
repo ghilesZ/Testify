@@ -50,13 +50,11 @@ let bwd_neg (i : t) (r : t) : t option = meet i (neg r)
 (* Guards *)
 
 let filter_leq ((l1, h1) : t) ((l2, h2) : t) : (t * t) Consistency.t =
-  let open Consistency in
   if Z.leq h1 l2 then Sat
   else if Z.gt l1 h2 then Unsat
   else Filtered (((l1, Z.min h1 h2), (Z.max l1 l2, h2)), l1 = h1 || l2 = h2)
 
 let filter_lt ((l1, h1) : t) ((l2, h2) : t) : (t * t) Consistency.t =
-  let open Consistency in
   if Z.lt h1 l2 then Sat
   else if Z.geq l1 h2 then Unsat
   else
@@ -65,7 +63,6 @@ let filter_lt ((l1, h1) : t) ((l2, h2) : t) : (t * t) Consistency.t =
       , l1 = h1 || l2 = h2 )
 
 let filter_eq ((l1, h1) : t) ((l2, h2) : t) : t Consistency.t =
-  let open Consistency in
   if l1 = h1 && l2 = h2 && l1 = l2 then Sat
   else
     let l = max l1 l2 and h = min h1 h2 in
@@ -73,7 +70,6 @@ let filter_eq ((l1, h1) : t) ((l2, h2) : t) : t Consistency.t =
 
 let filter_diseq ((l1, h1) as i1 : t) ((l2, h2) as i2 : t) :
     (t * t) Consistency.t =
-  let open Consistency in
   if l1 = h1 && l2 = h2 && l1 = l2 then Unsat
   else if Option.is_some (meet i1 i2) then
     Filtered ((i1, i2), l1 = h1 || l2 = h2)
