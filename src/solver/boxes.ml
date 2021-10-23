@@ -6,9 +6,9 @@ open Tools
 
 type eval = I of ItvI.t | F of ItvF.t
 
-let eval_int i = I i
+let int i = I i
 
-let eval_float f = F f
+let float f = F f
 
 let float2 (x, y) = (F x, F y)
 
@@ -42,14 +42,14 @@ let bwd_to_int x r = ItvF.meet (coerce_float x) (to_float (coerce_int r))
 
 let meet x y =
   match (x, y) with
-  | I x, I y -> Option.map eval_int (ItvI.meet x y)
-  | F x, F y -> Option.map eval_float (ItvF.meet x y)
+  | I x, I y -> Option.map int (ItvI.meet x y)
+  | F x, F y -> Option.map float (ItvF.meet x y)
   | _ -> invalid_arg "type error, should not occur"
 
 let filter_neg x r =
   match x with
-  | I x -> Option.map eval_int (ItvI.bwd_neg x (coerce_int r))
-  | F x -> Option.map eval_float (ItvF.bwd_neg x (coerce_float r))
+  | I x -> Option.map int (ItvI.bwd_neg x (coerce_int r))
+  | F x -> Option.map float (ItvF.bwd_neg x (coerce_float r))
 
 let filter_i_f i_f r_f (a : eval) (b : eval) : (eval * eval) Consistency.t =
   match (a, b) with
@@ -65,8 +65,8 @@ let filter_diseq = filter_i_f ItvI.filter_diseq ItvF.filter_diseq
 
 let filter_eq x1 x2 =
   match (x1, x2) with
-  | I x1, I x2 -> Consistency.map eval_int (ItvI.filter_eq x1 x2)
-  | F x1, F x2 -> Consistency.map eval_float (ItvF.filter_eq x1 x2)
+  | I x1, I x2 -> Consistency.map int (ItvI.filter_eq x1 x2)
+  | F x1, F x2 -> Consistency.map float (ItvF.filter_eq x1 x2)
   | _ -> invalid_arg "type error, should not occur"
 
 (* maps each variable to a (non-empty) interval *)
@@ -97,8 +97,8 @@ let volume_i (a : t) : Z.t =
 let volume a = Z.mul (volume_f a) (volume_i a)
 
 let find v a =
-  try SMap.find v a.ints |> eval_int
-  with Not_found -> SMap.find v a.floats |> eval_float
+  try SMap.find v a.ints |> int
+  with Not_found -> SMap.find v a.floats |> float
 
 let update key value a =
   try
@@ -125,43 +125,42 @@ let rec eval (a : t) : arith -> arith_annot = function
       (AVar v, r)
   | Int i ->
       let zi = Z.of_int i in
-      let zizi = (zi, zi) |> eval_int in
+      let zizi = (zi, zi) |> int in
       (AInt zizi, zizi)
   | Float f ->
       let qf = Q.of_float f in
-      let qfqf = (qf, qf) |> eval_float in
+      let qfqf = (qf, qf) |> float in
       (AFloat qfqf, qfqf)
   | Binop (e1, o, e2) ->
       let ((_, i1) as b1) = eval a e1 and ((_, i2) as b2) = eval a e2 in
       let r =
         match o with
-        | Add -> ItvI.add (coerce_int i1) (coerce_int i2) |> eval_int
-        | Sub -> ItvI.sub (coerce_int i1) (coerce_int i2) |> eval_int
-        | AddF -> ItvF.add (coerce_float i1) (coerce_float i2) |> eval_float
-        | SubF -> ItvF.sub (coerce_float i1) (coerce_float i2) |> eval_float
-        | Mul -> ItvI.mul (coerce_int i1) (coerce_int i2) |> eval_int
-        | Div -> ItvI.div (coerce_int i1) (coerce_int i2) |> eval_int
-        | MulF -> ItvF.mul (coerce_float i1) (coerce_float i2) |> eval_float
-        | DivF -> ItvF.div (coerce_float i1) (coerce_float i2) |> eval_float
-        | Pow ->
-            ItvF.pow (coerce_float i1) (coerce_single_int i2) |> eval_float
+        | Add -> ItvI.add (coerce_int i1) (coerce_int i2) |> int
+        | Sub -> ItvI.sub (coerce_int i1) (coerce_int i2) |> int
+        | AddF -> ItvF.add (coerce_float i1) (coerce_float i2) |> float
+        | SubF -> ItvF.sub (coerce_float i1) (coerce_float i2) |> float
+        | Mul -> ItvI.mul (coerce_int i1) (coerce_int i2) |> int
+        | Div -> ItvI.div (coerce_int i1) (coerce_int i2) |> int
+        | MulF -> ItvF.mul (coerce_float i1) (coerce_float i2) |> float
+        | DivF -> ItvF.div (coerce_float i1) (coerce_float i2) |> float
+        | Pow -> ItvF.pow (coerce_float i1) (coerce_single_int i2) |> float
       in
       (ABinop (b1, o, b2), r)
   | Neg e ->
       let ((_, i) as b) = eval a e in
-      let r = ItvI.neg (coerce_int i) |> eval_int in
+      let r = ItvI.neg (coerce_int i) |> int in
       (ANeg b, r)
   | NegF e ->
       let ((_, i) as b) = eval a e in
-      let r = ItvF.neg (coerce_float i) |> eval_float in
+      let r = ItvF.neg (coerce_float i) |> float in
       (ANeg b, r)
   | ToInt e ->
       let ((_, i) as b) = eval a e in
-      let r = coerce_float i |> to_int |> eval_int in
+      let r = coerce_float i |> to_int |> int in
       (AToInt b, r)
   | ToFloat e ->
       let ((_, i) as b) = eval a e in
-      let r = coerce_int i |> to_float |> eval_float in
+      let r = coerce_int i |> to_float |> float in
       (AToFloat b, r)
 
 let rec refine (a : t) e (x : eval) : t =
@@ -169,35 +168,33 @@ let rec refine (a : t) e (x : eval) : t =
   | AVar v -> update v (Option.get (meet x (find v a))) a
   | AFloat f ->
       ignore
-        (eval_float
-           (Option.get (ItvF.meet (coerce_float x) (coerce_float f)))) ;
+        (float (Option.get (ItvF.meet (coerce_float x) (coerce_float f)))) ;
       a
   | AInt i ->
-      ignore
-        (eval_int (Option.get (ItvI.meet (coerce_int x) (coerce_int i)))) ;
+      ignore (int (Option.get (ItvI.meet (coerce_int x) (coerce_int i)))) ;
       a
   | ANeg (e1, i1) ->
       refine a e1
-        (eval_int (Option.get (ItvI.bwd_neg (coerce_int i1) (coerce_int x))))
+        (int (Option.get (ItvI.bwd_neg (coerce_int i1) (coerce_int x))))
   | ANegF (e1, i1) ->
       refine a e1
-        (eval_float
+        (float
            (Option.get (ItvF.bwd_neg (coerce_float i1) (coerce_float x))))
   | ABinop ((e1, i1), o, (e2, i2)) ->
       let j1, j2 =
         match o with
         | Add ->
             ItvI.bwd_add (coerce_int i1) (coerce_int i2) (coerce_int x)
-            |> Option.get |> map_pair eval_int
+            |> Option.get |> map_pair int
         | Sub ->
             ItvI.bwd_sub (coerce_int i1) (coerce_int i2) (coerce_int x)
-            |> Option.get |> map_pair eval_int
+            |> Option.get |> map_pair int
         | AddF ->
             ItvF.bwd_add (coerce_float i1) (coerce_float i2) (coerce_float x)
-            |> Option.get |> map_pair eval_float
+            |> Option.get |> map_pair float
         | SubF ->
             ItvF.bwd_sub (coerce_float i1) (coerce_float i2) (coerce_float x)
-            |> Option.get |> map_pair eval_float
+            |> Option.get |> map_pair float
         | Pow ->
             ItvF.bwd_pow (coerce_float i1) (coerce_single_int i2)
               (coerce_float x)
@@ -207,10 +204,10 @@ let rec refine (a : t) e (x : eval) : t =
       in
       refine (refine a e1 j1) e2 j2
   | AToInt (e, i) ->
-      let j = bwd_to_int i x |> Option.get |> eval_float in
+      let j = bwd_to_int i x |> Option.get |> float in
       refine a e j
   | AToFloat (e, i) ->
-      let j = bwd_to_float i x |> Option.get |> eval_int in
+      let j = bwd_to_float i x |> Option.get |> int in
       refine a e j
 
 (* test transfer function. It reduces the domain of the variables in `a`
