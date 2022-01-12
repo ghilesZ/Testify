@@ -11,22 +11,24 @@ type t =
   { gen: expression option
   ; spec: expression option
   ; card: Z.t option
-  ; print: expression option }
+  ; print: expression option
+  ; collector: expression option }
 
 let print_expr fmt e =
   Format.fprintf fmt "\n```ocaml@.@[%a@]\n```" print_expression e
 
-let print fmt {gen; spec; card; print} =
+let print fmt {gen; spec; card; print; collector} =
   let print_opt f fmt = function
     | None -> Format.fprintf fmt " none"
     | Some e -> Format.fprintf fmt "%a" f e
   in
-  Format.fprintf fmt "- Printer:%a" (print_opt print_expr) print ;
-  Format.fprintf fmt "\n- Specification:%a" (print_opt print_expr) spec ;
-  Format.fprintf fmt "\n- Cardinality: %a" (print_opt print_card) card ;
-  Format.fprintf fmt "\n- Generator: %a" (print_opt print_expr) gen
+  Format.fprintf fmt "- Printer:%a\n" (print_opt print_expr) print ;
+  Format.fprintf fmt "- Specification:%a\n" (print_opt print_expr) spec ;
+  Format.fprintf fmt "- Cardinality: %a\n" (print_opt print_card) card ;
+  Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen ;
+  Format.fprintf fmt "- Collector: %a\n" (print_opt print_expr) collector
 
-let empty = {gen= None; spec= None; card= None; print= None}
+let empty = {gen= None; spec= None; card= None; print= None; collector= None}
 
 let add_printer info p = {info with print= Some p}
 
@@ -34,36 +36,48 @@ let add_generator info g = {info with gen= Some g}
 
 let add_specification info s = {info with spec= Some s}
 
-let free g c p = {print= Some p; gen= Some g; spec= None; card= Some c}
+let free g c p col =
+  {print= Some p; gen= Some g; spec= None; card= Some c; collector= Some col}
 
-let make print gen spec card = {gen; spec; card; print}
+let make print gen spec card collector = {gen; spec; card; print; collector}
 
 let end_module name typ =
   { typ with
     gen= Option.map (let_open name) typ.gen
   ; spec= Option.map (let_open name) typ.spec
-  ; print= Option.map (let_open name) typ.print }
+  ; print= Option.map (let_open name) typ.print
+  ; collector= Option.map (let_open name) typ.collector }
 
 (* Predefined types *)
 
-let unit = free (exp_id "QCheck.Gen.unit") Z.one (exp_id "QCheck.Print.unit")
+let unit =
+  free
+    (exp_id "QCheck.Gen.unit")
+    Z.one
+    (exp_id "QCheck.Print.unit")
+    (exp_id "Collect.unit")
 
 let bool =
-  free (exp_id "QCheck.Gen.bool") (Z.of_int 2) (exp_id "string_of_bool")
+  free
+    (exp_id "QCheck.Gen.bool")
+    (Z.of_int 2) (exp_id "string_of_bool") (exp_id "Collect.bool")
 
 let char =
-  free (exp_id "QCheck.Gen.char") (Z.of_int 256) (exp_id "string_of_char")
+  free
+    (exp_id "QCheck.Gen.char")
+    (Z.of_int 256) (exp_id "string_of_char") (exp_id "Collect.char")
 
 let int =
   free (exp_id "QCheck.Gen.int")
     (Z.pow (Z.of_int 2) (Sys.int_size - 1))
-    (exp_id "string_of_int")
+    (exp_id "string_of_int") (exp_id "Collect.int")
 
 let float =
   free
     (exp_id "QCheck.Gen.float")
     (Z.pow (Z.of_int 2) 64)
     (exp_id "string_of_float")
+    (exp_id "Collect.float")
 
 let param list = List.map (fun s -> (Typ.var s, Asttypes.Invariant)) list
 
@@ -124,7 +138,7 @@ let result_ =
       ~manifest:
         (Typ.poly
            [none_loc "a"; none_loc "b"]
-           (Typ.constr (lid_loc "error") [alpha; beta]))
+           (Typ.constr (lid_loc "error") [alpha; beta]) )
       "error" vars kind
   in
   {vars; body}
@@ -136,7 +150,8 @@ module Product = struct
   let gen_body typs =
     List.map
       (function
-        | {gen= Some g; _} -> apply_nolbl g [exp_id "rs"] | _ -> raise Exit)
+        | {gen= Some g; _} -> apply_nolbl g [exp_id "rs"] | _ -> raise Exit
+        )
       typs
     |> Exp.tuple
 
@@ -167,8 +182,9 @@ module Product = struct
   let cardinality typs =
     try
       List.fold_left
-        (fun acc -> function {card= Some c; _} -> Z.mul acc c
-          | _ -> raise Exit)
+        (fun acc -> function
+          | {card= Some c; _} -> Z.mul acc c
+          | _ -> raise Exit )
         Z.one typs
       |> Option.some
     with Exit -> None
@@ -188,9 +204,24 @@ module Product = struct
       lambda (Pat.tuple pats) b' |> Option.some
     with Exit -> None
 
+  let collector typs =
+    let get_name = id_gen_gen () in
+    let np = function
+      | {print= Some p; _} ->
+          let n, id = get_name () in
+          (apply_nolbl p [id], pat_s n)
+      | {print= None; _} -> raise Exit
+    in
+    try
+      let names, pats = List.split (List.map np typs) in
+      let b = string_concat ~sep:", " names in
+      let b' = string_concat [string_ "("; b; string_ ")"] in
+      lambda (Pat.tuple pats) b' |> Option.some
+    with Exit -> None
+
   let make typs =
     make (printer typs) (generator typs) (specification typs)
-      (cardinality typs)
+      (cardinality typs) (collector typs)
 end
 
 (** ADTs *)
@@ -201,7 +232,7 @@ module Sum = struct
         (fun acc (_constr, args) ->
           match Product.cardinality args with
           | Some c -> Z.add acc c
-          | _ -> raise Exit)
+          | _ -> raise Exit )
         Z.zero variants
       |> Option.some
     with Exit -> None
@@ -234,8 +265,8 @@ module Sum = struct
                (fun (constr, typs) ->
                  let card = Product.cardinality typs |> Option.get in
                  Helper.pair (weight card)
-                   (constr_generator constr typs |> Option.get))
-               variants) ]
+                   (constr_generator constr typs |> Option.get) )
+               variants ) ]
       |> Option.some
     with Exit | Invalid_argument _ -> None
 
@@ -249,7 +280,7 @@ module Sum = struct
         Exp.case
           (constr (Some (pat_s pat)))
           (string_concat
-             [string_ (txt ^ "("); apply_nolbl p [expr]; string_ ")"])
+             [string_ (txt ^ "("); apply_nolbl p [expr]; string_ ")"] )
         |> Option.some
     | [{print= None; _}] -> None
     | p ->
@@ -257,7 +288,7 @@ module Sum = struct
           List.map
             (fun _ ->
               let p, e = id () in
-              (pat_s p, e))
+              (pat_s p, e) )
             p
           |> List.split
         in
@@ -265,7 +296,7 @@ module Sum = struct
           (fun print ->
             Exp.case
               (constr (Some (Pat.tuple pat)))
-              (apply_nolbl print [Exp.tuple exp]))
+              (apply_nolbl print [Exp.tuple exp]) )
           (Product.printer p)
 
   let printer variants =
@@ -291,7 +322,7 @@ module Sum = struct
           List.map
             (fun _ ->
               let p, e = id () in
-              (pat_s p, e))
+              (pat_s p, e) )
             p
           |> List.split
         in
@@ -299,7 +330,8 @@ module Sum = struct
         ( pat
         , Option.map
             (fun spec ->
-              Exp.case (constr (Some pat)) (apply_nolbl spec [Exp.tuple exp]))
+              Exp.case (constr (Some pat)) (apply_nolbl spec [Exp.tuple exp])
+              )
             (Product.specification args) )
 
   let specification variants =
@@ -311,18 +343,32 @@ module Sum = struct
           (Exp.function_
              (List.map
                 (function p, None -> Exp.case p true_ | _, Some c -> c)
-                cases))
+                cases ) )
+    with Exit | Invalid_argument _ -> None
+
+  let collector variants =
+    try
+      let cases = List.map (fun (c, a) -> constr_spec c a) variants in
+      if List.for_all (fun (_, c) -> c = None) cases then None
+      else
+        Some
+          (Exp.function_
+             (List.map
+                (function p, None -> Exp.case p true_ | _, Some c -> c)
+                cases ) )
     with Exit | Invalid_argument _ -> None
 
   let make variants =
-    let c = cardinality variants in
-    let g = generator variants c in
-    let p = printer variants in
-    let s = specification variants in
-    make p g s c
+    let print = printer variants in
+    let card = cardinality variants in
+    let gen = generator variants card in
+    let spec = specification variants in
+    let col = collector variants in
+    make print gen spec card col
 end
 
 module Record = struct
+  (* TODO: *)
   let cardinality _fields = None
 
   let generator fields =
@@ -361,12 +407,28 @@ module Record = struct
       | _ -> (*record with 0 field*) assert false
     with Invalid_argument _ -> None
 
+  let collector fields =
+    let field (n, t) =
+      (apply_nolbl (t.spec |> Option.get) [exp_id n], (lid_loc n, pat_s n))
+    in
+    try
+      let fields = List.map field fields in
+      let fields, pat = List.split fields in
+      match fields with
+      | h :: tl ->
+          List.fold_left ( &&@ ) h tl
+          |> lambda (Pat.record pat Closed)
+          |> Option.some
+      | _ -> (*record with 0 field*) assert false
+    with Invalid_argument _ -> None
+
   let make fields =
     let c = cardinality fields in
     let g = generator fields in
     let p = printer fields in
     let s = specification fields in
-    make p g s c
+    let col = collector fields in
+    make p g s c col
 end
 
 module Constrained = struct
@@ -393,9 +455,9 @@ module Constrained = struct
                   else
                     Format.asprintf "label %a and %a not in same order"
                       print_longident l1.txt print_longident l2.txt
-                    |> invalid_arg)
-                r1 r2)
-             c)
+                    |> invalid_arg )
+                r1 r2 )
+             c )
       with Invalid_argument msg ->
         Format.eprintf "%s\n%!" msg ;
         None )
@@ -451,11 +513,14 @@ module Constrained = struct
     | _ -> default
 end
 
+(* generators for function 'a -> 'b are synthetized using only the 'b
+   generator, i.e : let fun_gen = fun _ -> gen_b (). Generators are memoized
+   to behave as mathematical functions *)
 module Arrow = struct
   let generator =
     Option.map (fun g ->
         lambda_s "rs"
-          (apply_nolbl_s "memo" [lambda_s "_" (apply_nolbl g [exp_id "rs"])]))
+          (apply_nolbl_s "memo" [lambda_s "_" (apply_nolbl g [exp_id "rs"])]) )
 
   let printer = Some (lambda_s "_" (string_ "(_ -> _)"))
 
@@ -464,5 +529,6 @@ module Arrow = struct
     let g = generator output.gen in
     let p = printer in
     let s = None in
-    make p g s c
+    let col = None in
+    make p g s c col
 end

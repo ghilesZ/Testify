@@ -69,7 +69,7 @@ let float_range a b =
           st ->
     let ratio = -.a /. (b -. a) in
     if Random.State.float st 1. < ratio then
-      -.QCheck.Gen.float_bound_inclusive (-.a) st
+      -.(QCheck.Gen.float_bound_inclusive (-.a) st)
     else QCheck.Gen.float_bound_inclusive b st
 
 let mk_float_range down up rs = float_range down up rs |> mk_float
@@ -102,6 +102,19 @@ let barycenter_f r f1 f2 = ((1. -. r) *. f1) +. (r *. f2)
 let barycenter_i r i1 i2 =
   ((1. -. r) *. float i1) +. (r *. float i2) |> int_of_float
 
+(* collectors *)
+module Collect = struct
+  let unit () = [()]
+
+  let bool (x : bool) = [x]
+
+  let char (x : char) = [x]
+
+  let int (x : int) = [x]
+
+  let float (x : float) = [x]
+end
+
 (* Polyhedra primitives *)
 let f_vec r i1 i2 =
   List.map2
@@ -110,7 +123,8 @@ let f_vec r i1 i2 =
       | GInt i1, GInt i2 -> (v1, GInt (barycenter_i r i1 i2))
       | GFloat f1, GFloat f2 -> (v1, GFloat (barycenter_f r f1 f2))
       | _ ->
-          Format.asprintf "Type mismatch for variable %s" v1 |> invalid_arg)
+          Format.asprintf "Type mismatch for variable %s" v1 |> invalid_arg
+      )
     i1 i2
 
 (* translation of i1 by r1*i1v1, r2*i1v2 ... rn*i1vn where r1 .. rn are
@@ -125,7 +139,7 @@ let simplex (x : instance) (vectors : instance list) (nb_dim : int) seed =
       (fun _ ->
         let r = QCheck.Gen.float_bound_inclusive 1. seed in
         sum := !sum +. r ;
-        r)
+        r )
       vectors
   in
   translate x

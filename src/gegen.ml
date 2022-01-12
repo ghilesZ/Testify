@@ -48,7 +48,7 @@ let flatten_ct core_type pattern =
           List.fold_left2
             (fun (acc, i_s, f_s) tt pt ->
               let s', i_s, f_s = aux i_s f_s tt pt in
-              (s' :: acc, i_s, f_s))
+              (s' :: acc, i_s, f_s) )
             ([], int_set, float_set) ttup ptup
         in
         let b =
@@ -69,7 +69,7 @@ let flatten_record labs _pattern =
             let r, i, f = flatten_ct pld_type (Pat.var pld_name) in
             ( (lid_loc pld_name.txt, apply_nolbl r [exp_id "i"]) :: acc
             , SSet.union i i_s
-            , SSet.union f f_s ))
+            , SSet.union f f_s ) )
           ([], SSet.empty, SSet.empty)
           labs
       in
@@ -96,13 +96,13 @@ let craft_generator inner outer total pattern r =
   let inner =
     List.map
       (fun (w, g) ->
-        (Q.div (Q.of_bigint w) (Q.of_bigint total) |> Q.to_float, g))
+        (Q.div (Q.of_bigint w) (Q.of_bigint total) |> Q.to_float, g) )
       inner
   in
   let outer =
     List.map
       (fun (w, g, r) ->
-        (Q.div (Q.of_bigint w) (Q.of_bigint total) |> Q.to_float, g, r))
+        (Q.div (Q.of_bigint w) (Q.of_bigint total) |> Q.to_float, g, r) )
       outer
   in
   match (inner, outer) with
@@ -116,13 +116,12 @@ let craft_generator inner outer total pattern r =
             let g =
               apply_nolbl_s "reject" [lambda pattern reject; r |><| g]
             in
-            cons_exp (Exp.tuple [float_dec w; g]) acc)
+            cons_exp (Exp.tuple [float_dec w; g]) acc )
           empty_list_exp (List.rev outer)
       in
       let inner_outer_gens =
         List.fold_left
-          (fun acc (w, g) ->
-            cons_exp (Exp.tuple [float_dec w; r |><| g]) acc)
+          (fun acc (w, g) -> cons_exp (Exp.tuple [float_dec w; r |><| g]) acc)
           outer_gens (List.rev inner)
       in
       apply_nolbl_s "weighted" [inner_outer_gens]
@@ -181,7 +180,7 @@ let flatten_abstract td sat =
         let inner, outer, total = get_generators i_s f_s constr !max_size in
         let g = craft_generator inner outer total pat unflatten in
         Some (g, total)
-      with Lang.OutOfSubset _ -> None)
+      with Lang.OutOfSubset _ -> None )
 
 (* generator for constrained type declarations *)
 let solve_td td sat =

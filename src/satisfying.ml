@@ -24,7 +24,7 @@ let test_constant (name : string) loc (f : expression) =
 let test (name : string) args =
   letunit
     (open_runtime
-       (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args)))
+       (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args)) )
 
 (* call to set_seed *)
 let set_seed x = letunit (apply_runtime "set_seed" [int_ x])
@@ -40,7 +40,8 @@ let generate fn args out_print testname satisfy =
     List.map
       (fun (g, p) ->
         let name, id = get_name () in
-        (let_ name (apply_nolbl g [exp_id "rs"]), apply_nolbl p [id], name))
+        (let_ name (apply_nolbl g [exp_id "rs"]), apply_nolbl p [id], name)
+        )
       args
   in
   match args with
@@ -51,7 +52,7 @@ let generate fn args out_print testname satisfy =
           (fun (l1, s1, args) (l2, s2, arg) ->
             ( (fun x -> l1 (l2 x))
             , string_concat ~sep:" " [s1; s2]
-            , exp_id arg :: args ))
+            , exp_id arg :: args ) )
           (g, s, [exp_id n])
           tl
       in
@@ -77,7 +78,7 @@ let rec derive_decl (s : Module_state.t) params
           (Typrepr.Constrained.make_td td
              ( derive_decl s params {td with ptype_attributes= []}
              |> Option.get )
-             e)
+             e )
     | None -> (
       match ptype_kind with
       | Ptype_abstract ->
@@ -97,7 +98,8 @@ let rec derive_decl (s : Module_state.t) params
           let labs =
             List.map
               (fun {pld_name; pld_type; _} ->
-                (pld_name.txt, derive_ctype s params pld_type |> Option.get))
+                (pld_name.txt, derive_ctype s params pld_type |> Option.get)
+                )
               labs
           in
           Some (Typrepr.Record.make labs)
@@ -105,7 +107,7 @@ let rec derive_decl (s : Module_state.t) params
   with Invalid_argument _ | Exit -> None
 
 (* derivation function for core types *)
-and derive_ctype (state : Module_state.t) paramenv ct =
+and derive_ctype (state : Module_state.t) paramenv ct : Typrepr.t option =
   match get_attribute_pstr "satisfying" ct.ptyp_attributes with
   | Some e ->
       Option.map
@@ -125,8 +127,8 @@ and derive_ctype (state : Module_state.t) paramenv ct =
                      (fun ct ->
                        match derive_ctype state paramenv ct with
                        | Some t -> t
-                       | _ -> raise Exit)
-                     l)
+                       | _ -> raise Exit )
+                     l )
               in
               match derive_decl state newenv p.body with
               | None -> raise Exit
@@ -134,7 +136,7 @@ and derive_ctype (state : Module_state.t) paramenv ct =
                   Log.print "Building a representation for type `%a`:\n"
                     print_coretype ct ;
                   Log.print "%a\n%!" Typrepr.print t ;
-                  Some t)
+                  Some t )
         with Exit -> None )
     | Ptyp_poly ([], ct) -> derive_ctype state paramenv ct
     | Ptyp_tuple tup -> (
@@ -145,8 +147,8 @@ and derive_ctype (state : Module_state.t) paramenv ct =
                 (fun t ->
                   match derive_ctype state paramenv t with
                   | Some t -> t
-                  | _ -> raise Exit)
-                tup))
+                  | _ -> raise Exit )
+                tup ) )
       with Exit -> None )
     | Ptyp_arrow (Nolabel, input, output) -> (
       match

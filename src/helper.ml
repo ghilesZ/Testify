@@ -106,7 +106,7 @@ let cons_exp h t = Exp.construct (lid_loc "( :: )") (Some (Exp.tuple [h; t]))
 
 let list_of_list l = List.fold_right cons_exp l empty_list_exp
 
-(* fresh identifier generator *)
+(* fresh identifier generator generator *)
 let id_gen_gen () =
   let cpt = ref 0 in
   fun () ->
@@ -115,8 +115,7 @@ let id_gen_gen () =
     (s, exp_id s)
 
 (* string concat with separator over ast expressions *)
-let string_concat ?sep l =
-  let sep = Option.value ~default:"" sep in
+let string_concat ?(sep = "") l =
   apply_nolbl_s "String.concat" [string_ sep; list_of_list l]
 
 (* keeps the attributes with name 'n'*)
