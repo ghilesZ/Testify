@@ -116,12 +116,12 @@ let craft_generator inner outer total pattern r =
             let g =
               apply_nolbl_s "reject" [lambda pattern reject; r |><| g]
             in
-            cons_exp (Exp.tuple [float_dec w; g]) acc )
+            cons_exp (Exp.tuple [float_ w; g]) acc )
           empty_list_exp (List.rev outer)
       in
       let inner_outer_gens =
         List.fold_left
-          (fun acc (w, g) -> cons_exp (Exp.tuple [float_dec w; r |><| g]) acc)
+          (fun acc (w, g) -> cons_exp (Exp.tuple [float_ w; r |><| g]) acc)
           outer_gens (List.rev inner)
       in
       apply_nolbl_s "weighted" [inner_outer_gens]

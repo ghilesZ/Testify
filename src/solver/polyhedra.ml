@@ -181,7 +181,7 @@ let barycenter = function
         iter
           (fun c1 v ->
             let c2 = get_coeff g2 v in
-            set_coeff res v (coeff_add c1 c2))
+            set_coeff res v (coeff_add c1 c2) )
           g1 ;
         res
       in
@@ -198,7 +198,7 @@ let dist g1 g2 =
     (fun c1 v ->
       let c2 = get_coeff g2 v in
       let diff = coeff_add (Coeffext.neg c1) c2 in
-      res := coeff_add !res (coeff_mul diff diff))
+      res := coeff_add !res (coeff_mul diff diff) )
     g1 ;
   !res |> Coeffext.to_mpqf |> Mpqf.to_string |> Q.of_string |> Q.to_bigint
 
@@ -221,7 +221,7 @@ let default_volume abs =
   |> Array.fold_left
        (fun v i ->
          let r = Intervalext.range i |> Scalarext.to_float |> int_of_float in
-         if r = 0 then v else v * r)
+         if r = 0 then v else v * r )
        1
   |> Z.of_int
 
@@ -250,8 +250,8 @@ let compile pol =
         (fun acc (w, p) ->
           cons_exp
             (Exp.tuple
-               [float_dec (Q.make w total |> Q.to_float); compile_simplex p])
-            acc)
+               [float_ (Q.make w total |> Q.to_float); compile_simplex p] )
+            acc )
         empty_list_exp simplices
     in
     apply_nolbl_s "weighted" [gens]

@@ -82,8 +82,6 @@ let int_ x =
 
 let one = int_ 1
 
-let float_dec x = Exp.constant (Const.float (string_of_float x))
-
 let float_ x = Exp.constant (Const.float (Format.asprintf "%h" x))
 
 let string_ x = Exp.constant (Const.string x)
@@ -151,22 +149,20 @@ let gray x = Format.asprintf "\x1b[37m%s\x1b[0m" x
 module Conv = Convert (OCaml_410) (OCaml_current)
 
 let print_expression fmt e =
-  Format.fprintf fmt "%a" Pprintast.expression (Conv.copy_expression e)
+  Pprintast.expression fmt (Conv.copy_expression e)
 
 let print_longident fmt l =
-  l |> Longident.flatten |> String.concat "." |> Format.fprintf fmt "%s"
+  l |> Longident.flatten |> String.concat "." |> Format.pp_print_string fmt
 
-let print_pat fmt p =
-  Format.fprintf fmt "%a" Pprintast.pattern (Conv.copy_pattern p)
+let print_pat fmt p = Pprintast.pattern fmt (Conv.copy_pattern p)
 
-let print_coretype fmt t =
-  Format.fprintf fmt "%a" Pprintast.core_type (Conv.copy_core_type t)
+let print_coretype fmt t = Pprintast.core_type fmt (Conv.copy_core_type t)
 
 let print_td fmt t =
   let sig_ =
     {psig_desc= Psig_type (Nonrecursive, [t]); psig_loc= Location.none}
   in
-  Format.fprintf fmt "%a" Pprintast.signature (Conv.copy_signature [sig_])
+  Pprintast.signature fmt (Conv.copy_signature [sig_])
 
 (* markdown escaping *)
 let md str = String.split_on_char '*' str |> String.concat "\\*"
@@ -177,7 +173,7 @@ let print_card =
   let z15 = Z.of_int 32768 in
   let close_log z =
     let down = Z.log2 z in
-    let up = Z.log2 z in
+    let up = succ down in
     let z2 = Z.of_int 2 in
     if Z.sub z (Z.shift_left z2 down) < Z.sub (Z.shift_left z2 up) z then
       down
@@ -185,4 +181,4 @@ let print_card =
   in
   fun fmt z ->
     if Z.gt z z15 then Format.fprintf fmt "~2<sup>%i</sup>" (close_log z)
-    else Format.fprintf fmt "%a" Z.pp_print z
+    else Z.pp_print fmt z

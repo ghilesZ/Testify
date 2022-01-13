@@ -20,7 +20,7 @@ let print_expr fmt e =
 let print fmt {gen; spec; card; print; collector} =
   let print_opt f fmt = function
     | None -> Format.fprintf fmt " none"
-    | Some e -> Format.fprintf fmt "%a" f e
+    | Some e -> f fmt e
   in
   Format.fprintf fmt "- Printer:%a\n" (print_opt print_expr) print ;
   Format.fprintf fmt "- Specification:%a\n" (print_opt print_expr) spec ;
@@ -207,16 +207,16 @@ module Product = struct
   let collector typs =
     let get_name = id_gen_gen () in
     let np = function
-      | {print= Some p; _} ->
+      | {collector= Some c; _} ->
           let n, id = get_name () in
-          (apply_nolbl p [id], pat_s n)
-      | {print= None; _} -> raise Exit
+          (apply_nolbl c [id], pat_s n)
+      | {collector= None; _} -> raise Exit
     in
     try
       let names, pats = List.split (List.map np typs) in
-      let b = string_concat ~sep:", " names in
-      let b' = string_concat [string_ "("; b; string_ ")"] in
-      lambda (Pat.tuple pats) b' |> Option.some
+      let b = list_of_list names in
+      lambda (Pat.tuple pats) (apply_nolbl_s "List.flatten" [b])
+      |> Option.some
     with Exit -> None
 
   let make typs =
