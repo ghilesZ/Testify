@@ -58,7 +58,7 @@ let register_print (s : t) lid p =
       Env.update lid
         (function
           | None -> Some Typrepr.(add_printer empty p)
-          | Some info -> Some Typrepr.(add_printer info p))
+          | Some info -> Some Typrepr.(add_printer info p) )
         s.types }
 
 let register_gen (s : t) lid g =
@@ -67,7 +67,7 @@ let register_gen (s : t) lid g =
       Env.update lid
         (function
           | None -> Some Typrepr.(add_generator empty g)
-          | Some info -> Some Typrepr.(add_generator info g))
+          | Some info -> Some Typrepr.(add_generator info g) )
         s.types }
 
 let register_prop (s : t) lid spec =
@@ -76,7 +76,7 @@ let register_prop (s : t) lid spec =
       Env.update lid
         (function
           | None -> Some Typrepr.(add_specification empty spec)
-          | Some info -> Some Typrepr.(add_specification info spec))
+          | Some info -> Some Typrepr.(add_specification info spec) )
         s.types }
 
 (* getters *)
@@ -102,19 +102,16 @@ let lid_mod module_name id =
   let id = Longident.flatten id in
   lparse (List.fold_left (fun acc i -> acc ^ "." ^ i) module_name id)
 
-let end_scope module_name {types; params} =
+let end_scope mod_name {types; params} =
   let types =
-    let seq =
-      types |> Env.to_seq
-      |> Seq.map (fun (id, repr) ->
-             (lid_mod module_name id, Typrepr.end_module module_name repr))
-    in
-    (* Seq.iter (fun (k, _) -> Format.printf "%a\n" print_longident k) seq ; *)
-    seq |> Env.of_seq
+    types |> Env.to_seq
+    |> Seq.map (fun (id, r) ->
+           (lid_mod mod_name id, Typrepr.end_module mod_name r) )
+    |> Env.of_seq
   in
   let params =
     params |> Env.to_seq
-    |> Seq.map (fun (id, repr) -> (lid_mod module_name id, repr))
+    |> Seq.map (fun (id, repr) -> (lid_mod mod_name id, repr))
     |> Env.of_seq
   in
   {types; params}

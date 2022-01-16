@@ -41,6 +41,13 @@ let free g c p col =
 
 let make print gen spec card collector = {gen; spec; card; print; collector}
 
+let make_rec typ_name =
+  { print= Some (exp_id ("print_" ^ typ_name))
+  ; gen= Some (exp_id ("gen_" ^ typ_name))
+  ; spec= Some (exp_id ("spec_" ^ typ_name))
+  ; collector= Some (exp_id ("collect_" ^ typ_name))
+  ; card= None }
+
 let end_module name typ =
   { typ with
     gen= Option.map (let_open name) typ.gen
@@ -310,8 +317,8 @@ module Sum = struct
     let constr pat = Pat.construct (lid_loc txt) pat in
     match args with
     | [] -> (constr None, None)
-    | [{spec; _}] ->
-        let prop = Option.get spec in
+    | [last] ->
+        let prop = Option.get last.spec in
         let id = id_gen_gen () in
         let p, e = id () in
         let pat = constr (Some (pat_s p)) in
@@ -334,6 +341,34 @@ module Sum = struct
               )
             (Product.specification args) )
 
+  let constr_collect {txt; _} args =
+    let constr pat = Pat.construct (lid_loc txt) pat in
+    match args with
+    | [] -> (constr None, None)
+    | [last] ->
+        let prop = Option.get last.collector in
+        let id = id_gen_gen () in
+        let p, e = id () in
+        let pat = constr (Some (pat_s p)) in
+        (pat, Exp.case pat (apply_nolbl prop [e]) |> Option.some)
+    | p ->
+        let id = id_gen_gen () in
+        let pat, exp =
+          List.map
+            (fun _ ->
+              let p, e = id () in
+              (pat_s p, e) )
+            p
+          |> List.split
+        in
+        let pat = Pat.tuple pat in
+        ( pat
+        , Option.map
+            (fun col ->
+              Exp.case (constr (Some pat)) (apply_nolbl col [Exp.tuple exp])
+              )
+            (Product.collector args) )
+
   let specification variants =
     try
       let cases = List.map (fun (c, a) -> constr_spec c a) variants in
@@ -348,13 +383,14 @@ module Sum = struct
 
   let collector variants =
     try
-      let cases = List.map (fun (c, a) -> constr_spec c a) variants in
+      let cases = List.map (fun (c, a) -> constr_collect c a) variants in
       if List.for_all (fun (_, c) -> c = None) cases then None
       else
         Some
           (Exp.function_
              (List.map
-                (function p, None -> Exp.case p true_ | _, Some c -> c)
+                (function
+                  | p, None -> Exp.case p empty_list_exp | _, Some c -> c )
                 cases ) )
     with Exit | Invalid_argument _ -> None
 
@@ -372,11 +408,10 @@ module Record = struct
   let cardinality _fields = None
 
   let generator fields =
-    let field name t =
-      (lid_loc name, apply_nolbl (t.gen |> Option.get) [exp_id "rs"])
+    let field (n, t) =
+      (lid_loc n, apply_nolbl (t.gen |> Option.get) [exp_id "rs"])
     in
-    let fields = List.map (fun (n, t) -> field n t) fields in
-    Exp.record fields None |> lambda_s "rs" |> Option.some
+    Exp.record (List.map field fields) None |> lambda_s "rs" |> Option.some
 
   let printer fields =
     let field (n, t) =

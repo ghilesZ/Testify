@@ -4,8 +4,6 @@ open Parsetree
 open Ast_mapper
 open Helper
 
-(** {1 AST management for test} *)
-
 (* number of generation per test *)
 let number = ref 10000
 
@@ -68,96 +66,68 @@ let generate fn args out_print testname satisfy =
         ; apply_nolbl_s "opt_gen" [go]
         ; apply_nolbl_s "sat_output" [satisfy] ]
 
+(* collects the id of all types being declared together *)
+let get_ids td = [td.ptype_name]
+
 (* derivation function for type declaration *)
 let rec derive_decl (s : Module_state.t) params
-    ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) =
+    ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) : Typrepr.t =
   try
     match get_attribute_pstr "satisfying" ptype_attributes with
     | Some e ->
-        Some
-          (Typrepr.Constrained.make_td td
-             ( derive_decl s params {td with ptype_attributes= []}
-             |> Option.get )
-             e )
+        Typrepr.Constrained.make_td td
+          (derive_decl s params {td with ptype_attributes= []})
+          e
     | None -> (
       match ptype_kind with
       | Ptype_abstract ->
-          Option.(join (map (derive_ctype s params) ptype_manifest))
+          Option.fold ~none:Typrepr.empty ~some:(derive_ctype s params)
+            ptype_manifest
       | Ptype_variant constructors ->
           let constr_f c =
             match c.pcd_args with
             | Pcstr_tuple ct ->
-                ( c.pcd_name
-                , List.map
-                    (fun ct -> derive_ctype s params ct |> Option.get)
-                    ct )
+                (c.pcd_name, List.map (derive_ctype s params) ct)
             | Pcstr_record _labs -> raise Exit
           in
-          Some (Typrepr.Sum.make (List.map constr_f constructors))
+          Typrepr.Sum.make (List.map constr_f constructors)
       | Ptype_record labs ->
           let labs =
             List.map
               (fun {pld_name; pld_type; _} ->
-                (pld_name.txt, derive_ctype s params pld_type |> Option.get)
-                )
+                (pld_name.txt, derive_ctype s params pld_type) )
               labs
           in
-          Some (Typrepr.Record.make labs)
-      | Ptype_open -> None )
-  with Invalid_argument _ | Exit -> None
+          Typrepr.Record.make labs
+      | Ptype_open -> Typrepr.empty )
+  with Invalid_argument _ | Exit -> Typrepr.empty
 
 (* derivation function for core types *)
-and derive_ctype (state : Module_state.t) paramenv ct : Typrepr.t option =
+and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
   match get_attribute_pstr "satisfying" ct.ptyp_attributes with
   | Some e ->
-      Option.map
-        (fun t -> Typrepr.Constrained.make ct t e)
-        (derive_ctype state paramenv {ct with ptyp_attributes= []})
+      Typrepr.Constrained.make ct
+        (derive_ctype state params {ct with ptyp_attributes= []})
+        e
   | None -> (
     match ct.ptyp_desc with
-    | Ptyp_var var -> List.assoc_opt var paramenv
-    | Ptyp_constr ({txt; _}, []) -> Module_state.get txt state
-    | Ptyp_constr ({txt; _}, l) -> (
-        let p = Module_state.get_param txt state in
-        try
-          Option.bind p (fun p ->
-              let newenv =
-                State.get_env p
-                  (List.map
-                     (fun ct ->
-                       match derive_ctype state paramenv ct with
-                       | Some t -> t
-                       | _ -> raise Exit )
-                     l )
-              in
-              match derive_decl state newenv p.body with
-              | None -> raise Exit
-              | Some t ->
-                  Log.print "Building a representation for type `%a`:\n"
-                    print_coretype ct ;
-                  Log.print "%a\n%!" Typrepr.print t ;
-                  Some t )
-        with Exit -> None )
-    | Ptyp_poly ([], ct) -> derive_ctype state paramenv ct
-    | Ptyp_tuple tup -> (
-      try
-        Some
-          (Typrepr.Product.make
-             (List.map
-                (fun t ->
-                  match derive_ctype state paramenv t with
-                  | Some t -> t
-                  | _ -> raise Exit )
-                tup ) )
-      with Exit -> None )
-    | Ptyp_arrow (Nolabel, input, output) -> (
-      match
-        ( derive_ctype state paramenv input
-        , derive_ctype state paramenv output )
-      with
-      | Some input, Some output -> Some (Typrepr.Arrow.make input output)
-      | _ -> None )
-    | _ -> None )
+    | Ptyp_var var -> List.assoc var params
+    | Ptyp_constr ({txt; _}, []) -> Module_state.get txt state |> Option.get
+    | Ptyp_constr ({txt; _}, l) ->
+        let p = Module_state.get_param txt state |> Option.get in
+        let env = State.get_env p (List.map (derive_ctype state params) l) in
+        let t = derive_decl state env p.body in
+        Log.print "Building type `%a`:\n%a\n" print_coretype ct Typrepr.print
+          t ;
+        t
+    | Ptyp_poly ([], ct) -> derive_ctype state params ct
+    | Ptyp_tuple tup ->
+        Typrepr.Product.make (List.map (derive_ctype state params) tup)
+    | Ptyp_arrow (Nolabel, input, output) ->
+        let input = derive_ctype state params input in
+        let output = derive_ctype state params output in
+        Typrepr.Arrow.make input output
+    | _ -> Typrepr.empty )
 
 (** {1 annotation handling} *)
 let check_gen vb (s : State.t) : State.t =
@@ -189,7 +159,7 @@ let get_infos (s : Module_state.t) e =
         in
         (gen |> Option.get, print |> Option.get)
     | Ppat_constraint (_, t) -> (
-        let {gen; print; _} = Option.get (derive_ctype s [] t) in
+        let {gen; print; _} = derive_ctype s [] t in
         match (gen, print) with
         | None, None ->
             Log.print "Missing generator and printer for type `%a`\n%!"
@@ -229,7 +199,7 @@ let gather_tests vb state =
       let info = derive_ctype state [] typ in
       Log.print "Type: `%a`%!" print_coretype typ ;
       match info with
-      | Some {spec= Some p; _} ->
+      | {spec= Some p; _} ->
           Log.print " is attached a specification. Generating a test.\n%!" ;
           [test_constant txt loc p]
       | _ ->
@@ -246,7 +216,7 @@ let gather_tests vb state =
           let info = derive_ctype state [] ct in
           Log.print "Return type `%a`%!" print_coretype ct ;
           match info with
-          | Some {spec= Some prop; print= Some p; _} ->
+          | {spec= Some prop; print= Some p; _} ->
               Log.print
                 " is attached a specification. Generating a test.\n%!" ;
               let name =
@@ -263,15 +233,10 @@ let derive state (td : type_declaration) =
   let id = lparse td.ptype_name.txt in
   let res =
     match td.ptype_params with
-    | [] -> (
+    | [] ->
         let infos = derive_decl state [] td in
-        match infos with
-        | None ->
-            Log.print "- No info found\n\n%!" ;
-            state
-        | Some infos ->
-            Log.print "%a\n%!" Typrepr.print infos ;
-            Module_state.update state id infos )
+        Log.print "%a\n%!" Typrepr.print infos ;
+        Module_state.update state id infos
     | _ -> Module_state.update_param state id td
   in
   Log.print "\n\n\n" ; res
