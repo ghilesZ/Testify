@@ -66,9 +66,6 @@ let generate fn args out_print testname satisfy =
         ; apply_nolbl_s "opt_gen" [go]
         ; apply_nolbl_s "sat_output" [satisfy] ]
 
-(* collects the id of all types being declared together *)
-let get_ids td = [td.ptype_name]
-
 (* derivation function for type declaration *)
 let rec derive_decl (s : Module_state.t) params
     ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) : Typrepr.t =
@@ -129,6 +126,22 @@ and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
         Typrepr.Arrow.make input output
     | _ -> Typrepr.empty )
 
+(* collects the id of all types being declared together TODO: current does
+   not handle 'type t1 = ... and t2 = ...' constructions *)
+let get_ids td = [td.ptype_name.txt]
+
+(* returns true if the type declaration is recursive *)
+let is_recursive _td = true
+
+let derive_decl (s : Module_state.t) params td =
+  let s' =
+    List.fold_left
+      (fun acc id ->
+        Module_state.update acc (lparse id) (Typrepr.make_rec id) )
+      s (get_ids td)
+  in
+  derive_decl s' params td
+
 (** {1 annotation handling} *)
 let check_gen vb (s : State.t) : State.t =
   match get_attribute_pstr "gen" vb.pvb_attributes with
@@ -188,8 +201,7 @@ let get_infos (s : Module_state.t) e =
     Some (infos, ct)
   with Exit | Invalid_argument _ -> None
 
-(* compute a list of tests to be added to the AST. handles: explicitly typed
-   constants and (fully) explicitly typed functions *)
+(* builds a test list to add to the AST. handles explicitly typed values *)
 let gather_tests vb state =
   let loc = Format.asprintf "%a" Location.print_loc vb.pvb_loc in
   match vb.pvb_pat.ppat_desc with
@@ -244,12 +256,7 @@ let derive state (td : type_declaration) =
 (* actual mapper *)
 let mapper =
   let in_attr = ref 0 in
-  let str_depth = ref 0 in
   let state = ref (Module_state.load ()) in
-  let root_of_ml_file () =
-    let fn = !Location.input_name in
-    Filename.extension fn = ".ml" && !str_depth = 0
-  in
   let handle_str mapper str =
     let rec aux res = function
       | [] ->
@@ -272,21 +279,6 @@ let mapper =
     in
     aux [] str
   in
-  (* load/save states at the beginning/end of each file *)
-  let file_str m str =
-    if root_of_ml_file () then (
-      Log.print "new file: %s\n" !Location.input_name ;
-      state :=
-        Module_state.begin_ !state
-          Filename.(!Location.input_name |> basename |> chop_extension) ) ;
-    incr str_depth ;
-    let res = handle_str m str in
-    decr str_depth ;
-    if root_of_ml_file () then (
-      state := Module_state.end_ !state ;
-      Module_state.save !state ) ;
-    res
-  in
   let handle_attr m a =
     (* deactivate test generation in attributes *)
     incr in_attr ;
@@ -301,6 +293,6 @@ let mapper =
     res
   in
   { default_mapper with
-    structure= file_str
+    structure= handle_str
   ; attribute= handle_attr
   ; module_binding= handle_module }

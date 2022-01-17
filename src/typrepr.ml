@@ -567,3 +567,5 @@ module Arrow = struct
     let col = None in
     make p g s c col
 end
+
+module Recursive = struct end

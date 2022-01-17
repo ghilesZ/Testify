@@ -97,6 +97,8 @@ let letunit exp = Str.value Nonrecursive [vb_s "()" exp]
 
 let let_ id exp in_ = Exp.let_ Nonrecursive [vb_s id exp] in_
 
+let letrec id exp in_ = Exp.let_ Recursive [vb_s id exp] in_
+
 (* ast for lists *)
 let empty_list_exp = Exp.construct (lid_loc "[]") None
 
