@@ -2,6 +2,11 @@ open Migrate_parsetree.Ast_410
 open Parsetree
 open Ast_mapper
 open Helper
+open Asttypes
+
+(*******************)
+(* Test management *)
+(*******************)
 
 (* number of generation per test *)
 let number = ref 10000
@@ -65,6 +70,10 @@ let generate fn args out_print testname satisfy =
         ; apply_nolbl_s "opt_gen" [go]
         ; apply_nolbl_s "sat_output" [satisfy] ]
 
+(**************)
+(* Derivation *)
+(**************)
+
 (* derivation function for type declaration *)
 let rec derive_decl (s : Module_state.t) params
     ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) : Typrepr.t =
@@ -125,24 +134,6 @@ and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
         Typrepr.Arrow.make input output
     | _ -> Typrepr.empty )
 
-(* collects the id of all types being declared together TODO: current does
-   not handle 'type t1 = ... and t2 = ...' constructions *)
-let get_ids td = [td.ptype_name.txt]
-
-(* returns true if the type declaration is recursive *)
-let is_recursive _td = true
-
-(* pre-fills the environment with the type being processed (for recursive
-   types)*)
-let derive_decl (s : Module_state.t) params td =
-  let s' =
-    List.fold_left
-      (fun acc id ->
-        Module_state.update acc (lparse id) (Typrepr.make_rec id) )
-      s (get_ids td)
-  in
-  derive_decl s' params td
-
 (** {1 annotation handling} *)
 let check_gen vb (s : State.t) : State.t =
   match get_attribute_pstr "gen" vb.pvb_attributes with
@@ -202,6 +193,51 @@ let get_infos (s : Module_state.t) e =
     Some (infos, ct)
   with Exit | Invalid_argument _ -> None
 
+let derive state (recflag, typs) =
+  Log.type_decl (recflag, typs) ;
+  (* we pre-fill the environment with the type being processed (for recursive
+     types)*)
+  let state =
+    match recflag with
+    | Recursive ->
+        List.fold_left
+          (fun acc td ->
+            Module_state.update acc
+              (lparse td.ptype_name.txt)
+              (Typrepr.make_rec td.ptype_name.txt) )
+          state typs
+    | Nonrecursive -> state
+  in
+  (* we build the bodies of the functions *)
+  let state =
+    List.fold_left
+      (fun acc td ->
+        let id = lparse td.ptype_name.txt in
+        match td.ptype_params with
+        | [] ->
+            let typrepr = derive_decl acc [] td in
+            Module_state.update acc id typrepr
+        | _ -> Module_state.update_param state id td )
+      state typs
+  in
+  (* we wrap them into a recursive function *)
+  List.fold_left
+    (fun acc td ->
+      let id = lparse td.ptype_name.txt in
+      let res =
+        match td.ptype_params with
+        | [] ->
+            let typrepr =
+              Module_state.get id acc |> Option.get
+              |> Typrepr.finish_rec td.ptype_name.txt
+            in
+            Log.print "%a\n%!" Typrepr.print typrepr ;
+            Module_state.update acc id typrepr
+        | _ -> Module_state.update_param state id td
+      in
+      Log.print "\n\n\n" ; res )
+    state typs
+
 (* builds a test list to add to the AST. handles explicitly typed values *)
 let gather_tests vb state =
   let loc = Format.asprintf "%a" Location.print_loc vb.pvb_loc in
@@ -240,22 +276,6 @@ let gather_tests vb state =
               Log.print " is not attached a specification.\n%!" ;
               [] ) )
   | _ -> []
-
-let derive state (recflag, types) =
-  Log.type_decl (recflag, types) ;
-  List.fold_left
-    (fun state td ->
-      let id = lparse td.ptype_name.txt in
-      let res =
-        match td.ptype_params with
-        | [] ->
-            let typrepr = derive_decl state [] td in
-            Log.print "%a\n%!" Typrepr.print typrepr ;
-            Module_state.update state id typrepr
-        | _ -> Module_state.update_param state id td
-      in
-      Log.print "\n\n\n" ; res )
-    state types
 
 (* actual mapper *)
 let mapper =

@@ -1,9 +1,6 @@
 (* log file generation *)
 let log = ref false
 
-(* name of the file being processed *)
-let fn = ref ""
-
 let format : Format.formatter option ref = ref None
 
 let get_output () =
@@ -16,19 +13,18 @@ let print x =
 let set_output () =
   log := true ;
   let file = "log.markdown" in
-  let oc = open_out_gen [Open_append; Open_creat] 0o777 file in
+  let oc = open_out file in
   at_exit (fun () -> close_out oc) ;
   format := Some (Format.formatter_of_out_channel oc)
 
 let type_decl ((_, typs) as td) =
   let open Helper in
-  let open Migrate_parsetree.Ast_410 in
-  let open Parsetree in
+  let open Migrate_parsetree.Ast_410.Parsetree in
   print "### Declaration of type\n" ;
   print "- ```ocaml@.@[%a@]\n```\n" print_td td ;
   List.iter
     (fun td ->
-      print "- Kind: %s%s%s\n"
+      print "-name:  %s\n- Kind: %s%s%s\n" td.ptype_name.txt
         ( if
           Option.is_none
             (get_attribute_pstr "satisfying" td.ptype_attributes)

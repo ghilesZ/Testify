@@ -26,7 +26,7 @@ let print fmt {gen; spec; card; print; collector} =
   Format.fprintf fmt "- Specification:%a\n" (print_opt print_expr) spec ;
   Format.fprintf fmt "- Cardinality: %a\n" (print_opt print_card) card ;
   Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen ;
-  Format.fprintf fmt "- Collector: %a\n" (print_opt print_expr) collector
+  Format.fprintf fmt "- Co-Collector: %a\n" (print_opt print_expr) collector
 
 let empty = {gen= None; spec= None; card= None; print= None; collector= None}
 
@@ -46,6 +46,21 @@ let make_rec typ_name =
   ; gen= Some (exp_id ("gen_" ^ typ_name))
   ; spec= Some (exp_id ("spec_" ^ typ_name))
   ; collector= Some (exp_id ("collect_" ^ typ_name))
+  ; card= None }
+
+let finish_rec name typ =
+  let header fn field =
+    Option.map
+      (fun body ->
+        let w = PStr [Str.eval (string_ "-39")] in
+        let exp = letrec (fn ^ "_" ^ name) body (exp_id (fn ^ "_" ^ name)) in
+        {exp with pexp_attributes= [Attr.mk (none_loc "warning") w]} )
+      field
+  in
+  { print= header "print" typ.print
+  ; gen= header "gen" typ.gen
+  ; spec= header "spec" typ.spec
+  ; collector= header "collect" typ.collector
   ; card= None }
 
 let end_module name typ =
@@ -303,7 +318,10 @@ module Sum = struct
           (fun print ->
             Exp.case
               (constr (Some (Pat.tuple pat)))
-              (apply_nolbl print [Exp.tuple exp]) )
+              (string_concat
+                 [ string_ (txt ^ "(")
+                 ; apply_nolbl print [Exp.tuple exp]
+                 ; string_ ")" ] ) )
           (Product.printer p)
 
   let printer variants =
@@ -567,5 +585,3 @@ module Arrow = struct
     let col = None in
     make p g s c col
 end
-
-module Recursive = struct end
