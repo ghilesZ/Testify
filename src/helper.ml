@@ -160,9 +160,9 @@ let print_pat fmt p = Pprintast.pattern fmt (Conv.copy_pattern p)
 
 let print_coretype fmt t = Pprintast.core_type fmt (Conv.copy_core_type t)
 
-let print_td fmt t =
+let print_td fmt (recflag, types) =
   let sig_ =
-    {psig_desc= Psig_type (Nonrecursive, [t]); psig_loc= Location.none}
+    {psig_desc= Psig_type (recflag, types); psig_loc= Location.none}
   in
   Pprintast.signature fmt (Conv.copy_signature [sig_])
 

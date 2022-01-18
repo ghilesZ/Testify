@@ -256,7 +256,7 @@ module Sum = struct
       try lambda_s "rs" (constr (Some (Product.gen_body l))) |> Option.some
       with Exit -> None )
 
-  let generator variants totalcard =
+  let generator (variants : (string with_loc * t list) list) totalcard =
     try
       let weight =
         match totalcard with

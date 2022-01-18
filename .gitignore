@@ -9,5 +9,4 @@ _obuild
 
 /rewrite
 *.markdown
-.ocamlformat
 gen/*

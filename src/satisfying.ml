@@ -1,5 +1,4 @@
-open Migrate_parsetree
-open Ast_410
+open Migrate_parsetree.Ast_410
 open Parsetree
 open Ast_mapper
 open Helper
@@ -117,7 +116,7 @@ and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
         Log.print "Building type `%a`:\n%a\n" print_coretype ct Typrepr.print
           t ;
         t
-    | Ptyp_poly ([], ct) -> derive_ctype state params ct
+    | Ptyp_poly (_, ct) -> derive_ctype state params ct
     | Ptyp_tuple tup ->
         Typrepr.Product.make (List.map (derive_ctype state params) tup)
     | Ptyp_arrow (Nolabel, input, output) ->
@@ -133,6 +132,8 @@ let get_ids td = [td.ptype_name.txt]
 (* returns true if the type declaration is recursive *)
 let is_recursive _td = true
 
+(* pre-fills the environment with the type being processed (for recursive
+   types)*)
 let derive_decl (s : Module_state.t) params td =
   let s' =
     List.fold_left
@@ -240,18 +241,21 @@ let gather_tests vb state =
               [] ) )
   | _ -> []
 
-let derive state (td : type_declaration) =
-  Log.type_decl td ;
-  let id = lparse td.ptype_name.txt in
-  let res =
-    match td.ptype_params with
-    | [] ->
-        let infos = derive_decl state [] td in
-        Log.print "%a\n%!" Typrepr.print infos ;
-        Module_state.update state id infos
-    | _ -> Module_state.update_param state id td
-  in
-  Log.print "\n\n\n" ; res
+let derive state (recflag, types) =
+  Log.type_decl (recflag, types) ;
+  List.fold_left
+    (fun state td ->
+      let id = lparse td.ptype_name.txt in
+      let res =
+        match td.ptype_params with
+        | [] ->
+            let typrepr = derive_decl state [] td in
+            Log.print "%a\n%!" Typrepr.print typrepr ;
+            Module_state.update state id typrepr
+        | _ -> Module_state.update_param state id td
+      in
+      Log.print "\n\n\n" ; res )
+    state types
 
 (* actual mapper *)
 let mapper =
@@ -266,8 +270,8 @@ let mapper =
           in
           List.rev (if !in_attr > 0 then res else run () :: t)
       (* type declaration *)
-      | ({pstr_desc= Pstr_type (_, [t]); _} as h) :: tl ->
-          state := derive !state t ;
+      | ({pstr_desc= Pstr_type (recflag, types); _} as h) :: tl ->
+          state := derive !state (recflag, types) ;
           aux (h :: res) tl
       (* value declaration *)
       | ({pstr_desc= Pstr_value (_, [pvb]); _} as h) :: tl ->

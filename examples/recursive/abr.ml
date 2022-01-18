@@ -22,7 +22,4 @@
 type binary_tree =
   | Node of binary_tree * (int[@collect]) * binary_tree
   | Leaf
-[@@satisfying
-  fun x ->
-    let list = dfs x in
-    sorted list && all_diff list]
+[@@satisfying fun x -> increasing x]
