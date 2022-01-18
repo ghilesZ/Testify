@@ -292,6 +292,20 @@ module Sum = struct
       |> Option.some
     with Exit | Invalid_argument _ -> None
 
+  let generator_one_of (variants : (string with_loc * t list) list) =
+    try
+      let t = List.length variants in
+      let weight = float_of_int (1 / t) |> Helper.float_ in
+      apply_nolbl_s "weighted"
+        [ list_of_list
+            (List.map
+               (fun (constr, typs) ->
+                 Helper.pair weight
+                   (constr_generator constr typs |> Option.get) )
+               variants ) ]
+      |> Option.some
+    with Exit | Invalid_argument _ -> None
+
   let constr_printer {txt; _} typs =
     let id = id_gen_gen () in
     let constr pat = Pat.construct (lid_loc txt) pat in
@@ -415,7 +429,7 @@ module Sum = struct
   let make variants =
     let print = printer variants in
     let card = cardinality variants in
-    let gen = generator variants card in
+    let gen = generator_one_of variants in
     let spec = specification variants in
     let col = collector variants in
     make print gen spec card col
