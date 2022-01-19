@@ -52,9 +52,8 @@ let finish_rec name typ =
   let header fn field =
     Option.map
       (fun body ->
-        let w = PStr [Str.eval (string_ "-39")] in
         let exp = letrec (fn ^ "_" ^ name) body (exp_id (fn ^ "_" ^ name)) in
-        {exp with pexp_attributes= [Attr.mk (none_loc "warning") w]} )
+        exp )
       field
   in
   { print= header "print" typ.print

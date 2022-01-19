@@ -184,3 +184,73 @@ let print_card =
   fun fmt z ->
     if Z.gt z z15 then Format.fprintf fmt "~2<sup>%i</sup>" (close_log z)
     else Z.pp_print fmt z
+
+(* recursive type detection *)
+(****************************)
+
+module SSet = Set.Make (String)
+module SMap = Map.Make (String)
+
+(* list of type decl in l that are recursive *)
+let has_cycle (l : (type_declaration * SSet.t) list) =
+  let recursive = Hashtbl.create 1 in
+  List.iter
+    (fun (t, _) ->
+      let reachable = Hashtbl.create 1 in
+      let todo = Stack.create () in
+      Stack.push t todo ;
+      let rec loop () =
+        if not (Stack.is_empty todo) then (
+          let cur = Stack.pop todo in
+          ( match Hashtbl.find_opt reachable cur with
+          | Some _ -> ()
+          | None ->
+              Hashtbl.add reachable cur () ;
+              let nexts = List.assoc cur l in
+              SSet.iter
+                (fun next ->
+                  if t.ptype_name.txt = next then Hashtbl.add recursive t () ;
+                  Stack.push t todo )
+                nexts ) ;
+          loop () )
+      in
+      loop () )
+    l ;
+  Hashtbl.to_seq_keys recursive |> List.of_seq
+
+(* collect all the type identifiers that appear in a given type
+   declaration *)
+let collect t td =
+  let rec aux_ct acc ct =
+    match ct.ptyp_desc with
+    | Ptyp_var _var -> acc
+    | Ptyp_constr ({txt; _}, _) ->
+        SSet.add (Format.asprintf "%a" print_longident txt) acc
+    | Ptyp_tuple tup -> List.fold_left aux_ct acc tup
+    | Ptyp_arrow (Nolabel, input, output) -> aux_ct (aux_ct acc input) output
+    | _ -> acc
+  in
+  let aux_record = List.fold_left (fun acc l -> aux_ct acc l.pld_type) in
+  let aux acc {ptype_kind; ptype_manifest; _} =
+    match ptype_kind with
+    | Ptype_abstract ->
+        Option.fold ~none:acc ~some:(aux_ct acc) ptype_manifest
+    | Ptype_variant constructors ->
+        let constr_f acc c =
+          match c.pcd_args with
+          | Pcstr_tuple tup -> List.fold_left aux_ct acc tup
+          | Pcstr_record labs -> aux_record acc labs
+        in
+        List.fold_left constr_f acc constructors
+    | Ptype_record labs -> aux_record acc labs
+    | Ptype_open -> acc
+  in
+  aux t td
+
+(* given a list of type declaratation, returns the sublist of recursive
+   types *)
+let recursive (recflag, typs) =
+  let typ_neighbours = List.map (fun t -> (t, collect SSet.empty t)) typs in
+  match recflag with
+  | Nonrecursive -> []
+  | Recursive -> has_cycle typ_neighbours

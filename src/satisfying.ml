@@ -236,7 +236,8 @@ let derive state (recflag, typs) =
         | _ -> Module_state.update_param state id td
       in
       Log.print "\n\n\n" ; res )
-    state typs
+    state
+    (recursive (recflag, typs))
 
 (* builds a test list to add to the AST. handles explicitly typed values *)
 let gather_tests vb state =
