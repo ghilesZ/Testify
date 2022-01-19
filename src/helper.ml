@@ -82,7 +82,10 @@ let int_ x =
 
 let one = int_ 1
 
-let float_ x = Exp.constant (Const.float (Format.asprintf "%h" x))
+let float_ x =
+  if x < -4096. || x > 4096. then
+    Exp.constant (Const.float (Format.asprintf "%h" x))
+  else Exp.constant (Const.float (Format.asprintf "%f" x))
 
 let string_ x = Exp.constant (Const.string x)
 
@@ -254,3 +257,24 @@ let recursive (recflag, typs) =
   match recflag with
   | Nonrecursive -> []
   | Recursive -> has_cycle typ_neighbours
+
+let rec_nonrec ((_, typs) as td) =
+  let rec_ = recursive td in
+  let nonrec_ = List.filter (fun t -> not (List.mem t rec_)) typs in
+  (rec_, nonrec_)
+
+let rec compatible pat exp =
+  match (pat.ppat_desc, exp.pexp_desc) with
+  | Ppat_var s, Pexp_ident l ->
+      Format.asprintf "%a" print_longident l.txt = s.txt
+  | Ppat_tuple s, Pexp_tuple l -> List.for_all2 compatible s l
+  | _ -> false
+
+(* elementary simplification of some ast patterns *)
+let trim exp =
+  match exp.pexp_desc with
+  | Pexp_apply
+      ({pexp_desc= Pexp_fun (Nolabel, None, pat, body); _}, [(Nolabel, arg)])
+    ->
+      if compatible pat arg then body else exp
+  | _ -> exp

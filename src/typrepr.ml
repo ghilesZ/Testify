@@ -8,7 +8,8 @@ open Location
 (** representation of an OCaml type *)
 
 type t =
-  { gen: expression option
+  { is_rec: bool
+  ; gen: expression option
   ; spec: expression option
   ; card: Z.t option
   ; print: expression option
@@ -17,18 +18,26 @@ type t =
 let print_expr fmt e =
   Format.fprintf fmt "\n```ocaml@.@[%a@]\n```" print_expression e
 
-let print fmt {gen; spec; card; print; collector} =
+let print fmt {is_rec; gen; spec; card; print; _} =
   let print_opt f fmt = function
     | None -> Format.fprintf fmt " none"
     | Some e -> f fmt e
   in
+  Format.fprintf fmt "- Recursive:%b\n" is_rec ;
+  Format.fprintf fmt "- Cardinality: %a\n" (print_opt print_card) card ;
   Format.fprintf fmt "- Printer:%a\n" (print_opt print_expr) print ;
   Format.fprintf fmt "- Specification:%a\n" (print_opt print_expr) spec ;
-  Format.fprintf fmt "- Cardinality: %a\n" (print_opt print_card) card ;
-  Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen ;
-  Format.fprintf fmt "- Co-Collector: %a\n" (print_opt print_expr) collector
+  Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen
+(* ; * Format.fprintf fmt "- Co-Collector: %a\n" (print_opt print_expr)
+   collector *)
 
-let empty = {gen= None; spec= None; card= None; print= None; collector= None}
+let empty =
+  { is_rec= false
+  ; gen= None
+  ; spec= None
+  ; card= None
+  ; print= None
+  ; collector= None }
 
 let add_printer info p = {info with print= Some p}
 
@@ -37,12 +46,19 @@ let add_generator info g = {info with gen= Some g}
 let add_specification info s = {info with spec= Some s}
 
 let free g c p col =
-  {print= Some p; gen= Some g; spec= None; card= Some c; collector= Some col}
+  { is_rec= false
+  ; print= Some p
+  ; gen= Some g
+  ; spec= None
+  ; card= Some c
+  ; collector= Some col }
 
-let make print gen spec card collector = {gen; spec; card; print; collector}
+let make print gen spec card collector =
+  {is_rec= false; gen; spec; card; print; collector}
 
 let make_rec typ_name =
-  { print= Some (exp_id ("print_" ^ typ_name))
+  { is_rec= true
+  ; print= Some (exp_id ("print_" ^ typ_name))
   ; gen= Some (exp_id ("gen_" ^ typ_name))
   ; spec= Some (exp_id ("spec_" ^ typ_name))
   ; collector= Some (exp_id ("collect_" ^ typ_name))
@@ -56,7 +72,8 @@ let finish_rec name typ =
         exp )
       field
   in
-  { print= header "print" typ.print
+  { is_rec= true
+  ; print= header "print" typ.print
   ; gen= header "gen" typ.gen
   ; spec= header "spec" typ.spec
   ; collector= header "collect" typ.collector
@@ -294,7 +311,7 @@ module Sum = struct
   let generator_one_of (variants : (string with_loc * t list) list) =
     try
       let t = List.length variants in
-      let weight = float_of_int (1 / t) |> Helper.float_ in
+      let weight = 1. /. float_of_int t |> Helper.float_ in
       apply_nolbl_s "weighted"
         [ list_of_list
             (List.map
@@ -333,7 +350,7 @@ module Sum = struct
               (constr (Some (Pat.tuple pat)))
               (string_concat
                  [ string_ (txt ^ "(")
-                 ; apply_nolbl print [Exp.tuple exp]
+                 ; apply_nolbl print [Exp.tuple exp] |> trim
                  ; string_ ")" ] ) )
           (Product.printer p)
 
@@ -368,8 +385,8 @@ module Sum = struct
         ( pat
         , Option.map
             (fun spec ->
-              Exp.case (constr (Some pat)) (apply_nolbl spec [Exp.tuple exp])
-              )
+              Exp.case (constr (Some pat))
+                (apply_nolbl spec [Exp.tuple exp] |> trim) )
             (Product.specification args) )
 
   let constr_collect {txt; _} args =

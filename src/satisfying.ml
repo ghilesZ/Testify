@@ -220,6 +220,13 @@ let derive state (recflag, typs) =
         | _ -> Module_state.update_param state id td )
       state typs
   in
+  let rec_, nonrec_ = rec_nonrec (recflag, typs) in
+  List.iter
+    (fun td ->
+      let id = lparse td.ptype_name.txt in
+      let typrepr = Module_state.get id state |> Option.get in
+      Log.print "%a\n%!" Typrepr.print typrepr )
+    nonrec_ ;
   (* we wrap them into a recursive function *)
   List.fold_left
     (fun acc td ->
@@ -236,8 +243,7 @@ let derive state (recflag, typs) =
         | _ -> Module_state.update_param state id td
       in
       Log.print "\n\n\n" ; res )
-    state
-    (recursive (recflag, typs))
+    state rec_
 
 (* builds a test list to add to the AST. handles explicitly typed values *)
 let gather_tests vb state =
