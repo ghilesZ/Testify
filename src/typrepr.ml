@@ -294,7 +294,7 @@ module Sum = struct
   let generator_one_of (variants : (string with_loc * t list) list) =
     try
       let t = List.length variants in
-      let weight = float_of_int (1 / t) |> Helper.float_ in
+      let weight = 1. /. (float_of_int t) |> Helper.float_ in
       apply_nolbl_s "weighted"
         [ list_of_list
             (List.map
