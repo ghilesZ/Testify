@@ -350,7 +350,7 @@ module Sum = struct
               (constr (Some (Pat.tuple pat)))
               (string_concat
                  [ string_ (txt ^ "(")
-                 ; apply_nolbl print [Exp.tuple exp] |> trim
+                 ; apply_nolbl print [Exp.tuple exp]
                  ; string_ ")" ] ) )
           (Product.printer p)
 
@@ -385,8 +385,8 @@ module Sum = struct
         ( pat
         , Option.map
             (fun spec ->
-              Exp.case (constr (Some pat))
-                (apply_nolbl spec [Exp.tuple exp] |> trim) )
+              Exp.case (constr (Some pat)) (apply_nolbl spec [Exp.tuple exp])
+              )
             (Product.specification args) )
 
   let constr_collect {txt; _} args =

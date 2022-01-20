@@ -71,6 +71,9 @@ let false_ = Exp.construct (lid_loc "false") None
 (* && over ast *)
 let ( &&@ ) a b = apply_nolbl_s " (&&) " [a; b]
 
+(* ^ over ast *)
+let ( ^@ ) a b = apply_nolbl_s " (^) " [a; b]
+
 (* useful constructors *)
 let int_ x =
   if x = min_int then exp_id "min_int"
@@ -83,9 +86,10 @@ let int_ x =
 let one = int_ 1
 
 let float_ x =
-  if x < -4096. || x > 4096. then
-    Exp.constant (Const.float (Format.asprintf "%h" x))
-  else Exp.constant (Const.float (Format.asprintf "%f" x))
+  Format.(
+    if x < -4096. || x > 4096. then asprintf "%h" x
+    else asprintf "%a" pp_print_float x)
+  |> Const.float |> Exp.constant
 
 let string_ x = Exp.constant (Const.string x)
 
@@ -118,8 +122,13 @@ let id_gen_gen () =
     (s, exp_id s)
 
 (* string concat with separator over ast expressions *)
-let string_concat ?(sep = "") l =
-  apply_nolbl_s "String.concat" [string_ sep; list_of_list l]
+let string_concat ?(sep = "") = function
+  | [] -> string_ ""
+  | [s] -> s
+  | h :: tl ->
+      List.fold_left
+        (if sep = "" then ( ^@ ) else fun acc e -> acc ^@ string_ sep ^@ e)
+        h tl
 
 (* keeps the attributes with name 'n'*)
 let check_attributes n attrs =
@@ -187,6 +196,33 @@ let print_card =
   fun fmt z ->
     if Z.gt z z15 then Format.fprintf fmt "~2<sup>%i</sup>" (close_log z)
     else Z.pp_print fmt z
+
+(* ast simplification *)
+(**********************)
+
+(* compatible if :
+   - fun x -> body x <=> body
+   - fun (x1,x2) -> body (x1,x2) <=> body *)
+let rec compatible pat exp =
+  match (pat.ppat_desc, exp.pexp_desc) with
+  | Ppat_var s, Pexp_ident l ->
+      Format.asprintf "%a" print_longident l.txt = s.txt
+  | Ppat_tuple s, Pexp_tuple l -> List.for_all2 compatible s l
+  | _ -> false
+
+(* elementary simplification of some ast patterns *)
+let trim exp =
+  match exp.pexp_desc with
+  | Pexp_apply
+      ({pexp_desc= Pexp_fun (Nolabel, None, pat, body); _}, [(Nolabel, arg)])
+    ->
+      if compatible pat arg then body else exp
+  | _ -> exp
+
+(* we overload applies function to simplify them by default *)
+let apply_nolbl_s name args = apply_nolbl_s name args |> trim
+
+let apply_nolbl func args = apply_nolbl func args |> trim
 
 (* recursive type detection *)
 (****************************)
@@ -262,19 +298,3 @@ let rec_nonrec ((_, typs) as td) =
   let rec_ = recursive td in
   let nonrec_ = List.filter (fun t -> not (List.mem t rec_)) typs in
   (rec_, nonrec_)
-
-let rec compatible pat exp =
-  match (pat.ppat_desc, exp.pexp_desc) with
-  | Ppat_var s, Pexp_ident l ->
-      Format.asprintf "%a" print_longident l.txt = s.txt
-  | Ppat_tuple s, Pexp_tuple l -> List.for_all2 compatible s l
-  | _ -> false
-
-(* elementary simplification of some ast patterns *)
-let trim exp =
-  match exp.pexp_desc with
-  | Pexp_apply
-      ({pexp_desc= Pexp_fun (Nolabel, None, pat, body); _}, [(Nolabel, arg)])
-    ->
-      if compatible pat arg then body else exp
-  | _ -> exp
