@@ -53,8 +53,8 @@ let free g c p col =
   ; card= Some c
   ; collector= Some col }
 
-let make print gen spec card collector =
-  {is_rec= false; gen; spec; card; print; collector}
+let make ?(is_rec = false) print gen spec card collector =
+  {is_rec; gen; spec; card; print; collector}
 
 let make_rec typ_name =
   { is_rec= true
@@ -257,8 +257,11 @@ module Product = struct
       |> Option.some
     with Exit -> None
 
+  let is_infinite args = List.exists (fun typ -> typ.is_rec) args
+
   let make typs =
-    make (printer typs) (generator typs) (specification typs)
+    let is_rec = is_infinite typs in
+    make ~is_rec (printer typs) (generator typs) (specification typs)
       (cardinality typs) (collector typs)
 end
 
@@ -442,13 +445,17 @@ module Sum = struct
                 cases ) )
     with Exit | Invalid_argument _ -> None
 
+  let is_infinite variants =
+    List.exists (fun (_, args) -> Product.is_infinite args) variants
+
   let make variants =
+    let is_rec = is_infinite variants in
     let print = printer variants in
     let card = cardinality variants in
     let gen = generator_one_of variants in
     let spec = specification variants in
     let col = collector variants in
-    make print gen spec card col
+    make ~is_rec print gen spec card col
 end
 
 module Record = struct
@@ -505,13 +512,17 @@ module Record = struct
       | _ -> (*record with 0 field*) assert false
     with Invalid_argument _ -> None
 
+  let is_infinite fields =
+    fields |> List.map snd |> Product.is_infinite
+
   let make fields =
+    let is_rec = is_infinite fields in
     let c = cardinality fields in
     let g = generator fields in
     let p = printer fields in
     let s = specification fields in
     let col = collector fields in
-    make p g s c col
+    make ~is_rec p g s c col
 end
 
 module Constrained = struct
