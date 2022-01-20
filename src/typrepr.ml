@@ -7,24 +7,45 @@ open Location
 
 (** representation of an OCaml type *)
 
+module Card = struct
+  type t = Unknown | Infinite | Finite of Z.t
+
+  (** {3 Shorthands to build values} *)
+
+  let finite (n : Z.t) = Finite n
+
+  let of_int n = finite (Z.of_int n)
+
+  (** {3 Shorthands to access values} *)
+
+  let as_z = function
+    | Finite n -> n
+    | Infinite | Unknown -> invalid_arg "Card.as_z"
+
+  (** {3 Pretty printing} *)
+
+  let pp fmt = function
+    | Unknown -> Format.pp_print_string fmt "unknown"
+    | Infinite -> Format.pp_print_string fmt "infinite"
+    | Finite n -> Z.pp_print fmt n
+end
+
 type t =
-  { is_rec: bool
-  ; gen: expression option
+  { gen: expression option
   ; spec: expression option
-  ; card: Z.t option
+  ; card: Card.t
   ; print: expression option
   ; collector: expression option }
 
 let print_expr fmt e =
   Format.fprintf fmt "\n```ocaml@.@[%a@]\n```" print_expression e
 
-let print fmt {is_rec; gen; spec; card; print; _} =
+let print fmt {gen; spec; card; print; _} =
   let print_opt f fmt = function
     | None -> Format.fprintf fmt " none"
     | Some e -> f fmt e
   in
-  Format.fprintf fmt "- Recursive:%b\n" is_rec ;
-  Format.fprintf fmt "- Cardinality: %a\n" (print_opt print_card) card ;
+  Format.fprintf fmt "- Cardinality: %a\n" Card.pp card ;
   Format.fprintf fmt "- Printer:%a\n" (print_opt print_expr) print ;
   Format.fprintf fmt "- Specification:%a\n" (print_opt print_expr) spec ;
   Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen
@@ -32,12 +53,7 @@ let print fmt {is_rec; gen; spec; card; print; _} =
    collector *)
 
 let empty =
-  { is_rec= false
-  ; gen= None
-  ; spec= None
-  ; card= None
-  ; print= None
-  ; collector= None }
+  {gen= None; spec= None; card= Unknown; print= None; collector= None}
 
 let add_printer info p = {info with print= Some p}
 
@@ -46,23 +62,16 @@ let add_generator info g = {info with gen= Some g}
 let add_specification info s = {info with spec= Some s}
 
 let free g c p col =
-  { is_rec= false
-  ; print= Some p
-  ; gen= Some g
-  ; spec= None
-  ; card= Some c
-  ; collector= Some col }
+  {print= Some p; gen= Some g; spec= None; card= c; collector= Some col}
 
-let make ?(is_rec = false) print gen spec card collector =
-  {is_rec; gen; spec; card; print; collector}
+let make print gen spec card collector = {gen; spec; card; print; collector}
 
 let make_rec typ_name =
-  { is_rec= true
-  ; print= Some (exp_id ("print_" ^ typ_name))
+  { print= Some (exp_id ("print_" ^ typ_name))
   ; gen= Some (exp_id ("gen_" ^ typ_name))
   ; spec= Some (exp_id ("spec_" ^ typ_name))
   ; collector= Some (exp_id ("collect_" ^ typ_name))
-  ; card= None }
+  ; card= Infinite }
 
 let finish_rec name typ =
   let header fn field =
@@ -72,12 +81,11 @@ let finish_rec name typ =
         exp )
       field
   in
-  { is_rec= true
-  ; print= header "print" typ.print
+  { print= header "print" typ.print
   ; gen= header "gen" typ.gen
   ; spec= header "spec" typ.spec
   ; collector= header "collect" typ.collector
-  ; card= None }
+  ; card= Infinite }
 
 let end_module name typ =
   { typ with
@@ -91,29 +99,29 @@ let end_module name typ =
 let unit =
   free
     (exp_id "QCheck.Gen.unit")
-    Z.one
+    (Finite Z.one)
     (exp_id "QCheck.Print.unit")
     (exp_id "Collect.unit")
 
 let bool =
   free
     (exp_id "QCheck.Gen.bool")
-    (Z.of_int 2) (exp_id "string_of_bool") (exp_id "Collect.bool")
+    (Card.of_int 2) (exp_id "string_of_bool") (exp_id "Collect.bool")
 
 let char =
   free
     (exp_id "QCheck.Gen.char")
-    (Z.of_int 256) (exp_id "string_of_char") (exp_id "Collect.char")
+    (Card.of_int 256) (exp_id "string_of_char") (exp_id "Collect.char")
 
 let int =
   free (exp_id "QCheck.Gen.int")
-    (Z.pow (Z.of_int 2) (Sys.int_size - 1))
+    (Z.pow (Z.of_int 2) (Sys.int_size - 1) |> Card.finite)
     (exp_id "string_of_int") (exp_id "Collect.int")
 
 let float =
   free
     (exp_id "QCheck.Gen.float")
-    (Z.pow (Z.of_int 2) 64)
+    (Z.pow (Z.of_int 2) 64 |> Card.finite)
     (exp_id "string_of_float")
     (exp_id "Collect.float")
 
@@ -217,15 +225,15 @@ module Product = struct
         let pats, body = List.fold_left compose ([], None) typs in
         Option.map (lambda (Pat.tuple (List.rev pats))) body
 
-  let cardinality typs =
-    try
-      List.fold_left
-        (fun acc -> function
-          | {card= Some c; _} -> Z.mul acc c
-          | _ -> raise Exit )
-        Z.one typs
-      |> Option.some
-    with Exit -> None
+  let cardinality =
+    let rec prod acc = function
+      | [] -> Card.finite acc
+      | {card= Finite n; _} :: typs -> prod (Z.mul n acc) typs
+      | {card= Infinite; _} :: _ ->
+          Infinite (* XXX. Assumes that no type has cardinality zero. *)
+      | {card= Unknown; _} :: _ -> Unknown
+    in
+    prod Z.one
 
   let printer typs =
     let get_name = id_gen_gen () in
@@ -257,26 +265,23 @@ module Product = struct
       |> Option.some
     with Exit -> None
 
-  let is_infinite args = List.exists (fun typ -> typ.is_rec) args
-
   let make typs =
-    let is_rec = is_infinite typs in
-    make ~is_rec (printer typs) (generator typs) (specification typs)
+    make (printer typs) (generator typs) (specification typs)
       (cardinality typs) (collector typs)
 end
 
 (** ADTs *)
 module Sum = struct
-  let cardinality variants =
-    try
-      List.fold_left
-        (fun acc (_constr, args) ->
-          match Product.cardinality args with
-          | Some c -> Z.add acc c
-          | _ -> raise Exit )
-        Z.zero variants
-      |> Option.some
-    with Exit -> None
+  let cardinality =
+    let rec sum acc = function
+      | [] -> Card.finite acc
+      | (_, args) :: variants ->
+        begin match Product.cardinality args with
+        | Finite n -> sum (Z.add acc n) variants
+        | (Infinite | Unknown) as c -> c
+        end
+    in
+    sum Z.zero
 
   let constr_generator constr args =
     let constr = Exp.construct (lid_loc constr.txt) in
@@ -304,7 +309,7 @@ module Sum = struct
         [ list_of_list
             (List.map
                (fun (constr, typs) ->
-                 let card = Product.cardinality typs |> Option.get in
+                 let card = Product.cardinality typs |> Card.as_z in
                  Helper.pair (weight card)
                    (constr_generator constr typs |> Option.get) )
                variants ) ]
@@ -445,22 +450,19 @@ module Sum = struct
                 cases ) )
     with Exit | Invalid_argument _ -> None
 
-  let is_infinite variants =
-    List.exists (fun (_, args) -> Product.is_infinite args) variants
-
   let make variants =
-    let is_rec = is_infinite variants in
     let print = printer variants in
     let card = cardinality variants in
     let gen = generator_one_of variants in
     let spec = specification variants in
     let col = collector variants in
-    make ~is_rec print gen spec card col
+    make print gen spec card col
 end
 
 module Record = struct
   (* TODO: *)
-  let cardinality _fields = None
+  let cardinality fields =
+    fields |> List.map snd |> Product.cardinality
 
   let generator fields =
     let field (n, t) =
@@ -512,17 +514,13 @@ module Record = struct
       | _ -> (*record with 0 field*) assert false
     with Invalid_argument _ -> None
 
-  let is_infinite fields =
-    fields |> List.map snd |> Product.is_infinite
-
   let make fields =
-    let is_rec = is_infinite fields in
     let c = cardinality fields in
     let g = generator fields in
     let p = printer fields in
     let s = specification fields in
     let col = collector fields in
-    make ~is_rec p g s c col
+    make p g s c col
 end
 
 module Constrained = struct
@@ -582,12 +580,12 @@ module Constrained = struct
       { typ with
         gen= Option.map (rejection e) typ.gen
       ; spec= Some spec
-      ; card= None }
+      ; card= Unknown }
     in
     if !Gegen.dom <> "rs" then
       match Gegen.solve_ct ct spec with
       | Some (gen, card) ->
-          {typ with gen= Some gen; spec= Some spec; card= Some card}
+          {typ with gen= Some gen; spec= Some spec; card= Finite card}
       | _ -> default
     else default
 
@@ -599,11 +597,11 @@ module Constrained = struct
       { typ with
         gen= Option.map (rejection e) typ.gen
       ; spec= Some spec
-      ; card= None }
+      ; card= Unknown }
     in
     match Gegen.solve_td td e with
     | Some (gen, card) ->
-        {typ with gen= Some gen; spec= Some spec; card= Some card}
+        {typ with gen= Some gen; spec= Some spec; card= Finite card}
     | _ -> default
 end
 
@@ -619,7 +617,7 @@ module Arrow = struct
   let printer = Some (lambda_s "_" (string_ "(_ -> _)"))
 
   let make _input output =
-    let c = None in
+    let c = Card.Unknown in
     let g = generator output.gen in
     let p = printer in
     let s = None in
