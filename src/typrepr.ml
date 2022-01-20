@@ -7,7 +7,8 @@ open Location
 (** representation of an OCaml type *)
 
 type t =
-  { gen: expression option
+  { boltz_spec: string Arbogen.Grammar.expression option
+  ; gen: expression option
   ; spec: expression option
   ; card: Card.t
   ; print: expression }
@@ -15,7 +16,7 @@ type t =
 let print_expr fmt e =
   Format.fprintf fmt "\n```ocaml@.@[%a@]\n```" print_expression e
 
-let print fmt {gen; spec; card; print; _} =
+let print fmt {gen; spec; card; print; boltz_spec; _} =
   let print_opt f fmt = function
     | None -> Format.fprintf fmt " none"
     | Some e -> f fmt e
@@ -23,11 +24,20 @@ let print fmt {gen; spec; card; print; _} =
   Format.fprintf fmt "- Cardinality: %a\n" Card.pp card ;
   Format.fprintf fmt "- Printer:%a\n" print_expr print ;
   Format.fprintf fmt "- Specification:%a\n" (print_opt print_expr) spec ;
-  Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen
+  Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen ;
+  Format.fprintf fmt "- Boltzmann specification:%a"
+    (print_opt
+       (Arbogen.Grammar.pp_expression ~pp_ref:Format.pp_print_string) )
+    boltz_spec
 
 let default_printer = lambda_s "_" (string_ "<...>")
 
-let empty = {gen= None; spec= None; card= Unknown; print= default_printer}
+let empty =
+  { boltz_spec= None
+  ; gen= None
+  ; spec= None
+  ; card= Unknown
+  ; print= default_printer }
 
 let add_printer info p = {info with print= p}
 
@@ -35,9 +45,10 @@ let add_generator info g = {info with gen= Some g}
 
 let add_specification info s = {info with spec= Some s}
 
-let free g c p = {print= p; gen= Some g; spec= None; card= c}
+let free bs g c p =
+  {boltz_spec= Some bs; print= p; gen= Some g; spec= None; card= c}
 
-let make print gen spec card = {gen; spec; card; print}
+let make boltz_spec print gen spec card = {boltz_spec; gen; spec; card; print}
 
 let end_module name typ =
   { typ with
@@ -48,21 +59,28 @@ let end_module name typ =
 (* Predefined types *)
 
 let unit =
-  free (exp_id "QCheck.Gen.unit") (Finite Z.one) (exp_id "QCheck.Print.unit")
+  free (Arbogen.Grammar.Z 0)
+    (exp_id "QCheck.Gen.unit")
+    (Finite Z.one)
+    (exp_id "QCheck.Print.unit")
 
 let bool =
-  free (exp_id "QCheck.Gen.bool") (Card.of_int 2) (exp_id "string_of_bool")
+  free (Arbogen.Grammar.Z 0)
+    (exp_id "QCheck.Gen.bool")
+    (Card.of_int 2) (exp_id "string_of_bool")
 
 let char =
-  free (exp_id "QCheck.Gen.char") (Card.of_int 256) (exp_id "string_of_char")
+  free (Arbogen.Grammar.Z 0)
+    (exp_id "QCheck.Gen.char")
+    (Card.of_int 256) (exp_id "string_of_char")
 
 let int =
-  free (exp_id "QCheck.Gen.int")
+  free (Arbogen.Grammar.Z 0) (exp_id "QCheck.Gen.int")
     (Z.pow (Z.of_int 2) (Sys.int_size - 1) |> Card.finite)
     (exp_id "string_of_int")
 
 let float =
-  free
+  free (Arbogen.Grammar.Z 0)
     (exp_id "QCheck.Gen.float")
     (Z.pow (Z.of_int 2) 64 |> Card.finite)
     (exp_id "string_of_float")
@@ -147,7 +165,51 @@ module Rec = struct
     { print= exp_id ("print_" ^ typ_name)
     ; gen= Some (exp_id ("gen_" ^ typ_name))
     ; spec= Some (exp_id ("spec_" ^ typ_name))
-    ; card= Infinite }
+    ; card= Infinite
+    ; boltz_spec= Some (Arbogen.Grammar.Ref typ_name) }
+
+  let make_generator typs =
+    let loc = Location.none in
+    let grammar =
+      typs
+      |> List.map (fun (name, typ) -> (name, Option.get typ.boltz_spec))
+      |> Arbogen.Frontend.ParseTree.completion
+      |> Arbogen.Frontend.ParseTree.to_grammar
+    in
+    let wg =
+      Arbogen.Boltzmann.(
+        WeightedGrammar.of_grammar (Oracle.Naive.make grammar) grammar)
+    in
+    fun name ->
+      [%expr
+        fun rs ->
+          let sicstus_something _ = assert false in
+          let of_arbogen _ _ = assert false in
+          let module R = Randtools.OcamlRandom in
+          let module AB = Arbogen.Boltzmann in
+          Random.set_state rs ;
+          let target = 30 in
+          (* XXX. arbitrary size *)
+          let max_try = 1_000_000 in
+          let wg = [%e AGPrint.weighted_grammar wg] in
+          match
+            AB.search_seed
+              (module R)
+              wg ~size_min:target ~size_max:target ~max_try
+          with
+          | Some (_size, state) ->
+              R.set_state state ;
+              let tree, _ = AB.free_gen (module R) wg [%e string_ name] in
+              let nb_collect =
+                Arbogen.Tree.fold
+                  (fun lab ->
+                    List.fold_left ( + )
+                      (if String.equal lab "@collect" then 1 else 0) )
+                  tree
+              in
+              let vals = sicstus_something nb_collect in
+              of_arbogen vals tree
+          | None -> assert false]
 
   let make_mutually_rec header typs get_field =
     try
@@ -169,11 +231,59 @@ module Rec = struct
       make_mutually_rec "print" typs (fun typ -> Some typ.print)
       |> List.map Option.get
     in
-    let generators = make_mutually_rec "gen" typs (fun typ -> typ.gen) in
+    let generators =
+      let make_gen = make_generator typs in
+      List.map (fun (name, _) -> Some (make_gen name)) typs
+    in
     let specs = make_mutually_rec "spec" typs (fun typ -> typ.spec) in
     List.map4
       (fun print gen spec (name, typ) -> (name, {typ with print; gen; spec}))
       printers generators specs typs
+end
+
+(** {2 Infinite types} *)
+
+(** Functions specific to infinite types, regardless of their shape. *)
+module Infinite = struct
+  let generator name expr =
+    let loc = Location.none in
+    let grammar =
+      let open Arbogen.Frontend.ParseTree in
+      to_grammar (completion [(name, expr)])
+    in
+    let wg =
+      let open Arbogen.Boltzmann in
+      WeightedGrammar.of_grammar (Oracle.Naive.make grammar) grammar
+    in
+    [%expr
+      fun rs ->
+        let sicstus_something _ = assert false in
+        let of_arbogen _ _ = assert false in
+        let module R = Randtools.OcamlRandom in
+        let module AB = Arbogen.Boltzmann in
+        Random.set_state rs ;
+        let target = 30 in
+        (* XXX. arbitraty size *)
+        let max_try = 1_000_000 in
+        let wg = [%e AGPrint.weighted_grammar wg] in
+        match
+          AB.search_seed
+            (module R)
+            wg ~size_min:target ~size_max:target ~max_try
+        with
+        | Some (_size, state) ->
+            R.set_state state ;
+            let tree, _ = AB.free_gen (module R) wg in
+            let nb_collect =
+              Arbogen.Tree.fold
+                (fun lab ->
+                  List.fold_left ( + )
+                    (if String.equal lab "@collect" then 1 else 0) )
+                tree
+            in
+            let vals = sicstus_something nb_collect in
+            of_arbogen vals tree
+        | None -> assert false]
 end
 
 (** {2 Type composition} *)
@@ -225,29 +335,48 @@ module Product = struct
     let b' = string_concat [string_ "("; b; string_ ")"] in
     lambda (pat_tuple pats) b'
 
+  let boltzmann_specification typs =
+    try
+      typs
+      |> List.map (fun typ -> Option.get typ.boltz_spec)
+      |> Arbogen.Grammar.product_n |> Option.some
+    with Invalid_argument _ -> None
+
   let make typs =
-    make (printer typs) (generator typs) (specification typs)
-      (cardinality typs)
+    make
+      (boltzmann_specification typs)
+      (printer typs) (generator typs) (specification typs) (cardinality typs)
 end
 
 (** ADTs *)
 module Sum = struct
-  let cardinality typs =
-    typs |> List.map (fun (_, args) -> Product.cardinality args) |> Card.sum
+  type variants = (string * (t * bool) list) list
+
+  let cardinality : variants -> Card.t =
+    let rec sum acc = function
+      | [] -> Card.finite acc
+      | (_, args) :: variants -> (
+        match args |> List.map fst |> Product.cardinality with
+        | Finite n -> sum (Z.add acc n) variants
+        | (Infinite | Unknown) as c -> c )
+    in
+    sum Z.zero
 
   let constr_generator constr args =
     let constr = construct constr in
     match args with
     | [] -> lambda_s "_" (constr None) |> Option.some
-    | [{gen= Some g; _}] ->
+    | [({gen= Some g; _}, _)] ->
         lambda_s "rs" (constr (Some (apply_nolbl g [exp_id "rs"])))
         |> Option.some
-    | [{gen= None; _}] -> raise Exit
+    | [({gen= None; _}, _)] -> raise Exit
     | l -> (
-      try lambda_s "rs" (constr (Some (Product.gen_body l))) |> Option.some
+      try
+        lambda_s "rs" (constr (Some (l |> List.map fst |> Product.gen_body)))
+        |> Option.some
       with Exit -> None )
 
-  let generator (variants : (string * t list) list) totalcard =
+  let generator (variants : variants) totalcard =
     try
       let weight c =
         Q.div (Q.of_bigint c) (Q.of_bigint totalcard)
@@ -257,23 +386,10 @@ module Sum = struct
         [ list_of_list
             (List.map
                (fun (constr, typs) ->
-                 let card = Product.cardinality typs |> Card.as_z in
+                 let card =
+                   typs |> List.map fst |> Product.cardinality |> Card.as_z
+                 in
                  Helper.pair (weight card)
-                   (constr_generator constr typs |> Option.get) )
-               variants )
-        ; exp_id "rs" ]
-      |> lambda_s "rs" |> Option.some
-    with Exit | Invalid_argument _ -> None
-
-  let generator_one_of (variants : (string * t list) list) =
-    try
-      let t = List.length variants in
-      let weight = 1. /. float_of_int t |> Helper.float_ in
-      apply_nolbl_s "weighted"
-        [ list_of_list
-            (List.map
-               (fun (constr, typs) ->
-                 Helper.pair weight
                    (constr_generator constr typs |> Option.get) )
                variants )
         ; exp_id "rs" ]
@@ -304,9 +420,11 @@ module Sum = struct
           (string_concat
              [string_ txt; apply_nolbl (Product.printer p) [tuple exp]] )
 
-  let printer variants =
+  let printer (variants : variants) =
     let cases =
-      List.map (fun (constr, args) -> constr_printer constr args) variants
+      List.map
+        (fun (constr, args) -> constr_printer constr (List.map fst args))
+        variants
     in
     function_ cases
 
@@ -314,7 +432,7 @@ module Sum = struct
     let constr pat = pat_construct (lid_loc txt) pat in
     match args with
     | [] -> (constr None, None)
-    | [last] ->
+    | [(last, _)] ->
         let prop = Option.get last.spec in
         let id = id_gen_gen () in
         let p, e = id () in
@@ -335,9 +453,9 @@ module Sum = struct
         , Option.map
             (fun spec ->
               case (constr (Some pat)) (apply_nolbl spec [tuple exp]) )
-            (Product.specification args) )
+            (args |> List.map fst |> Product.specification) )
 
-  let specification variants =
+  let specification (variants : variants) =
     try
       let cases = List.map (fun (c, a) -> constr_spec c a) variants in
       if List.for_all (fun (_, c) -> c = None) cases then None
@@ -349,19 +467,43 @@ module Sum = struct
                 cases ) )
     with Exit | Invalid_argument _ -> None
 
-  let make variants =
+  let boltzmann_specification (variants : variants) =
+    let variant_spec (_name, args) =
+      match args with
+      | [] -> Arbogen.Grammar.Z 1
+      | _ ->
+          args
+          |> List.map (fun (t, collect) ->
+                 (* XXX. This assumes that [@collect] occurs only on atomic types
+               *)
+                 if collect then Arbogen.Grammar.Ref "@collect"
+                 else Option.get t.boltz_spec )
+          |> Arbogen.Grammar.product_n
+          |> Arbogen.Grammar.(product (Z 1))
+    in
+    try
+      match List.map variant_spec variants with
+      | [] ->
+          Log.warn "What should we do with empty sum types?" ;
+          None
+      | es -> Some (Arbogen.Grammar.union_n es)
+    with Invalid_argument _ -> None
+
+  let make (name : string) (variants : variants) =
+    let boltz_spec = boltzmann_specification variants in
     let print = printer variants in
     let card = cardinality variants in
     let gen =
-      if Card.is_finite card then generator variants (Card.as_z card)
-      else generator_one_of variants
+      match card with
+      | Infinite -> Option.map (Infinite.generator name) boltz_spec
+      | Finite n -> generator variants n
+      | Unknown -> None
     in
     let spec = specification variants in
-    make print gen spec card
+    make boltz_spec print gen spec card
 end
 
 module Record = struct
-  (* TODO: *)
   let cardinality fields = fields |> List.map snd |> Product.cardinality
 
   let generator fields =
@@ -407,12 +549,15 @@ module Record = struct
       | _ -> (*record with 0 field*) assert false
     with Invalid_argument _ -> None
 
+  let boltzmann_specification fields =
+    fields |> List.map snd |> Product.boltzmann_specification
+
   let make fields =
     let c = cardinality fields in
     let g = generator fields in
     let p = printer fields in
     let s = specification fields in
-    make p g s c
+    make (boltzmann_specification fields) p g s c
 end
 
 module Constrained = struct
@@ -505,6 +650,10 @@ module Arrow = struct
   let printer = lambda_s "_" (string_ "(_ -> _)")
 
   let make _input output =
+    let bs = None in
+    let c = Card.Unknown in
     let g = generator output.gen in
-    make printer g None Card.Unknown
+    let p = printer in
+    let s = None in
+    make bs p g s c
 end

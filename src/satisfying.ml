@@ -74,6 +74,10 @@ let generate fn args out_print testname satisfy =
 (* Derivation *)
 (**************)
 
+(** True if and only if the type has the [@collect] attribute. *)
+let is_collected (ct : Parsetree.core_type) : bool =
+  Helper.has_attribute "collect" ct.ptyp_attributes
+
 (* derivation function for type declaration *)
 let rec derive_decl (s : Module_state.t) params
     ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) : Typrepr.t =
@@ -91,11 +95,16 @@ let rec derive_decl (s : Module_state.t) params
       | Ptype_variant constructors ->
           let constr_f c =
             match c.pcd_args with
-            | Pcstr_tuple ct ->
-                (c.pcd_name.txt, List.map (derive_ctype s params) ct)
-            | Pcstr_record _labs -> raise Exit
+            | Pcstr_tuple cts ->
+                ( c.pcd_name.txt
+                , List.map
+                    (fun ct -> (derive_ctype s params ct, is_collected ct))
+                    cts )
+            | Pcstr_record _labs ->
+                Log.warn "Inline records are not supported" ;
+                raise Exit
           in
-          Typrepr.Sum.make (List.map constr_f constructors)
+          Typrepr.Sum.make td.ptype_name.txt (List.map constr_f constructors)
       | Ptype_record labs ->
           let labs =
             List.map

@@ -1,4 +1,15 @@
-(* log file generation *)
+(** Logging *)
+
+(** {2 Warnings and errors} *)
+
+let _alert prefix = Format.kasprintf (Format.eprintf "%s: %s@." prefix)
+
+let error args = _alert "ERROR" args
+
+let warn args = _alert "WARNING" args
+
+(** {2 Log file generation} *)
+
 let log = ref false
 
 let format : Format.formatter option ref = ref None

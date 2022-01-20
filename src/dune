@@ -14,8 +14,10 @@
      ppx_tools_versioned
      ocaml-migrate-parsetree
      apron apron.boxMPQ apron.polkaMPQ apronext
-     picasso)
-  (modules :standard \ Rewriter))
+     picasso
+     arbogen)
+  (modules :standard \ Rewriter)
+  (preprocess (pps ppxlib.metaquot)))
 
 (executable
   (name rewriter)

@@ -188,7 +188,30 @@ let get_attribute_pstr n attrs =
   | Some _ -> Format.kasprintf failwith "bad %s attribute" n
   | None -> None
 
+let has_attribute n attrs = get_attribute_payload n attrs |> Option.is_some
+
 (* printing *)
+
+(** AST printer of Arbogen values *)
+module AGPrint = struct
+  let array printer a = Exp.array (a |> Array.to_list |> List.map printer)
+
+  let rec rule : Arbogen.Boltzmann.WeightedGrammar.expression -> expression =
+    let loc = Location.none in
+    function
+    | Z n -> [%expr Z [%e int_ n]]
+    | Product (x, y) -> [%expr Product ([%e rule x], [%e rule y])]
+    | Union (w, x, y) ->
+        [%expr Union ([%e float_ w], [%e rule x], [%e rule y])]
+    | Seq (w, x) -> [%expr Seq ([%e float_ w], [%e rule x])]
+    | Ref id -> [%expr Ref [%e int_ id]]
+
+  let weighted_grammar (wg : Arbogen.Boltzmann.WeightedGrammar.t) =
+    let loc = Location.none in
+    [%expr
+      Arbogen.Boltzmann.WeightedGrammar.
+        {names= [%e array string_ wg.names]; rules= [%e array rule wg.rules]}]
+end
 
 (* same as [pp], but in bold blue] *)
 let bold_blue x = Format.asprintf "\x1b[34;1m%s\x1b[0m" x
