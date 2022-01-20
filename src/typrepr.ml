@@ -27,7 +27,7 @@ module Card = struct
   let pp fmt = function
     | Unknown -> Format.pp_print_string fmt "unknown"
     | Infinite -> Format.pp_print_string fmt "infinite"
-    | Finite n -> Z.pp_print fmt n
+    | Finite n -> Helper.print_bigint fmt n
 end
 
 type t =
