@@ -183,7 +183,7 @@ let md str = String.split_on_char '*' str |> String.concat "\\*"
 
 (* pretty printing of large numbers: if cardinality is big, we print it as a
    power of 2 for readability *)
-let print_card =
+let print_bigint =
   let z15 = Z.of_int 32768 in
   let close_log z =
     let down = Z.log2 z in
