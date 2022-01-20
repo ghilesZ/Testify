@@ -76,8 +76,8 @@ let max_range map range_f =
   Option.map
     (SMap.fold
        (fun v i (vo, io) ->
-         if range_f i > range_f io then (v, i) else (vo, io))
-       map)
+         if range_f i > range_f io then (v, i) else (vo, io) )
+       map )
     (SMap.min_binding_opt map)
 
 (* float variable with maximal range *)
@@ -179,7 +179,7 @@ let rec refine (a : t) e (x : eval) : t =
   | ANegF (e1, i1) ->
       refine a e1
         (float
-           (Option.get (ItvF.bwd_neg (coerce_float i1) (coerce_float x))))
+           (Option.get (ItvF.bwd_neg (coerce_float i1) (coerce_float x))) )
   | ABinop ((e1, i1), o, (e2, i2)) ->
       let j1, j2 =
         match o with
@@ -277,12 +277,12 @@ let compile (a : t) =
       (fun v i ->
         let value = apply_nolbl (comp i) [exp_id "rs"] in
         let pair = Ast_helper.Exp.tuple [string_ v; value] in
-        instance := cons_exp pair !instance)
+        instance := cons_exp pair !instance )
       map
   in
   fill ItvI.compile a.ints ;
   fill ItvF.compile a.floats ;
-  lambda_s "rs" !instance
+  !instance
 
 let print fmt {ints; floats} =
   Format.fprintf fmt "{%a%a}" (SMap.print ItvI.print) ints

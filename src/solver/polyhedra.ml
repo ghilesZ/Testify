@@ -170,7 +170,8 @@ let compile_simplex pol =
   match Apol.to_generator_list pol with
   | h :: tl ->
       let others = list_of_list (List.map gen_to_instance tl) in
-      apply_nolbl_s "simplex" [gen_to_instance h; others; int_ (nb_dim pol)]
+      apply_nolbl_s "simplex"
+        [exp_id "rs"; gen_to_instance h; others; int_ (nb_dim pol)]
   | [] -> assert false
 
 let barycenter = function
@@ -255,10 +256,5 @@ let compile pol =
         empty_list_exp simplices
     in
     apply_nolbl_s "weighted" [gens]
-
-(* Format.asprintf
- *   "can not compile not simplex polyhedra. Number of gens: %i\n@.[%a@]\n"
- *   (nb_gen pol) print pol
- * |> failwith *)
 
 let to_drawable = Picasso.Drawable.of_pol

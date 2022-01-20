@@ -107,21 +107,25 @@ let craft_generator inner outer total pattern r =
   in
   match (inner, outer) with
   | [(_, g)], [] ->
-      r |><| g
+      lambda_s "rs" (apply_nolbl r [g])
       (* lighter generated code when the cover is a single element *)
   | _ ->
       let outer_gens =
         List.fold_left
           (fun acc (w, reject, g) ->
             let g =
-              apply_nolbl_s "reject" [lambda pattern reject; r |><| g]
+              apply_nolbl_s "reject"
+                [lambda pattern reject; lambda_s "rs" (apply_nolbl r [g])]
             in
             cons_exp (Exp.tuple [float_ w; g]) acc )
           empty_list_exp (List.rev outer)
       in
       let inner_outer_gens =
         List.fold_left
-          (fun acc (w, g) -> cons_exp (Exp.tuple [float_ w; r |><| g]) acc)
+          (fun acc (w, g) ->
+            cons_exp
+              (Exp.tuple [float_ w; lambda_s "rs" (apply_nolbl r [g])])
+              acc )
           outer_gens (List.rev inner)
       in
       apply_nolbl_s "weighted" [inner_outer_gens]

@@ -132,7 +132,7 @@ let f_vec r i1 i2 =
 let translate g1 (r : float list) vecs =
   List.fold_left2 (fun p r v -> f_vec r p v) g1 r vecs
 
-let simplex (x : instance) (vectors : instance list) (nb_dim : int) seed =
+let simplex seed (x : instance) (vectors : instance list) (nb_dim : int) =
   let sum = ref 0. in
   let random_vecs =
     List.rev_map

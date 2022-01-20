@@ -331,8 +331,7 @@ module Sum = struct
         let pat, expr = id () in
         Exp.case
           (constr (Some (pat_s pat)))
-          (string_concat
-             [string_ (txt ^ "("); apply_nolbl p [expr]; string_ ")"] )
+          (string_concat [string_ txt; apply_nolbl p [expr]])
         |> Option.some
     | [{print= None; _}] -> None
     | p ->
@@ -349,9 +348,7 @@ module Sum = struct
             Exp.case
               (constr (Some (Pat.tuple pat)))
               (string_concat
-                 [ string_ (txt ^ "(")
-                 ; apply_nolbl print [Exp.tuple exp]
-                 ; string_ ")" ] ) )
+                 [string_ txt; apply_nolbl print [Exp.tuple exp]] ) )
           (Product.printer p)
 
   let printer variants =
