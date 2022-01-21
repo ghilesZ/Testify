@@ -33,47 +33,68 @@ let fill =
   in
   aux
 
+(* compute the set of integer and the set of float values in a core_type *)
+let collect_ct core_type pattern : SSet.t * SSet.t =
+  let rec aux int_set float_set ct pat =
+    match (ct.ptyp_desc, pat.ppat_desc) with
+    | Ptyp_constr ({txt= Lident "int"; _}, []), Ppat_var {txt= ptxt; _} ->
+        (SSet.add ptxt int_set, float_set)
+    | Ptyp_constr ({txt= Lident "float"; _}, []), Ppat_var {txt= ptxt; _} ->
+        (int_set, SSet.add ptxt float_set)
+    | Ptyp_tuple ttup, Ppat_tuple ptup ->
+        List.fold_left2
+          (fun (i_s, f_s) tt pt -> aux i_s f_s tt pt)
+          (int_set, float_set) ttup ptup
+    | _ -> raise (Lang.OutOfSubset "core_type or pattern")
+  in
+  aux SSet.empty SSet.empty core_type (fill pattern)
+
+(* compute the set of integer and the set of float values in a record *)
+let collect_record labs _pattern : SSet.t * SSet.t =
+  List.fold_left
+    (fun (i_s, f_s) {pld_name; pld_type; _} ->
+      let i, f = collect_ct pld_type (Pat.var pld_name) in
+      (SSet.union i i_s, SSet.union f f_s) )
+    (SSet.empty, SSet.empty) labs
+
 (* given a type 't' and a pattern, builds an exepression corresponding to a
    reconstruction function of type 'instance -> t' *)
 (* TODO: handle more patterns (e.g. _, as) *)
 let flatten_ct core_type pattern =
-  let rec aux int_set float_set ct pat =
+  let rec aux ct pat =
     match (ct.ptyp_desc, pat.ppat_desc) with
     | Ptyp_constr ({txt= Lident "int"; _}, []), Ppat_var {txt= ptxt; _} ->
-        (get_int ptxt, SSet.add ptxt int_set, float_set)
+        get_int ptxt
     | Ptyp_constr ({txt= Lident "float"; _}, []), Ppat_var {txt= ptxt; _} ->
-        (get_float ptxt, int_set, SSet.add ptxt float_set)
+        get_float ptxt
     | Ptyp_tuple ttup, Ppat_tuple ptup ->
-        let sons, i_s, f_s =
+        let sons =
           List.fold_left2
-            (fun (acc, i_s, f_s) tt pt ->
-              let s', i_s, f_s = aux i_s f_s tt pt in
-              (s' :: acc, i_s, f_s) )
-            ([], int_set, float_set) ttup ptup
+            (fun acc tt pt ->
+              let s' = aux tt pt in
+              s' :: acc )
+            [] ttup ptup
         in
         let b =
           List.map (fun f -> apply_nolbl f [exp_id "i"]) (List.rev sons)
         in
-        (lambda_s "i" (Exp.tuple b), i_s, f_s)
+        lambda_s "i" (Exp.tuple b)
     | _ -> raise (Lang.OutOfSubset "core_type or pattern")
   in
-  aux SSet.empty SSet.empty core_type (fill pattern)
+  aux core_type (fill pattern)
 
 let flatten_record labs _pattern =
   match labs with
   | [] -> assert false (*empty record*)
   | _ ->
-      let r, i_s, f_s =
+      let r =
         List.fold_left
-          (fun (acc, i_s, f_s) {pld_name; pld_type; _} ->
-            let r, i, f = flatten_ct pld_type (Pat.var pld_name) in
-            ( (lid_loc pld_name.txt, apply_nolbl r [exp_id "i"]) :: acc
-            , SSet.union i i_s
-            , SSet.union f f_s ) )
-          ([], SSet.empty, SSet.empty)
-          labs
+          (fun acc {pld_name; pld_type; _} ->
+            let r = flatten_ct pld_type (Pat.var pld_name) in
+            (lid_loc pld_name.txt, apply_nolbl r [exp_id "i"]) :: acc )
+          [] labs
       in
-      (lambda_s "i" (Exp.record r None), i_s, f_s)
+      lambda_s "i" (Exp.record r None)
 
 let split_fun f =
   match f.pexp_desc with
@@ -105,27 +126,21 @@ let craft_generator inner outer total pattern r =
         (Q.div (Q.of_bigint w) (Q.of_bigint total) |> Q.to_float, g, r) )
       outer
   in
+  let gen g = lambda_s "rs" (apply_nolbl r [g]) in
   match (inner, outer) with
   | [(_, g)], [] ->
-      lambda_s "rs" (apply_nolbl r [g])
-      (* lighter generated code when the cover is a single element *)
+      gen g (* lighter generated code when the cover is a single element *)
   | _ ->
       let outer_gens =
         List.fold_left
           (fun acc (w, reject, g) ->
-            let g =
-              apply_nolbl_s "reject"
-                [lambda pattern reject; lambda_s "rs" (apply_nolbl r [g])]
-            in
+            let g = apply_nolbl_s "reject" [lambda pattern reject; gen g] in
             cons_exp (Exp.tuple [float_ w; g]) acc )
           empty_list_exp (List.rev outer)
       in
       let inner_outer_gens =
         List.fold_left
-          (fun acc (w, g) ->
-            cons_exp
-              (Exp.tuple [float_ w; lambda_s "rs" (apply_nolbl r [g])])
-              acc )
+          (fun acc (w, g) -> cons_exp (Exp.tuple [float_ w; gen g]) acc)
           outer_gens (List.rev inner)
       in
       apply_nolbl_s "weighted" [inner_outer_gens]
@@ -142,59 +157,36 @@ let get_generators i_s f_s constr =
   | "poly" -> Cover.Pol.get_generators i_s f_s constr
   | _ -> assert false
 
-let print_loc fmt (l : Location.t) =
-  let fn = Filename.(l.loc_start.pos_fname |> basename |> chop_extension) in
-  Format.fprintf fmt "%s%i" fn l.loc_start.pos_lnum
-
-let u_metric inner total =
-  let add = List.fold_left (fun acc (w, _e) -> Z.add acc w) Z.zero in
-  let ratio = Q.make (add inner) total in
-  Q.to_float ratio
-
 (* generator for constrained core types *)
 let solve_ct ct sat =
-  let res =
-    try
-      let pat, body = split_fun sat in
-      let unflatten, i_s, f_s = flatten_ct ct pat in
-      let constr = Lang.of_ocaml body in
-      let inner, outer, total = get_generators i_s f_s constr !max_size in
-      let g = craft_generator inner outer total pat unflatten in
-      Some (g, total)
-    with Lang.OutOfSubset _ -> None
-  in
-  res
+  try
+    let pat, body = split_fun sat in
+    let i_s, f_s = collect_ct ct pat in
+    let unflatten = flatten_ct ct pat in
+    let constr = Lang.of_ocaml body in
+    let inner, outer, total = get_generators i_s f_s constr !max_size in
+    let g = craft_generator inner outer total pat unflatten in
+    Some (g, total)
+  with Lang.OutOfSubset _ -> None
 
 let flatten_record labs sat _td =
   try
     let pat, body = split_fun sat in
     let constr = Lang.of_ocaml body in
-    let unflatten, i_s, f_s = flatten_record labs pat in
+    let i_s, f_s = collect_record labs pat in
+    let unflatten = flatten_record labs pat in
     let inner, outer, total = get_generators i_s f_s constr !max_size in
     let g = craft_generator inner outer total pat unflatten in
     Some (g, total)
   with Lang.OutOfSubset _ -> None
 
 let flatten_abstract td sat =
-  Option.bind td.ptype_manifest (fun ct ->
-      try
-        let pat, body = split_fun sat in
-        let unflatten, i_s, f_s = flatten_ct ct pat in
-        let constr = Lang.of_ocaml body in
-        let inner, outer, total = get_generators i_s f_s constr !max_size in
-        let g = craft_generator inner outer total pat unflatten in
-        Some (g, total)
-      with Lang.OutOfSubset _ -> None )
+  Option.bind td.ptype_manifest (fun ct -> solve_ct ct sat)
 
 (* generator for constrained type declarations *)
 let solve_td td sat =
-  let res =
-    try
-      match td.ptype_kind with
-      | Ptype_abstract -> flatten_abstract td sat
-      | Ptype_record labs -> flatten_record labs sat td
-      | Ptype_variant _ -> None
-      | Ptype_open -> None
-    with Lang.OutOfSubset _ -> None
-  in
-  res
+  match td.ptype_kind with
+  | Ptype_abstract -> flatten_abstract td sat
+  | Ptype_record labs -> flatten_record labs sat td
+  | Ptype_variant _ -> None
+  | Ptype_open -> None
