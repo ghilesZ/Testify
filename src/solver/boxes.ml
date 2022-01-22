@@ -1,8 +1,7 @@
-open Migrate_parsetree
-open Ast_410
 open Helper
 open Lang
 open Tools
+open Signatures
 
 type eval = I of ItvI.t | F of ItvF.t
 
@@ -271,18 +270,15 @@ let init =
     ; floats= SSet.fold (fun v -> SMap.add v f) floats SMap.empty }
 
 let compile (a : t) =
-  let instance = ref empty_list_exp in
-  let fill comp map =
-    SMap.iter
-      (fun v i ->
-        let value = apply_nolbl (comp i) [exp_id "rs"] in
-        let pair = Ast_helper.Exp.tuple [string_ v; value] in
-        instance := cons_exp pair !instance )
-      map
+  let fill comp map acc =
+    SMap.fold
+      (fun v i acc ->
+        let sampler = apply_nolbl (comp i) [exp_id "rs"] in
+        (v, sampler) :: acc )
+      map acc
   in
-  fill ItvI.compile a.ints ;
-  fill ItvF.compile a.floats ;
-  !instance
+  let s = [] |> fill ItvI.compile a.ints |> fill ItvF.compile a.floats in
+  Independant s
 
 let print fmt {ints; floats} =
   Format.fprintf fmt "{%a%a}" (SMap.print ItvI.print) ints

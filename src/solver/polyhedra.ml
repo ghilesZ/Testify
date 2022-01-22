@@ -3,6 +3,7 @@ open Apron
 open Apronext
 open Helper
 open Generator1
+open Signatures
 
 type t = Apol.t
 
@@ -239,22 +240,25 @@ let compile pol =
       let p' = split pol in
       List.fold_left aux acc p'
   in
-  if is_simplex pol then compile_simplex pol
-  else
-    let simplices = aux [] pol in
-    let total =
-      List.fold_left (fun acc (x, _) -> Z.add acc x) Z.zero simplices
-    in
-    let open Ast_helper in
-    let gens =
-      List.fold_left
-        (fun acc (w, p) ->
-          cons_exp
-            (Exp.tuple
-               [float_ (Q.make w total |> Q.to_float); compile_simplex p] )
-            acc )
-        empty_list_exp simplices
-    in
-    apply_nolbl_s "weighted" [gens]
+  let expr =
+    if is_simplex pol then compile_simplex pol
+    else
+      let simplices = aux [] pol in
+      let total =
+        List.fold_left (fun acc (x, _) -> Z.add acc x) Z.zero simplices
+      in
+      let open Ast_helper in
+      let gens =
+        List.fold_left
+          (fun acc (w, p) ->
+            cons_exp
+              (Exp.tuple
+                 [float_ (Q.make w total |> Q.to_float); compile_simplex p] )
+              acc )
+          empty_list_exp simplices
+      in
+      apply_nolbl_s "weighted" [gens]
+  in
+  Dependant expr
 
 let to_drawable = Picasso.Drawable.of_pol

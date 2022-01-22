@@ -80,4 +80,4 @@ let compile ((inf, sup) : t) =
   let open Helper in
   let i = inf |> Z.to_int |> int_ in
   let s = sup |> Z.to_int |> int_ in
-  apply_nolbl_s "mk_int_range" [i; s]
+  apply_nolbl_s "int_range" [i; s]

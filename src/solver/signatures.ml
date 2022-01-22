@@ -1,4 +1,9 @@
 open Tools
+open Migrate_parsetree.Ast_410.Parsetree
+
+type generator =
+  | Dependant of expression
+  | Independant of (string * expression) list
 
 module type Numeric = sig
   type t
@@ -11,7 +16,7 @@ module type Numeric = sig
 
   val join : t -> t -> t
 
-  val compile : t -> Migrate_parsetree.Ast_410.Parsetree.expression
+  val compile : t -> generator
 
   val split : t -> t list
 

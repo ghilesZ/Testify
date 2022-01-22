@@ -71,7 +71,7 @@ module Make (D : Signatures.Abs) = struct
     let outer_gens =
       List.map
         (fun (abs, weight, constr) ->
-          (weight, Lang.to_ocaml is fs constr, D.compile abs))
+          (weight, Lang.to_ocaml is fs constr, D.compile abs) )
         cover.outer
     in
     (inner_gens, outer_gens)
@@ -110,21 +110,17 @@ module Make (D : Signatures.Abs) = struct
       List.fold_left Rendering.add render
         (List.map
            (fun (e, _) -> (Colors.rgb 200 200 255, D.to_drawable e))
-           inner)
+           inner )
     in
     List.fold_left Rendering.add render
       (List.map
          (fun (e, _, _) -> (Colors.rgb 250 200 200, D.to_drawable e))
-         outer)
+         outer )
     |> to_svg
 
   let get_generators i_s f_s constr max =
     let abs = D.init i_s f_s in
     let c = solve abs constr max in
-    (*let min = try Tools.SSet.min_elt i_s with Not_found ->
-      Tools.SSet.min_elt f_s in let max = try Tools.SSet.max_elt i_s with
-      Not_found -> Tools.SSet.max_elt f_s in if !Log.log then show c max min
-      "name" ; *)
     let inner, outer = compile i_s f_s c in
     (inner, outer, c.total_volume)
 end

@@ -119,4 +119,4 @@ let compile ((inf, sup) : t) =
   let open Helper in
   let i = inf |> Q.to_float |> float_ in
   let s = sup |> Q.to_float |> float_ in
-  apply_nolbl_s "mk_float_range" [i; s]
+  apply_nolbl_s "float_range" [i; s]
