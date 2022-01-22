@@ -30,6 +30,29 @@ integers. As you also noticed, Testify uses the wonderful
 [QCheck](https://github.com/c-cube/qcheck) library do the tests. Other
 examples are available in the examples directory.
 
+### Citing
+The framework used by Testify was first described in the paper [Automated Random Testing of Numerical Constrained Types](https://drops.dagstuhl.de/opus/volltexte/2021/15350/pdf/LIPIcs-CP-2021-59.pdf) accepted in [CP 2021](https://cp2021.a4cp.org/)
+
+```Tex
+@InProceedings{ziat_et_al:LIPIcs.CP.2021.59,
+  author =	{Ziat, Ghiles and Dien, Matthieu and Botbol, Vincent},
+  title =	{{Automated Random Testing of Numerical Constrained Types}},
+  booktitle =	{27th International Conference on Principles and Practice of Constraint Programming (CP 2021)},
+  pages =	{59:1--59:19},
+  series =	{Leibniz International Proceedings in Informatics (LIPIcs)},
+  ISBN =	{978-3-95977-211-2},
+  ISSN =	{1868-8969},
+  year =	{2021},
+  volume =	{210},
+  editor =	{Michel, Laurent D.},
+  publisher =	{Schloss Dagstuhl -- Leibniz-Zentrum f{\"u}r Informatik},
+  address =	{Dagstuhl, Germany},
+  URL =		{https://drops.dagstuhl.de/opus/volltexte/2021/15350},
+  URN =		{urn:nbn:de:0030-drops-153502},
+  doi =		{10.4230/LIPIcs.CP.2021.59},
+  annote =	{Keywords: Constraint Programming, Automated Random Testing, Abstract Domains, Constrained Types}
+}
+```
 ### Usage
 Testify is defined following the inline-test backend facility of
 [dune](https://dune.readthedocs.io/en/stable/tests.html#defining-your-own-inline-test-backend),
@@ -96,11 +119,8 @@ Automatic derivation of generators is made for the following *Non-inductive* typ
 - for tuples
 - for records
 - for sum types
-- for types who are attached a ```[@@satisying pred]``` annotation, we
-  proceed to a rejection sampling using
-  ```QCheck.find_example```. However, this can be avoided by
-  specifying a generator to the given type **t** using the ```[@gen
-  t]``` annotation.
+- for constrained types (i.e, types that are attached a ```[@@satisying pred]``` annotation)
+- for parametric types
 
 When one or more generator can not be derived for a given function, no
 test is generated.
@@ -110,7 +130,5 @@ Testify is still at a very (very) early stage of developpement and is
 still very (very) unstable.
 
 ##### Things that are yet to be done
-- handling of parametric types
-- handling of module path for type annotations (e.g : `Int.t`)
 - provide the user with a *standard library* of predifined types (positive integers, non-empty lists ...)
 - define a way of tagging a function as partial or total
