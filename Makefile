@@ -1,11 +1,7 @@
 BIN=rewrite
 
 all:
-	@dune build || $(MAKE) -s $(BIN)
-	@$(MAKE) -s $(BIN)
-
-$(BIN):
-	@cp -f ./_build/default/.ppx/*/ppx.exe $@
+	@dune build
 
 test:
 	@dune runtest --force -j1 --no-buffer
@@ -15,5 +11,6 @@ clean:
 	@rm -f *.log
 	@dune clean
 	@rm -f *.markdown
+	@rm -rf testdir_*
 
 .PHONY: build test clean $(BIN)
