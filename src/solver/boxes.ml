@@ -194,12 +194,18 @@ let rec refine (a : t) e (x : eval) : t =
         | SubF ->
             ItvF.bwd_sub (coerce_float i1) (coerce_float i2) (coerce_float x)
             |> Option.get |> map_pair float
+        | Mul ->
+            ItvI.bwd_mul (coerce_int i1) (coerce_int i2) (coerce_int x)
+            |> Option.get |> map_pair int
+        | MulF ->
+            ItvF.bwd_mul (coerce_float i1) (coerce_float i2) (coerce_float x)
+            |> Option.get |> map_pair float
         | Pow ->
             ItvF.bwd_pow (coerce_float i1) (coerce_single_int i2)
               (coerce_float x)
             |> Option.get
             |> fun x -> (F x, i2)
-        | _ -> failwith "mul div not implemented yet"
+        | _ -> failwith "div not implemented yet"
       in
       refine (refine a e1 j1) e2 j2
   | AToInt (e, i) ->

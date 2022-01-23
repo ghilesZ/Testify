@@ -28,7 +28,10 @@ let sub (l1, h1) (l2, h2) = (Z.sub l1 h2, Z.sub h1 l2)
 
 let neg (l1, h1) = (Z.neg h1, Z.neg l1)
 
-let mul (_l1, _h1) (_l2, _h2) = failwith "itvI.mul"
+let mul (l1, h1) (l2, h2) =
+  let ac, ad = (Z.mul l1 l2, Z.mul l1 h2)
+  and bc, bd = (Z.mul h1 l2, Z.mul h1 h2) in
+  (Z.min (Z.min ac ad) (Z.min bc bd), Z.max (Z.max ac ad) (Z.max bc bd))
 
 let div (_l1, _h1) (_l2, _h2) = failwith "itvI.div"
 
@@ -46,6 +49,10 @@ let bwd_sub (i1 : t) (i2 : t) (r : t) : (t * t) option =
   merge_bot2 (meet i1 (add i2 r)) (meet i2 (sub i1 r))
 
 let bwd_neg (i : t) (r : t) : t option = meet i (neg r)
+
+let bwd_mul _i1 _i2 _r : (t * t) option = failwith "bwd_mul"
+
+let bwd_div _i1 _i2 _r : (t * t) option = failwith "bwd_div"
 
 (* Guards *)
 

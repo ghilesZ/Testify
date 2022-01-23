@@ -104,7 +104,7 @@ module Make (D : Signatures.Abs) = struct
   let show {inner; outer; _} x y =
     let open Picasso in
     let render =
-      Rendering.create ~axis:false ~abciss:x ~ordinate:y 600. 600.
+      Rendering.create ~axis:true ~abciss:x ~ordinate:y 600. 600.
     in
     let render =
       List.fold_left Rendering.add render
@@ -118,9 +118,20 @@ module Make (D : Signatures.Abs) = struct
          outer )
     |> to_svg
 
+  let pick_2 i_s f_s =
+    let open Tools in
+    if SSet.cardinal i_s >= 2 then (SSet.min_elt i_s, SSet.max_elt i_s)
+    else if SSet.cardinal f_s >= 2 then (SSet.min_elt f_s, SSet.max_elt f_s)
+    else if SSet.cardinal i_s = 1 then (SSet.min_elt i_s, SSet.min_elt i_s)
+    else (SSet.min_elt f_s, SSet.min_elt f_s)
+
   let get_generators i_s f_s constr max =
     let abs = D.init i_s f_s in
     let c = solve abs constr max in
+    (* if !Log.log then (
+     *   let x, y = pick_2 i_s f_s in
+     *   Format.printf "generating svg with abciss:%s and ordinate:%s\n%!" y x ;
+     *   show c y x "log.svg" ) ; *)
     let inner, outer = compile i_s f_s c in
     (inner, outer, c.total_volume)
 end

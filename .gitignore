@@ -10,3 +10,4 @@ _obuild
 /rewrite
 *.markdown
 gen/*
+testdir_*

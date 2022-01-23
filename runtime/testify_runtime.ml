@@ -115,24 +115,24 @@ module Collect = struct
   let float (x : float) = [x]
 end
 
-(* Polyhedra primitives *)
-let f_vec r i1 i2 =
-  List.map2
-    (fun (v1, i1) (_, i2) ->
-      match (i1, i2) with
-      | GInt i1, GInt i2 -> (v1, GInt (barycenter_i r i1 i2))
-      | GFloat f1, GFloat f2 -> (v1, GFloat (barycenter_f r f1 f2))
-      | _ ->
-          Format.asprintf "Type mismatch for variable %s" v1 |> invalid_arg
-      )
-    i1 i2
-
-(* translation of i1 by r1*i1v1, r2*i1v2 ... rn*i1vn where r1 .. rn are
-   random coeff in [0;1] *)
-let translate g1 (r : float list) vecs =
-  List.fold_left2 (fun p r v -> f_vec r p v) g1 r vecs
-
 let simplex seed (x : instance) (vectors : instance list) (nb_dim : int) =
+  (* Polyhedra primitives *)
+  let f_vec r i1 i2 =
+    List.map2
+      (fun (v1, i1) (_, i2) ->
+        match (i1, i2) with
+        | GInt i1, GInt i2 -> (v1, GInt (barycenter_i r i1 i2))
+        | GFloat f1, GFloat f2 -> (v1, GFloat (barycenter_f r f1 f2))
+        | _ ->
+            Format.asprintf "Type mismatch for variable %s" v1 |> invalid_arg
+        )
+      i1 i2
+  in
+  (* translation of i1 by r1*i1v1, r2*i1v2 ... rn*i1vn where r1 .. rn are
+     random coeff in [0;1] *)
+  let translate g1 (r : float list) vecs =
+    List.fold_left2 (fun p r v -> f_vec r p v) g1 r vecs
+  in
   let sum = ref 0. in
   let random_vecs =
     List.rev_map

@@ -2,6 +2,7 @@ BIN=rewrite
 
 all:
 	@dune build || $(MAKE) -s $(BIN)
+	@$(MAKE) -s $(BIN)
 
 $(BIN):
 	@cp -f ./_build/default/.ppx/*/ppx.exe $@

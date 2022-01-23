@@ -22,6 +22,8 @@ module Card = struct
     | Finite n -> n
     | Infinite | Unknown -> invalid_arg "Card.as_z"
 
+  let is_finite = function Finite _ -> true | Infinite | Unknown -> false
+
   (** {3 Pretty printing} *)
 
   let pp fmt = function
@@ -82,7 +84,7 @@ let finish_rec name typ =
       field
   in
   { print= header "print" typ.print
-  ; gen= header "gen" typ.gen
+  ; gen= header "gen" (Option.map (lambda_s "rs") typ.gen)
   ; spec= header "spec" typ.spec
   ; collector= header "collect" typ.collector
   ; card= Infinite }
@@ -275,11 +277,10 @@ module Sum = struct
   let cardinality =
     let rec sum acc = function
       | [] -> Card.finite acc
-      | (_, args) :: variants ->
-        begin match Product.cardinality args with
+      | (_, args) :: variants -> (
+        match Product.cardinality args with
         | Finite n -> sum (Z.add acc n) variants
-        | (Infinite | Unknown) as c -> c
-        end
+        | (Infinite | Unknown) as c -> c )
     in
     sum Z.zero
 
@@ -297,13 +298,9 @@ module Sum = struct
 
   let generator (variants : (string with_loc * t list) list) totalcard =
     try
-      let weight =
-        match totalcard with
-        | Some t ->
-            fun c ->
-              Q.div (Q.of_bigint c) (Q.of_bigint t)
-              |> Q.to_float |> Helper.float_
-        | _ -> raise Exit
+      let weight c =
+        Q.div (Q.of_bigint c) (Q.of_bigint totalcard)
+        |> Q.to_float |> Helper.float_
       in
       apply_nolbl_s "weighted"
         [ list_of_list
@@ -326,7 +323,8 @@ module Sum = struct
                (fun (constr, typs) ->
                  Helper.pair weight
                    (constr_generator constr typs |> Option.get) )
-               variants ) ]
+               variants )
+        ; exp_id "rs" ]
       |> Option.some
     with Exit | Invalid_argument _ -> None
 
@@ -450,7 +448,10 @@ module Sum = struct
   let make variants =
     let print = printer variants in
     let card = cardinality variants in
-    let gen = generator_one_of variants in
+    let gen =
+      if Card.is_finite card then generator variants (Card.as_z card)
+      else generator_one_of variants
+    in
     let spec = specification variants in
     let col = collector variants in
     make print gen spec card col
@@ -458,8 +459,7 @@ end
 
 module Record = struct
   (* TODO: *)
-  let cardinality fields =
-    fields |> List.map snd |> Product.cardinality
+  let cardinality fields = fields |> List.map snd |> Product.cardinality
 
   let generator fields =
     let field (n, t) =
@@ -470,8 +470,8 @@ module Record = struct
   let printer fields =
     let field (n, t) =
       let field = apply_nolbl (t.print |> Option.get) [exp_id n] in
-      let field_name = string_ n in
-      (string_concat ~sep:"=" [field_name; field], (lid_loc n, pat_s n))
+      let field_name = string_ (n ^ " = ") in
+      (string_concat [field_name; field], (lid_loc n, pat_s n))
     in
     try
       let fields = List.map field fields in

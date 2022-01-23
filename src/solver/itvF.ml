@@ -13,6 +13,8 @@ let meet (l1, h1) (l2, h2) =
   let high = Q.min h1 h2 in
   if Q.gt low high then None else Some (low, high)
 
+let subseteq (l1, h1) (l2, h2) = Q.leq l2 l1 && Q.leq h1 h2
+
 let split (l, h) =
   if l = h then invalid_arg "split"
   else
@@ -41,9 +43,7 @@ let how_many low high =
   else if high = 0. then how_many low (-.min_float) |> Int64.succ
   else how_many low high
 
-(* let range (l, h) = how_many (Q.to_float l) (Q.to_float h) |> Z.of_int64 *)
-
-let range (l, h) = Q.sub h l |> Q.mul (Q.of_int 100000) |> Q.to_bigint
+let range (l, h) = how_many (Q.to_float l) (Q.to_float h) |> Z.of_int64
 
 (* Forward operators *)
 
@@ -53,9 +53,31 @@ let sub (l1, h1) (l2, h2) = (Q.sub l1 h2, Q.sub h1 l2)
 
 let neg (l1, h1) = (Q.neg h1, Q.neg l1)
 
-let mul (_l1, _h1) (_l2, _h2) = failwith "Itvf.mul"
+let mul (l1, h1) (l2, h2) =
+  let ac, ad = (Q.mul l1 l2, Q.mul l1 h2)
+  and bc, bd = (Q.mul h1 l2, Q.mul h1 h2) in
+  (Q.min (Q.min ac ad) (Q.min bc bd), Q.max (Q.max ac ad) (Q.max bc bd))
 
-let div (_l1, _h1) (_l2, _h2) = failwith "Itvf.div"
+let div x y : t =
+  let div_pos a b c d =
+    (Q.min (Q.div a c) (Q.div a d), Q.max (Q.div b c) (Q.div b d))
+  and div_neg a b c d =
+    (Q.min (Q.div b c) (Q.div b d), Q.max (Q.div a c) (Q.div a d))
+  in
+  match (x, y) with
+  | (a, b), (c, d) -> (
+    match (Q.sign c, Q.sign d) with
+    | 0, 0 -> failwith "division by zero"
+    | 1, _ ->
+        let r, s = div_pos a b c d in
+        (r, s)
+    | _, -1 ->
+        let r, s = div_neg a b c d in
+        (r, s)
+    | _ ->
+        let r1, s1 = div_pos a b (Q.max Q.one c) d
+        and r2, s2 = div_neg a b c (Q.min Q.minus_one d) in
+        (Q.min r1 r2, Q.max s1 s2) )
 
 let rec pow (l, h) i =
   if i = 0 then (Q.one, Q.one)
@@ -79,6 +101,20 @@ let bwd_add i1 i2 r : (t * t) option =
 
 let bwd_sub (i1 : t) (i2 : t) (r : t) : (t * t) option =
   merge_bot2 (meet i1 (add i2 r)) (meet i2 (sub i1 r))
+
+let bwd_mul x y r : (t * t) option =
+  (* r=x*y => (x=r/y or y=r=0) and (y=r/x or x=r=0)  *)
+  let contains_zero o = subseteq (Q.zero, Q.zero) o in
+  match
+    ( ( if contains_zero y && contains_zero r then Some x
+      else meet x (div r y) )
+    , if contains_zero x && contains_zero r then Some y else meet y (div r x)
+    )
+  with
+  | Some x, Some y -> Some (x, y)
+  | _ -> None
+
+let bwd_div i1 i2 _r : (t * t) option = Some (i1, i2)
 
 let bwd_neg (i : t) (r : t) : t option = meet i (neg r)
 
