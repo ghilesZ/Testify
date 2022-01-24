@@ -72,7 +72,7 @@ let how_many low high =
 
 let range = function
   | Top -> Z.of_int max_int
-  | Range (l, h) -> how_many (Q.to_float l) (Q.to_float h) |> Z.of_int64
+  | Range (l, h) -> Q.sub h l |> Q.to_bigint
 
 (* Forward operators *)
 

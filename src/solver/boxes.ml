@@ -249,7 +249,9 @@ let filter (a : t) (e1 : arith) (o : cmp) (e2 : arith) : t Consistency.t =
       | Diseq -> filter_diseq i1 i2
       | Eq -> Consistency.map (fun x -> (x, x)) (filter_eq i1 i2)
     in
-    Consistency.map (fun (j1, j2) -> refine (refine a b1 j1) b2 j2) res
+    Consistency.bind
+      (fun (j1, j2) _ -> Filtered (refine (refine a b1 j1) b2 j2, false))
+      res
   with TypeError s ->
     let s =
       Format.asprintf "%s during filtering of %a %a %a" s print_arith e1

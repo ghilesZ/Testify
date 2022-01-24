@@ -11,7 +11,7 @@ open Tools
 
 let dom = ref "box"
 
-let max_size = ref 8
+let max_size = ref 64
 
 let dom_name () =
   match !dom with "box" -> Format.asprintf "box_%i" !max_size | x -> x
