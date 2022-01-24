@@ -191,6 +191,25 @@ let result_ =
   in
   {vars; body}
 
+let list_ =
+  let vars = ["a"] in
+  let alpha = Typ.var "a" in
+  let alpha_list = Typ.constr (lid_loc "list") [alpha] in
+  let body =
+    let cons =
+      Type.constructor
+        ~args:(Pcstr_tuple [alpha; alpha_list])
+        (none_loc "::")
+    in
+    let empty = Type.constructor (none_loc "[]") in
+    let kind = Ptype_variant [cons; empty] in
+    ptype
+      ~manifest:
+        (Typ.poly [none_loc "a"] (Typ.constr (lid_loc "list") [alpha]))
+      "list" vars kind
+  in
+  {vars; body}
+
 (** {1 Type composition} *)
 
 (** tuples *)
@@ -470,16 +489,24 @@ module Record = struct
   let printer fields =
     let field (n, t) =
       let field = apply_nolbl (t.print |> Option.get) [exp_id n] in
-      let field_name = string_ (n ^ " = ") in
-      (string_concat [field_name; field], (lid_loc n, pat_s n))
+      let field_name = n ^ " = " in
+      (field_name, field, (lid_loc n, pat_s n))
     in
-    try
-      let fields = List.map field fields in
-      let fields, pat = List.split fields in
-      let app = string_concat ~sep:"; " fields in
-      let app = string_concat [string_ "{"; app; string_ "}"] in
-      lambda (Pat.record pat Closed) app |> Option.some
-    with Invalid_argument _ -> None
+    match fields with
+    | [] -> assert false
+    | h :: tl ->
+        let n, rhd, pat = field h in
+        let fields, pat =
+          List.fold_left
+            (fun (rhd, pat) f ->
+              let n', rhd', pat' = field f in
+              (rhd' :: string_ ("; " ^ n') :: rhd, pat' :: pat) )
+            ([rhd; string_ ("{" ^ n)], [pat])
+            tl
+        in
+        let app = string_concat (List.rev fields) in
+        let app = string_concat [app; string_ "}"] in
+        lambda (Pat.record (List.rev pat) Closed) app |> Option.some
 
   let specification fields =
     let field (n, t) =
@@ -579,12 +606,9 @@ module Constrained = struct
       ; spec= Some spec
       ; card= Unknown }
     in
-    if !Gegen.dom <> "rs" then
-      match Gegen.solve_ct ct spec with
-      | Some (gen, card) ->
-          {typ with gen= Some gen; spec= Some spec; card= Finite card}
-      | _ -> default
-    else default
+    match Gegen.solve_ct ct spec with
+    | Some (gen, card) -> {default with gen= Some gen; card= Finite card}
+    | _ -> default
 
   let make_td td typ e =
     let spec =
@@ -597,8 +621,7 @@ module Constrained = struct
       ; card= Unknown }
     in
     match Gegen.solve_td td e with
-    | Some (gen, card) ->
-        {typ with gen= Some gen; spec= Some spec; card= Finite card}
+    | Some (gen, card) -> {default with gen= Some gen; card= Finite card}
     | _ -> default
 end
 

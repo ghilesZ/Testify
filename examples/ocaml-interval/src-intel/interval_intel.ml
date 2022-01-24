@@ -97,8 +97,8 @@ module I = struct
       else if mod2 nf = 0. then
         if 0 < sn then {low= Low.pow (-.b) nf; high= pow_h (-.a)}
         else {low= pow_l (-.a); high= High.pow (-.b) nf}
-      else if 0 < sn then {low= -.pow_h (-.a); high= -.Low.pow (-.b) nf}
-      else {low= -.High.pow (-.b) nf; high= -.pow_l (-.a)}
+      else if 0 < sn then {low= -.pow_h (-.a); high= -.(Low.pow (-.b) nf)}
+      else {low= -.(High.pow (-.b) nf); high= -.pow_l (-.a)}
     else if 0 < sa then
       if 0 < sn then {low= Low.pow a nf; high= pow_h b}
       else {low= pow_l b; high= High.pow a nf}

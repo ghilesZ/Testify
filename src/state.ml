@@ -50,6 +50,8 @@ let s0 : t =
   |> add_param_td "ref" Typrepr.ref_
   |> add_param_td "result" Typrepr.result_
   |> add_param_td "Result.t" Typrepr.result_
+  |> add_param_td "list" Typrepr.list_
+  |> add_param_td "List.t" Typrepr.list_
 
 (* registering functions *)
 let register_print (s : t) lid p =

@@ -1,0 +1,2 @@
+- mutally recursive types can not be handled properly by the current
+implementation, e.g specs

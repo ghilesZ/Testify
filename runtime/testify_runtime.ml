@@ -50,6 +50,12 @@ let get_int name (l : instance) = List.assoc name l |> to_int
 
 let get_float name (l : instance) = List.assoc name l |> to_float
 
+(* recursive types handling *)
+
+let consume = function
+  | [] -> invalid_arg "Testify_runtime.consume on emtpy list"
+  | h :: tl -> (h, tl)
+
 (* GENERATORS *)
 
 let unit = QCheck.Gen.unit
@@ -94,28 +100,14 @@ let count = ref 1000
 
 let reject pred g = QCheck.find_example ~f:pred ~count:!count g
 
-(* point obtained by translation of f1 by r*f1f2, r in [0;1]. FIXME: uniform
-   for reals but not for floats *)
-let barycenter_f r f1 f2 = ((1. -. r) *. f1) +. (r *. f2)
-
-(* same as barycenter_f using integers *)
-let barycenter_i r i1 i2 =
-  ((1. -. r) *. float i1) +. (r *. float i2) |> int_of_float
-
-(* collectors *)
-module Collect = struct
-  let unit () = [()]
-
-  let bool (x : bool) = [x]
-
-  let char (x : char) = [x]
-
-  let int (x : int) = [x]
-
-  let float (x : float) = [x]
-end
-
 let simplex seed (x : instance) (vectors : instance list) (nb_dim : int) =
+  (* point obtained by translation of f1 by r*f1f2, r in [0;1]. FIXME: uniform
+     for reals but not for floats *)
+  let barycenter_f r f1 f2 = ((1. -. r) *. f1) +. (r *. f2) in
+  (* same as barycenter_f using integers *)
+  let barycenter_i r i1 i2 =
+    ((1. -. r) *. float i1) +. (r *. float i2) |> int_of_float
+  in
   (* Polyhedra primitives *)
   let f_vec r i1 i2 =
     List.map2

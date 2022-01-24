@@ -51,7 +51,7 @@ let collect_ct core_type pattern : SSet.t * SSet.t =
   aux SSet.empty SSet.empty core_type (fill pattern)
 
 (* compute the set of integer and the set of float values in a record *)
-let collect_record labs _pattern : SSet.t * SSet.t =
+let collect_record labs : SSet.t * SSet.t =
   List.fold_left
     (fun (i_s, f_s) {pld_name; pld_type; _} ->
       let i, f = collect_ct pld_type (Pat.var pld_name) in
@@ -66,16 +66,13 @@ let flatten_ct_ind core_type pattern =
     | Ptyp_constr ({txt= Lident "int"; _}, []), Ppat_var {txt= ptxt; _}
      |Ptyp_constr ({txt= Lident "float"; _}, []), Ppat_var {txt= ptxt; _} ->
         List.assoc ptxt
-    | Ptyp_tuple ttup, Ppat_tuple ptup ->
-        fun vars ->
-          List.fold_left2 (fun acc tt pt -> aux tt pt :: acc) [] ttup ptup
-          |> List.rev_map (fun f -> f vars)
-          |> Exp.tuple
+    | Ptyp_tuple t, Ppat_tuple p ->
+        fun v -> List.map2 (fun t p -> aux t p v) t p |> Exp.tuple
     | _ -> raise (Lang.OutOfSubset "core_type or pattern")
   in
   aux core_type (fill pattern)
 
-let flatten_record_ind labs _pattern =
+let flatten_record_ind labs =
   let r =
     List.fold_left
       (fun acc {pld_name; pld_type; _} ->
@@ -105,7 +102,7 @@ let flatten_ct core_type pattern =
   in
   aux core_type (fill pattern)
 
-let flatten_record labs _pattern =
+let flatten_record labs =
   let r =
     List.fold_left
       (fun acc {pld_name; pld_type; _} ->
@@ -185,10 +182,10 @@ let get_generators i_s f_s constr =
 let solve_ct ct sat =
   try
     let pat, body = split_fun sat in
+    let constr = Lang.of_ocaml body in
     let i_s, f_s = collect_ct ct pat in
     let unflatten = flatten_ct ct pat in
     let unflatten_ind = flatten_ct_ind ct pat in
-    let constr = Lang.of_ocaml body in
     let inner, outer, total = get_generators i_s f_s constr !max_size in
     let g = craft_generator inner outer total pat unflatten unflatten_ind in
     Some (g, total)
@@ -198,9 +195,9 @@ let flatten_record labs sat _td =
   try
     let pat, body = split_fun sat in
     let constr = Lang.of_ocaml body in
-    let i_s, f_s = collect_record labs pat in
-    let unflatten = flatten_record labs pat in
-    let unflatten_ind = flatten_record_ind labs pat in
+    let i_s, f_s = collect_record labs in
+    let unflatten = flatten_record labs in
+    let unflatten_ind = flatten_record_ind labs in
     let inner, outer, total = get_generators i_s f_s constr !max_size in
     let g = craft_generator inner outer total pat unflatten unflatten_ind in
     Some (g, total)

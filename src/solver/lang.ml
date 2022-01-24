@@ -27,6 +27,36 @@ and arith =
 
 and bop = Add | Sub | Mul | Div | Pow | AddF | SubF | MulF | DivF
 
+let print_bop fmt = function
+  | Add -> Format.fprintf fmt "+"
+  | Sub -> Format.fprintf fmt "-"
+  | Mul -> Format.fprintf fmt "*"
+  | Div -> Format.fprintf fmt "/"
+  | Pow -> Format.fprintf fmt "**"
+  | AddF -> Format.fprintf fmt "+."
+  | SubF -> Format.fprintf fmt "-."
+  | MulF -> Format.fprintf fmt "*."
+  | DivF -> Format.fprintf fmt "/."
+
+let print_cmp fmt = function
+  | Lt -> Format.fprintf fmt "<"
+  | Leq -> Format.fprintf fmt "<="
+  | Gt -> Format.fprintf fmt ">"
+  | Geq -> Format.fprintf fmt ">="
+  | Eq -> Format.fprintf fmt "="
+  | Diseq -> Format.fprintf fmt "<>"
+
+let rec print_arith fmt = function
+  | Int i -> Format.fprintf fmt "%i" i
+  | Float f -> Format.fprintf fmt "%f" f
+  | Binop (a1, b, a2) ->
+      Format.fprintf fmt "%a %a %a" print_arith a1 print_bop b print_arith a2
+  | Neg a -> Format.fprintf fmt "%a" print_arith a
+  | NegF a -> Format.fprintf fmt "%a" print_arith a
+  | ToInt a -> Format.fprintf fmt "(int_of_float %a)" print_arith a
+  | ToFloat a -> Format.fprintf fmt "(float_of_int %a)" print_arith a
+  | Var v -> Format.fprintf fmt "%s" v
+
 let neg_cmp = function
   | Lt -> Geq
   | Leq -> Gt
@@ -87,7 +117,7 @@ let of_ocaml (expr : expression) : constr =
     | Pexp_apply
         ( {pexp_desc= Pexp_ident {txt= Lident "int_of_float"; _}; _}
         , [(Nolabel, arg)] ) ->
-        ToFloat (numeric arg)
+        ToInt (numeric arg)
     | Pexp_apply (op, [(Nolabel, arg1); (Nolabel, arg2)]) ->
         Binop (numeric arg1, handle_op op, numeric arg2)
     | Pexp_apply
@@ -137,7 +167,7 @@ let coerce_to t1 t2 =
       (Format.asprintf
          "This expression has type %s but an expressaion was expected of \
           type %s"
-         (to_string t1) (to_string t2))
+         (to_string t1) (to_string t2) )
 
 let get_typ ints reals =
   let rec loop = function
@@ -175,7 +205,7 @@ let to_ocaml ints reals (c : constr) : expression =
         lambda_s "x"
           (lambda_s "y"
              (apply_nolbl_s "( || )"
-                [apply_nolbl_s "not" [exp_id "x"]; exp_id "y"]))
+                [apply_nolbl_s "not" [exp_id "x"]; exp_id "y"] ) )
   in
   let binop = function
     | Add -> "Int.add"

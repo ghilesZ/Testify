@@ -134,6 +134,58 @@ and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
         Typrepr.Arrow.make input output
     | _ -> Typrepr.empty )
 
+let derive state (recflag, typs) =
+  Log.type_decl (recflag, typs) ;
+  (* we pre-fill the environment with the type being processed (for recursive
+     types)*)
+  let state =
+    match recflag with
+    | Recursive ->
+        List.fold_left
+          (fun acc td ->
+            Module_state.update acc
+              (lparse td.ptype_name.txt)
+              (Typrepr.make_rec td.ptype_name.txt) )
+          state typs
+    | Nonrecursive -> state
+  in
+  (* we build the bodies of the functions *)
+  let state =
+    List.fold_left
+      (fun acc td ->
+        let id = lparse td.ptype_name.txt in
+        match td.ptype_params with
+        | [] ->
+            let typrepr = derive_decl acc [] td in
+            Module_state.update acc id typrepr
+        | _ -> Module_state.update_param state id td )
+      state typs
+  in
+  let rec_, nonrec_ = rec_nonrec (recflag, typs) in
+  List.iter
+    (fun td ->
+      let id = lparse td.ptype_name.txt in
+      let typrepr = Module_state.get id state |> Option.get in
+      Log.print "%a\n%!" Typrepr.print typrepr )
+    nonrec_ ;
+  (* we wrap them into a recursive function *)
+  List.fold_left
+    (fun acc td ->
+      let id = lparse td.ptype_name.txt in
+      let res =
+        match td.ptype_params with
+        | [] ->
+            let typrepr =
+              Module_state.get id acc |> Option.get
+              |> Typrepr.finish_rec td.ptype_name.txt
+            in
+            Log.print "%a\n%!" Typrepr.print typrepr ;
+            Module_state.update acc id typrepr
+        | _ -> Module_state.update_param state id td
+      in
+      Log.print "\n\n\n" ; res )
+    state rec_
+
 (** {1 annotation handling} *)
 let check_gen vb (s : State.t) : State.t =
   match get_attribute_pstr "gen" vb.pvb_attributes with
@@ -192,58 +244,6 @@ let get_infos (s : Module_state.t) e =
     let infos, ct = aux [] e in
     Some (infos, ct)
   with Exit | Invalid_argument _ -> None
-
-let derive state (recflag, typs) =
-  Log.type_decl (recflag, typs) ;
-  (* we pre-fill the environment with the type being processed (for recursive
-     types)*)
-  let state =
-    match recflag with
-    | Recursive ->
-        List.fold_left
-          (fun acc td ->
-            Module_state.update acc
-              (lparse td.ptype_name.txt)
-              (Typrepr.make_rec td.ptype_name.txt) )
-          state typs
-    | Nonrecursive -> state
-  in
-  (* we build the bodies of the functions *)
-  let state =
-    List.fold_left
-      (fun acc td ->
-        let id = lparse td.ptype_name.txt in
-        match td.ptype_params with
-        | [] ->
-            let typrepr = derive_decl acc [] td in
-            Module_state.update acc id typrepr
-        | _ -> Module_state.update_param state id td )
-      state typs
-  in
-  let rec_, nonrec_ = rec_nonrec (recflag, typs) in
-  List.iter
-    (fun td ->
-      let id = lparse td.ptype_name.txt in
-      let typrepr = Module_state.get id state |> Option.get in
-      Log.print "%a\n%!" Typrepr.print typrepr )
-    nonrec_ ;
-  (* we wrap them into a recursive function *)
-  List.fold_left
-    (fun acc td ->
-      let id = lparse td.ptype_name.txt in
-      let res =
-        match td.ptype_params with
-        | [] ->
-            let typrepr =
-              Module_state.get id acc |> Option.get
-              |> Typrepr.finish_rec td.ptype_name.txt
-            in
-            Log.print "%a\n%!" Typrepr.print typrepr ;
-            Module_state.update acc id typrepr
-        | _ -> Module_state.update_param state id td
-      in
-      Log.print "\n\n\n" ; res )
-    state rec_
 
 (* builds a test list to add to the AST. handles explicitly typed values *)
 let gather_tests vb state =

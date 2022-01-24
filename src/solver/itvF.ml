@@ -1,25 +1,52 @@
 (* float interval with rational bounds *)
 
-type t = Q.t * Q.t
+type t = Range of Q.t * Q.t | Top
 
-let print fmt (l, u) = Format.fprintf fmt "[%a;%a]" Q.pp_print l Q.pp_print u
+let print_range fmt (l, u) =
+  Format.fprintf fmt "[%a;%a]" Q.pp_print l Q.pp_print u
+
+let print fmt = function
+  | Range (l, u) -> Format.fprintf fmt "%a" print_range (l, u)
+  | Top -> Format.fprintf fmt "T"
 
 let q2 = Q.of_int 2
 
-let join (l1, h1) (l2, h2) = (Q.min l1 l2, Q.max h1 h2)
+let join i1 i2 =
+  match (i1, i2) with
+  | Range (l1, h1), Range (l2, h2) -> Range (Q.min l1 l2, Q.max h1 h2)
+  | _ -> Top
 
-let meet (l1, h1) (l2, h2) =
-  let low = Q.max l1 l2 in
-  let high = Q.min h1 h2 in
-  if Q.gt low high then None else Some (low, high)
+let meet i1 i2 =
+  match (i1, i2) with
+  | Top, x | x, Top -> Some x
+  | Range (l1, h1), Range (l2, h2) ->
+      let low = Q.max l1 l2 in
+      let high = Q.min h1 h2 in
+      if Q.gt low high then None else Some (Range (low, high))
 
-let subseteq (l1, h1) (l2, h2) = Q.leq l2 l1 && Q.leq h1 h2
+let subseteq_range (l1, h1) (l2, h2) = Q.leq l2 l1 && Q.leq h1 h2
 
-let split (l, h) =
+let subseteq i1 i2 =
+  match (i1, i2) with
+  | _, Top -> true
+  | Top, Range _ -> false
+  | Range (l1, h1), Range (l2, h2) -> subseteq_range (l1, h1) (l2, h2)
+
+let split_range (l, h) =
   if l = h then invalid_arg "split"
   else
     let mid = Q.add l (Q.div (Q.sub h l) q2) in
     [(l, mid); (mid, h)]
+
+let split = function
+  | Top ->
+      [ Range (Q.of_float neg_infinity, Q.zero)
+      ; Range (Q.zero, Q.of_float infinity) ]
+  | Range (l, h) ->
+      if l = h then invalid_arg "split"
+      else
+        let mid = Q.add l (Q.div (Q.sub h l) q2) in
+        [Range (l, mid); Range (mid, h)]
 
 (* both non-zero *)
 let how_many low high =
@@ -43,7 +70,9 @@ let how_many low high =
   else if high = 0. then how_many low (-.min_float) |> Int64.succ
   else how_many low high
 
-let range (l, h) = how_many (Q.to_float l) (Q.to_float h) |> Z.of_int64
+let range = function
+  | Top -> Z.of_int max_int
+  | Range (l, h) -> how_many (Q.to_float l) (Q.to_float h) |> Z.of_int64
 
 (* Forward operators *)
 
@@ -58,7 +87,7 @@ let mul (l1, h1) (l2, h2) =
   and bc, bd = (Q.mul h1 l2, Q.mul h1 h2) in
   (Q.min (Q.min ac ad) (Q.min bc bd), Q.max (Q.max ac ad) (Q.max bc bd))
 
-let div x y : t =
+let div x y =
   let div_pos a b c d =
     (Q.min (Q.div a c) (Q.div a d), Q.max (Q.div b c) (Q.div b d))
   and div_neg a b c d =
@@ -79,15 +108,96 @@ let div x y : t =
         and r2, s2 = div_neg a b c (Q.min Q.minus_one d) in
         (Q.min r1 r2, Q.max s1 s2) )
 
-let rec pow (l, h) i =
-  if i = 0 then (Q.one, Q.one)
-  else if i = 1 then (l, h)
-  else if i > 0 then pow (Q.mul l l, Q.mul h h) (i - 1)
-  else pow (h, l) (-i)
+let pow_up x n = Q.of_float (Q.to_float x ** float n)
+
+let pow_down = pow_up
 
 let pow itv i =
+  (* powers *)
+  let pow (il, ih) (p : int) =
+    match p with
+    | 0 -> (Q.one, Q.one)
+    | 1 -> (il, ih)
+    | x ->
+        if x > 1 then
+          if x mod 2 = 1 then (pow_down il p, pow_up ih p)
+          else if Q.leq il Q.zero && Q.geq ih Q.zero then
+            (Q.zero, max (pow_up il p) (pow_up ih p))
+          else if Q.geq il Q.zero then (pow_down il p, pow_up ih p)
+          else (pow_down ih p, pow_up il p)
+        else failwith "cant handle negatives powers"
+  in
   let i = Z.to_int i in
-  pow itv i
+  let res = pow itv i in
+  (* Format.eprintf "%a ** %i = %a\n" print_range itv i print_range res ; *)
+  res
+
+let root_up x n = Q.of_float (exp (log (Q.to_float x) /. float (Z.to_int n)))
+
+let root_down x n =
+  Q.of_float (exp (log (Q.to_float x) /. float (Z.to_int n)))
+
+(* nth-root *)
+let root (il, ih) p =
+  if p = Z.one then Some (il, ih)
+  else if Z.gt p Z.one then
+    if Z.rem p (Z.of_int 2) = Z.one then Some (root_down il p, root_up ih p)
+    else if Q.lt ih Q.zero then None
+    else if Q.leq il Q.zero then Some (Q.neg (root_down ih p), root_up ih p)
+    else
+      Some
+        ( Q.min (Q.neg (root_down il p)) (Q.neg (root_down ih p))
+        , Q.max (root_up il p) (root_up ih p) )
+  else failwith "can only handle stricly positive roots"
+
+let add i1 i2 =
+  match (i1, i2) with
+  | Range (l1, h1), Range (l2, h2) ->
+      let lr, hr = add (l1, h1) (l2, h2) in
+      Range (lr, hr)
+  | _ -> Top
+
+let sub i1 i2 =
+  match (i1, i2) with
+  | Range (l1, h1), Range (l2, h2) ->
+      let lr, hr = sub (l1, h1) (l2, h2) in
+      Range (lr, hr)
+  | _ -> Top
+
+let mul i1 i2 =
+  match (i1, i2) with
+  | Range (l1, h1), Range (l2, h2) ->
+      let lr, hr = mul (l1, h1) (l2, h2) in
+      Range (lr, hr)
+  | _ -> Top
+
+let div i1 i2 =
+  match (i1, i2) with
+  | Range (l1, h1), Range (l2, h2) ->
+      let lr, hr = div (l1, h1) (l2, h2) in
+      Range (lr, hr)
+  | _ -> Top
+
+let neg = function
+  | Top -> Top
+  | Range (l, h) ->
+      let l', h' = neg (l, h) in
+      Range (l', h')
+
+let pow i exp =
+  match i with
+  | Top -> Top
+  | Range (l, h) ->
+      let l', h' = pow (l, h) exp in
+      Range (l', h')
+
+let root i exp =
+  match i with
+  | Top -> Some Top
+  | Range (l, h) -> (
+    match root (l, h) exp with
+    | None -> None
+    | Some (l', h') -> Some (Range (l', h')) )
 
 (* Backward operators *)
 
@@ -104,13 +214,8 @@ let bwd_sub (i1 : t) (i2 : t) (r : t) : (t * t) option =
 
 let bwd_mul x y r : (t * t) option =
   (* r=x*y => (x=r/y or y=r=0) and (y=r/x or x=r=0)  *)
-  let contains_zero o = subseteq (Q.zero, Q.zero) o in
-  match
-    ( ( if contains_zero y && contains_zero r then Some x
-      else meet x (div r y) )
-    , if contains_zero x && contains_zero r then Some y else meet y (div r x)
-    )
-  with
+  let _contains_zero o = subseteq (Range (Q.zero, Q.zero)) o in
+  match (meet x (div r y), meet y (div r x)) with
   | Some x, Some y -> Some (x, y)
   | _ -> None
 
@@ -118,41 +223,99 @@ let bwd_div i1 i2 _r : (t * t) option = Some (i1, i2)
 
 let bwd_neg (i : t) (r : t) : t option = meet i (neg r)
 
-let bwd_pow itv _i _r = Some itv
+let bwd_pow itv i r : t option =
+  let res = Option.map (meet itv) (root r i) |> Option.join in
+  (* Format.eprintf "%a ** %a = %a" print itv Z.pp_print i print r ; *)
+  (* ( match res with
+   * | Some res ->
+   *     (Format.asprintf "arg1 should be in %a" print res |> failwith : unit)
+   * | None -> failwith "impossible" ) ; *)
+  res
 
 (* Guards *)
 
-let filter_leq ((l1, h1) : t) ((l2, h2) : t) : (t * t) Consistency.t =
+let filter_leq_range (l1, h1) (l2, h2) :
+    ((Q.t * Q.t) * (Q.t * Q.t)) Consistency.t =
   let open Consistency in
   if Q.leq h1 l2 then Sat
   else if Q.gt l1 h2 then Unsat
   else Filtered (((l1, Q.min h1 h2), (Q.max l1 l2, h2)), l1 = h1 || l2 = h2)
 
-let filter_lt ((l1, h1) as i1 : t) ((l2, h2) as i2 : t) :
-    (t * t) Consistency.t =
+let filter_lt_range ((l1, h1) as i1) ((l2, h2) as i2) :
+    ((Q.t * Q.t) * (Q.t * Q.t)) Consistency.t =
   let open Consistency in
   if Q.lt h1 l2 then Sat
   else if (l1 = h1 && i1 = i2) || Q.gt l1 h2 then Unsat
   else Filtered (((l1, Q.min h1 h2), (Q.max l1 l2, h2)), l1 = h1 || l2 = h2)
 
-let filter_eq ((l1, h1) as i1 : t) ((l2, h2) as i2 : t) : t Consistency.t =
+let filter_eq_range ((l1, h1) as i1) ((l2, h2) as i2) :
+    (Q.t * Q.t) Consistency.t =
   let open Consistency in
   if l1 = h1 && i1 = i2 then Sat
   else
     let l = Q.max l1 l2 and u = Q.min h1 h2 in
     if Q.leq l u then Filtered ((l, u), false) else Unsat
 
-let filter_diseq ((l1, h1) as i1 : t) ((l2, h2) as i2 : t) :
-    (t * t) Consistency.t =
+let filter_diseq_range ((l1, h1) as i1) ((l2, h2) as i2) :
+    ((Q.t * Q.t) * (Q.t * Q.t)) Consistency.t =
   let open Consistency in
   if Q.equal l1 h1 && Q.equal l2 h2 && Q.equal l1 l2 then Unsat
   else
     let l = Q.max l1 l2 and u = Q.min h1 h2 in
     if Q.leq l u then Filtered ((i1, i2), false) else Sat
 
+(* Guards *)
+
+let filter_leq (i1 : t) (i2 : t) : (t * t) Consistency.t =
+  match (i1, i2) with
+  | Range (l1, h1), Range (l2, h2) ->
+      Consistency.map
+        (fun ((l1, h1), (l2, h2)) -> (Range (l1, h1), Range (l2, h2)))
+        (filter_leq_range (l1, h1) (l2, h2))
+  | Top, Range (l, h) ->
+      let r = Range (Q.of_float neg_infinity, h) in
+      Filtered ((r, i2), l = h)
+  | Range (l, h), Top ->
+      let r = Range (l, Q.of_float infinity) in
+      Filtered ((i1, r), l = h)
+  | _ -> Filtered ((i1, i2), false)
+
+let filter_lt (i1 : t) (i2 : t) : (t * t) Consistency.t =
+  match (i1, i2) with
+  | Range (l1, h1), Range (l2, h2) ->
+      Consistency.map
+        (fun ((l1, h1), (l2, h2)) -> (Range (l1, h1), Range (l2, h2)))
+        (filter_lt_range (l1, h1) (l2, h2))
+  | Top, Range (_l, h) ->
+      let r = Range (Q.of_float neg_infinity, h) in
+      Filtered ((r, i2), false)
+  | Range (l, _), Top ->
+      let r = Range (l, Q.of_float infinity) in
+      Filtered ((i1, r), false)
+  | _ -> Filtered ((i1, i2), false)
+
+let filter_eq (i1 : t) (i2 : t) : t Consistency.t =
+  match (i1, i2) with
+  | Range (l1, h1), Range (l2, h2) ->
+      Consistency.map
+        (fun (l, h) -> Range (l, h))
+        (filter_eq_range (l1, h1) (l2, h2))
+  | Top, x | x, Top -> Filtered (x, false)
+
+let filter_diseq (i1 : t) (i2 : t) : (t * t) Consistency.t =
+  match (i1, i2) with
+  | Range (l1, h1), Range (l2, h2) ->
+      Consistency.map
+        (fun ((l1, h1), (l2, h2)) -> (Range (l1, h1), Range (l2, h2)))
+        (filter_diseq_range (l1, h1) (l2, h2))
+  | _ -> Filtered ((i1, i2), false)
+
 (* compilation *)
-let compile ((inf, sup) : t) =
+let compile i =
   let open Helper in
-  let i = inf |> Q.to_float |> float_ in
-  let s = sup |> Q.to_float |> float_ in
-  apply_nolbl_s "float_range" [i; s]
+  match i with
+  | Range (inf, sup) ->
+      let i = inf |> Q.to_float |> float_ in
+      let s = sup |> Q.to_float |> float_ in
+      apply_nolbl_s "float_range" [i; s]
+  | _ -> exp_id "QCheck.Gen.float"
