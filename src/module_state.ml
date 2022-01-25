@@ -8,10 +8,7 @@ type t = (string * State.t) list
 let print_module fmt (name, state) =
   Format.fprintf fmt "module:%s\n%a\n" name State.print state
 
-let print fmt t =
-  Format.pp_print_list
-    ~pp_sep:(fun fmt () -> Format.fprintf fmt "\n")
-    print_module fmt t
+let print = Format.pp_print_list print_module
 
 let s0 = [("stdlib", State.s0)]
 

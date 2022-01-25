@@ -128,9 +128,9 @@ module Make (D : Signatures.Abs) = struct
   let get_generators i_s f_s constr max =
     let abs = D.init i_s f_s in
     let c = solve abs constr max in
-    ( if !Log.log then
-      let x, y = pick_2 i_s f_s in
-      show c y x "log.svg" ) ;
+    (* ( if !Log.log then
+     *   let x, y = pick_2 i_s f_s in
+     *   show c y x "log.svg" ) ; *)
     let inner, outer = compile i_s f_s c in
     (inner, outer, c.total_volume)
 end

@@ -134,6 +134,14 @@ and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
         Typrepr.Arrow.make input output
     | _ -> Typrepr.empty )
 
+(*  true if the type is attached a specification. type must exist *)
+let is_constrained state id =
+  match Module_state.get (lparse id) state with
+  | None ->
+      Format.asprintf "%s not found in %a" id Module_state.print state
+      |> failwith
+  | Some t -> Option.is_some Typrepr.(t.spec)
+
 let derive state (recflag, typs) =
   Log.type_decl (recflag, typs) ;
   (* we pre-fill the environment with the type being processed (for recursive
