@@ -68,27 +68,6 @@ let free g c p col =
 
 let make print gen spec card collector = {gen; spec; card; print; collector}
 
-let make_rec typ_name =
-  { print= Some (exp_id ("print_" ^ typ_name))
-  ; gen= Some (exp_id ("gen_" ^ typ_name))
-  ; spec= Some (exp_id ("spec_" ^ typ_name))
-  ; collector= Some (exp_id ("collect_" ^ typ_name))
-  ; card= Infinite }
-
-let finish_rec name typ =
-  let header fn field =
-    Option.map
-      (fun body ->
-        let exp = letrec (fn ^ "_" ^ name) body (exp_id (fn ^ "_" ^ name)) in
-        exp )
-      field
-  in
-  { print= header "print" typ.print
-  ; gen= header "gen" (Option.map (lambda_s "rs") typ.gen)
-  ; spec= header "spec" typ.spec
-  ; collector= header "collect" typ.collector
-  ; card= Infinite }
-
 let end_module name typ =
   { typ with
     gen= Option.map (let_open name) typ.gen
@@ -139,7 +118,7 @@ let ptype ?manifest name params kind =
   ; ptype_attributes= []
   ; ptype_loc= Location.none }
 
-(** {1 Polymorphic types} *)
+(** {2 Polymorphic types} *)
 
 type param = {vars: string list; body: type_declaration}
 
@@ -210,7 +189,34 @@ let list_ =
   in
   {vars; body}
 
-(** {1 Type composition} *)
+(** {2 Recursive types} *)
+
+module Rec = struct
+  let make typ_name =
+    { print= Some (exp_id ("print_" ^ typ_name))
+    ; gen= Some (exp_id ("gen_" ^ typ_name))
+    ; spec= Some (exp_id ("spec_" ^ typ_name))
+    ; collector= Some (exp_id ("collect_" ^ typ_name))
+    ; card= Infinite }
+
+  let finish name typ =
+    let header fn field =
+      Option.map
+        (fun body ->
+          let exp =
+            letrec (fn ^ "_" ^ name) body (exp_id (fn ^ "_" ^ name))
+          in
+          exp )
+        field
+    in
+    { print= header "print" typ.print
+    ; gen= header "gen" (Option.map (lambda_s "rs") typ.gen)
+    ; spec= header "spec" typ.spec
+    ; collector= header "collect" typ.collector
+    ; card= Infinite }
+end
+
+(** {2 Type composition} *)
 
 (** tuples *)
 module Product = struct

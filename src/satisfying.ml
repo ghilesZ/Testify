@@ -153,7 +153,7 @@ let derive state (recflag, typs) =
           (fun acc td ->
             Module_state.update acc
               (lparse td.ptype_name.txt)
-              (Typrepr.make_rec td.ptype_name.txt) )
+              (Typrepr.Rec.make td.ptype_name.txt) )
           state typs
     | Nonrecursive -> state
   in
@@ -185,7 +185,7 @@ let derive state (recflag, typs) =
         | [] ->
             let typrepr =
               Module_state.get id acc |> Option.get
-              |> Typrepr.finish_rec td.ptype_name.txt
+              |> Typrepr.Rec.finish td.ptype_name.txt
             in
             Log.print "%a\n%!" Typrepr.print typrepr ;
             Module_state.update acc id typrepr
