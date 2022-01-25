@@ -15,4 +15,9 @@
      ocaml-migrate-parsetree
      apron apron.boxMPQ apron.polkaMPQ apronext
      picasso)
-)             
+  (modules :standard \ Rewriter))
+
+(executable
+  (name rewriter)
+  (modules Rewriter)
+  (libraries ppx_testify ppxlib))
