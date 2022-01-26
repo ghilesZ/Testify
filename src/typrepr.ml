@@ -346,7 +346,8 @@ module Sum = struct
                  let card = Product.cardinality typs |> Card.as_z in
                  Helper.pair (weight card)
                    (constr_generator constr typs |> Option.get) )
-               variants ) ]
+               variants )
+        ; exp_id "rs" ]
       |> lambda_s "rs" |> Option.some
     with Exit | Invalid_argument _ -> None
 
