@@ -68,27 +68,6 @@ let free g c p col =
 
 let make print gen spec card collector = {gen; spec; card; print; collector}
 
-let make_rec typ_name =
-  { print= Some (exp_id ("print_" ^ typ_name))
-  ; gen= Some (exp_id ("gen_" ^ typ_name))
-  ; spec= Some (exp_id ("spec_" ^ typ_name))
-  ; collector= Some (exp_id ("collect_" ^ typ_name))
-  ; card= Infinite }
-
-let finish_rec name typ =
-  let header fn field =
-    Option.map
-      (fun body ->
-        let exp = letrec (fn ^ "_" ^ name) body (exp_id (fn ^ "_" ^ name)) in
-        exp )
-      field
-  in
-  { print= header "print" typ.print
-  ; gen= header "gen" (Option.map (lambda_s "rs") typ.gen)
-  ; spec= header "spec" typ.spec
-  ; collector= header "collect" typ.collector
-  ; card= Infinite }
-
 let end_module name typ =
   { typ with
     gen= Option.map (let_open name) typ.gen
@@ -139,7 +118,7 @@ let ptype ?manifest name params kind =
   ; ptype_attributes= []
   ; ptype_loc= Location.none }
 
-(** {1 Polymorphic types} *)
+(** {2 Polymorphic types} *)
 
 type param = {vars: string list; body: type_declaration}
 
@@ -210,7 +189,46 @@ let list_ =
   in
   {vars; body}
 
-(** {1 Type composition} *)
+(** {2 Recursive types} *)
+
+module Rec = struct
+  let make typ_name =
+    { print= Some (exp_id ("print_" ^ typ_name))
+    ; gen= Some (exp_id ("gen_" ^ typ_name))
+    ; spec= Some (exp_id ("spec_" ^ typ_name))
+    ; collector= Some (exp_id ("collect_" ^ typ_name))
+    ; card= Infinite }
+
+  let make_mutually_rec header typs get_field =
+    (* XXX. Aaaaaarg, ugly code! *)
+    try
+      let vb_list =
+        List.map
+          (fun (name, typ) ->
+            { pvb_pat= pat_s (header ^ "_" ^ name)
+            ; pvb_expr= get_field typ |> Option.get
+            ; pvb_attributes= []
+            ; pvb_loc= Location.none } )
+          typs
+      in
+      let rec_def = Exp.let_ Recursive vb_list in
+      List.map
+        (fun (name, _) ->
+          let func = Some (rec_def (exp_id (header ^ "_" ^ name))) in
+          func )
+        typs
+    with Invalid_argument _ -> List.map (fun _ -> None) typs
+
+  let finish typs =
+    let printers = make_mutually_rec "print" typs (fun typ -> typ.print) in
+    let generators = make_mutually_rec "gen" typs (fun typ -> typ.gen) in
+    let specs = make_mutually_rec "spec" typs (fun typ -> typ.spec) in
+    List.map4
+      (fun print gen spec (name, typ) -> (name, {typ with print; gen; spec}))
+      printers generators specs typs
+end
+
+(** {2 Type composition} *)
 
 (** tuples *)
 module Product = struct
@@ -328,8 +346,9 @@ module Sum = struct
                  let card = Product.cardinality typs |> Card.as_z in
                  Helper.pair (weight card)
                    (constr_generator constr typs |> Option.get) )
-               variants ) ]
-      |> Option.some
+               variants )
+        ; exp_id "rs" ]
+      |> lambda_s "rs" |> Option.some
     with Exit | Invalid_argument _ -> None
 
   let generator_one_of (variants : (string with_loc * t list) list) =
@@ -344,7 +363,7 @@ module Sum = struct
                    (constr_generator constr typs |> Option.get) )
                variants )
         ; exp_id "rs" ]
-      |> Option.some
+      |> lambda_s "rs" |> Option.some
     with Exit | Invalid_argument _ -> None
 
   let constr_printer {txt; _} typs =

@@ -153,23 +153,34 @@ let derive state (recflag, typs) =
           (fun acc td ->
             Module_state.update acc
               (lparse td.ptype_name.txt)
-              (Typrepr.make_rec td.ptype_name.txt) )
+              (Typrepr.Rec.make td.ptype_name.txt) )
           state typs
     | Nonrecursive -> state
   in
+  let rec_, nonrec_ = rec_nonrec recflag typs in
+  let is_rec td =
+    List.exists (fun td' -> td'.ptype_name.txt = td.ptype_name.txt) rec_
+  in
   (* we build the bodies of the functions *)
-  let state =
+  let state, later =
     List.fold_left
-      (fun acc td ->
+      (fun (acc, later) td ->
         let id = lparse td.ptype_name.txt in
         match td.ptype_params with
         | [] ->
             let typrepr = derive_decl acc [] td in
-            Module_state.update acc id typrepr
-        | _ -> Module_state.update_param state id td )
-      state typs
+            if is_rec td then (acc, (id, typrepr) :: later)
+            else (Module_state.update acc id typrepr, later)
+        | _ -> (Module_state.update_param state id td, later) )
+      (state, []) typs
   in
-  let rec_, nonrec_ = rec_nonrec (recflag, typs) in
+  (* Registering recursive functions is delayed so as to avoid inlining the body
+     of their generators within each other. *)
+  let state =
+    List.fold_left
+      (fun state (id, typ) -> Module_state.update state id typ)
+      state later
+  in
   List.iter
     (fun td ->
       let id = lparse td.ptype_name.txt in
@@ -177,22 +188,36 @@ let derive state (recflag, typs) =
       Log.print "%a\n%!" Typrepr.print typrepr )
     nonrec_ ;
   (* we wrap them into a recursive function *)
-  List.fold_left
-    (fun acc td ->
-      let id = lparse td.ptype_name.txt in
-      let res =
+  let mono_typs, poly_typs =
+    List.fold_left
+      (fun (mono, poly) td ->
         match td.ptype_params with
         | [] ->
-            let typrepr =
-              Module_state.get id acc |> Option.get
-              |> Typrepr.finish_rec td.ptype_name.txt
+            let name = td.ptype_name.txt in
+            let typ =
+              match Module_state.get (lparse name) state with
+              | Some typ ->
+                  assert (Option.is_some typ.gen) ;
+                  typ
+              | None -> exit 1
             in
-            Log.print "%a\n%!" Typrepr.print typrepr ;
-            Module_state.update acc id typrepr
-        | _ -> Module_state.update_param state id td
-      in
-      Log.print "\n\n\n" ; res )
-    state rec_
+            ((name, typ) :: mono, poly)
+        | _ -> (mono, td :: poly) )
+      ([], []) rec_
+  in
+  let mono_typs = Typrepr.Rec.finish (List.rev mono_typs) in
+  let state =
+    List.fold_left
+      (fun state td ->
+        let id = lparse td.ptype_name.txt in
+        Module_state.update_param state id td )
+      state poly_typs
+  in
+  List.fold_left
+    (fun state (name, typ) ->
+      Log.print "%a\n%!" Typrepr.print typ ;
+      Module_state.update state (lparse name) typ )
+    state mono_typs
 
 (** {1 annotation handling} *)
 let check_gen vb (s : State.t) : State.t =
