@@ -199,21 +199,25 @@ module Rec = struct
     ; collector= Some (exp_id ("collect_" ^ typ_name))
     ; card= Infinite }
 
-  let finish name typ =
-    let header fn field =
-      Option.map
-        (fun body ->
-          let exp =
-            letrec (fn ^ "_" ^ name) body (exp_id (fn ^ "_" ^ name))
-          in
-          exp )
-        field
-    in
-    { print= header "print" typ.print
-    ; gen= header "gen" (Option.map (lambda_s "rs") typ.gen)
-    ; spec= header "spec" typ.spec
-    ; collector= header "collect" typ.collector
-    ; card= Infinite }
+  let finish typs =
+    try
+      let vb_list =
+        List.map
+          (fun (name, typ) ->
+            { pvb_pat= pat_s ("gen_" ^ name)
+            ; pvb_expr= Option.get typ.gen
+            ; pvb_attributes= []
+            ; pvb_loc= Location.none } )
+          typs
+      in
+      let recdef = Exp.let_ Recursive vb_list in
+      List.map
+        (fun (name, typ) ->
+          let gen = Some (recdef (exp_id ("gen_" ^ name))) in
+          (name, {typ with gen}) )
+        typs
+    with Invalid_argument _ ->
+      List.map (fun (name, typ) -> (name, {typ with gen= None})) typs
 end
 
 (** {2 Type composition} *)

@@ -231,7 +231,7 @@ module SSet = Set.Make (String)
 module SMap = Map.Make (String)
 
 (* list of type decl in l that are recursive *)
-let has_cycle (l : (type_declaration * SSet.t) list) =
+let has_cycle (l : (string * SSet.t) list) =
   let recursive = Hashtbl.create 1 in
   List.iter
     (fun (t, _) ->
@@ -241,16 +241,21 @@ let has_cycle (l : (type_declaration * SSet.t) list) =
       let rec loop () =
         if not (Stack.is_empty todo) then (
           let cur = Stack.pop todo in
-          ( match Hashtbl.find_opt reachable cur with
-          | Some _ -> ()
-          | None ->
-              Hashtbl.add reachable cur () ;
-              let nexts = List.assoc cur l in
+          if not (Hashtbl.mem reachable cur) then (
+            Hashtbl.add reachable cur () ;
+            let nexts =
+              List.assoc_opt cur l
+              |> Option.fold ~some:Fun.id ~none:SSet.empty
+            in
+            try
               SSet.iter
                 (fun next ->
-                  if t.ptype_name.txt = next then Hashtbl.add recursive t () ;
-                  Stack.push t todo )
-                nexts ) ;
+                  if t = next then (
+                    Hashtbl.add recursive t () ;
+                    raise Exit ) ;
+                  Stack.push next todo )
+                nexts
+            with Exit -> () ) ;
           loop () )
       in
       loop () )
@@ -288,13 +293,17 @@ let collect t td =
 
 (* given a list of type declaratation, returns the sublist of recursive
    types *)
-let recursive (recflag, typs) =
-  let typ_neighbours = List.map (fun t -> (t, collect SSet.empty t)) typs in
+let recursive recflag (typs : type_declaration list) =
+  let typ_neighbours =
+    List.map (fun t -> (t.ptype_name.txt, collect SSet.empty t)) typs
+  in
   match recflag with
   | Nonrecursive -> []
-  | Recursive -> has_cycle typ_neighbours
+  | Recursive ->
+      let names = has_cycle typ_neighbours in
+      List.filter (fun td -> List.mem td.ptype_name.txt names) typs
 
-let rec_nonrec ((_, typs) as td) =
-  let rec_ = recursive td in
+let rec_nonrec recflag typs =
+  let rec_ = recursive recflag typs in
   let nonrec_ = List.filter (fun t -> not (List.mem t rec_)) typs in
   (rec_, nonrec_)
