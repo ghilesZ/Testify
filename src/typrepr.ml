@@ -36,8 +36,7 @@ type t =
   { gen: expression option
   ; spec: expression option
   ; card: Card.t
-  ; print: expression option
-  ; collector: expression option }
+  ; print: expression option }
 
 let print_expr fmt e =
   Format.fprintf fmt "\n```ocaml@.@[%a@]\n```" print_expression e
@@ -51,11 +50,8 @@ let print fmt {gen; spec; card; print; _} =
   Format.fprintf fmt "- Printer:%a\n" (print_opt print_expr) print ;
   Format.fprintf fmt "- Specification:%a\n" (print_opt print_expr) spec ;
   Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen
-(* ; * Format.fprintf fmt "- Co-Collector: %a\n" (print_opt print_expr)
-   collector *)
 
-let empty =
-  {gen= None; spec= None; card= Unknown; print= None; collector= None}
+let empty = {gen= None; spec= None; card= Unknown; print= None}
 
 let add_printer info p = {info with print= Some p}
 
@@ -63,48 +59,37 @@ let add_generator info g = {info with gen= Some g}
 
 let add_specification info s = {info with spec= Some s}
 
-let free g c p col =
-  {print= Some p; gen= Some g; spec= None; card= c; collector= Some col}
+let free g c p = {print= Some p; gen= Some g; spec= None; card= c}
 
-let make print gen spec card collector = {gen; spec; card; print; collector}
+let make print gen spec card = {gen; spec; card; print}
 
 let end_module name typ =
   { typ with
     gen= Option.map (let_open name) typ.gen
   ; spec= Option.map (let_open name) typ.spec
-  ; print= Option.map (let_open name) typ.print
-  ; collector= Option.map (let_open name) typ.collector }
+  ; print= Option.map (let_open name) typ.print }
 
 (* Predefined types *)
 
 let unit =
-  free
-    (exp_id "QCheck.Gen.unit")
-    (Finite Z.one)
-    (exp_id "QCheck.Print.unit")
-    (exp_id "Collect.unit")
+  free (exp_id "QCheck.Gen.unit") (Finite Z.one) (exp_id "QCheck.Print.unit")
 
 let bool =
-  free
-    (exp_id "QCheck.Gen.bool")
-    (Card.of_int 2) (exp_id "string_of_bool") (exp_id "Collect.bool")
+  free (exp_id "QCheck.Gen.bool") (Card.of_int 2) (exp_id "string_of_bool")
 
 let char =
-  free
-    (exp_id "QCheck.Gen.char")
-    (Card.of_int 256) (exp_id "string_of_char") (exp_id "Collect.char")
+  free (exp_id "QCheck.Gen.char") (Card.of_int 256) (exp_id "string_of_char")
 
 let int =
   free (exp_id "QCheck.Gen.int")
     (Z.pow (Z.of_int 2) (Sys.int_size - 1) |> Card.finite)
-    (exp_id "string_of_int") (exp_id "Collect.int")
+    (exp_id "string_of_int")
 
 let float =
   free
     (exp_id "QCheck.Gen.float")
     (Z.pow (Z.of_int 2) 64 |> Card.finite)
     (exp_id "string_of_float")
-    (exp_id "Collect.float")
 
 let param list = List.map (fun s -> (Typ.var s, Asttypes.Invariant)) list
 
@@ -196,7 +181,6 @@ module Rec = struct
     { print= Some (exp_id ("print_" ^ typ_name))
     ; gen= Some (exp_id ("gen_" ^ typ_name))
     ; spec= Some (exp_id ("spec_" ^ typ_name))
-    ; collector= Some (exp_id ("collect_" ^ typ_name))
     ; card= Infinite }
 
   let make_mutually_rec header typs get_field =
@@ -289,24 +273,9 @@ module Product = struct
       lambda (Pat.tuple pats) b' |> Option.some
     with Exit -> None
 
-  let collector typs =
-    let get_name = id_gen_gen () in
-    let np = function
-      | {collector= Some c; _} ->
-          let n, id = get_name () in
-          (apply_nolbl c [id], pat_s n)
-      | {collector= None; _} -> raise Exit
-    in
-    try
-      let names, pats = List.split (List.map np typs) in
-      let b = list_of_list names in
-      lambda (Pat.tuple pats) (apply_nolbl_s "List.flatten" [b])
-      |> Option.some
-    with Exit -> None
-
   let make typs =
     make (printer typs) (generator typs) (specification typs)
-      (cardinality typs) (collector typs)
+      (cardinality typs)
 end
 
 (** ADTs *)
@@ -430,34 +399,6 @@ module Sum = struct
               )
             (Product.specification args) )
 
-  let constr_collect {txt; _} args =
-    let constr pat = Pat.construct (lid_loc txt) pat in
-    match args with
-    | [] -> (constr None, None)
-    | [last] ->
-        let prop = Option.get last.collector in
-        let id = id_gen_gen () in
-        let p, e = id () in
-        let pat = constr (Some (pat_s p)) in
-        (pat, Exp.case pat (apply_nolbl prop [e]) |> Option.some)
-    | p ->
-        let id = id_gen_gen () in
-        let pat, exp =
-          List.map
-            (fun _ ->
-              let p, e = id () in
-              (pat_s p, e) )
-            p
-          |> List.split
-        in
-        let pat = Pat.tuple pat in
-        ( pat
-        , Option.map
-            (fun col ->
-              Exp.case (constr (Some pat)) (apply_nolbl col [Exp.tuple exp])
-              )
-            (Product.collector args) )
-
   let specification variants =
     try
       let cases = List.map (fun (c, a) -> constr_spec c a) variants in
@@ -470,19 +411,6 @@ module Sum = struct
                 cases ) )
     with Exit | Invalid_argument _ -> None
 
-  let collector variants =
-    try
-      let cases = List.map (fun (c, a) -> constr_collect c a) variants in
-      if List.for_all (fun (_, c) -> c = None) cases then None
-      else
-        Some
-          (Exp.function_
-             (List.map
-                (function
-                  | p, None -> Exp.case p empty_list_exp | _, Some c -> c )
-                cases ) )
-    with Exit | Invalid_argument _ -> None
-
   let make variants =
     let print = printer variants in
     let card = cardinality variants in
@@ -491,8 +419,7 @@ module Sum = struct
       else generator_one_of variants
     in
     let spec = specification variants in
-    let col = collector variants in
-    make print gen spec card col
+    make print gen spec card
 end
 
 module Record = struct
@@ -542,28 +469,12 @@ module Record = struct
       | _ -> (*record with 0 field*) assert false
     with Invalid_argument _ -> None
 
-  let collector fields =
-    let field (n, t) =
-      (apply_nolbl (t.spec |> Option.get) [exp_id n], (lid_loc n, pat_s n))
-    in
-    try
-      let fields = List.map field fields in
-      let fields, pat = List.split fields in
-      match fields with
-      | h :: tl ->
-          List.fold_left ( &&@ ) h tl
-          |> lambda (Pat.record pat Closed)
-          |> Option.some
-      | _ -> (*record with 0 field*) assert false
-    with Invalid_argument _ -> None
-
   let make fields =
     let c = cardinality fields in
     let g = generator fields in
     let p = printer fields in
     let s = specification fields in
-    let col = collector fields in
-    make p g s c col
+    make p g s c
 end
 
 module Constrained = struct
@@ -660,6 +571,5 @@ module Arrow = struct
     let g = generator output.gen in
     let p = printer in
     let s = None in
-    let col = None in
-    make p g s c col
+    make p g s c
 end
