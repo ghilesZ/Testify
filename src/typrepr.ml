@@ -199,25 +199,33 @@ module Rec = struct
     ; collector= Some (exp_id ("collect_" ^ typ_name))
     ; card= Infinite }
 
-  let finish typs =
+  let make_mutually_rec header typs get_field =
+    (* XXX. Aaaaaarg, ugly code! *)
     try
       let vb_list =
         List.map
           (fun (name, typ) ->
-            { pvb_pat= pat_s ("gen_" ^ name)
-            ; pvb_expr= Option.get typ.gen
+            { pvb_pat= pat_s (header ^ "_" ^ name)
+            ; pvb_expr= get_field typ |> Option.get
             ; pvb_attributes= []
             ; pvb_loc= Location.none } )
           typs
       in
-      let recdef = Exp.let_ Recursive vb_list in
+      let rec_def = Exp.let_ Recursive vb_list in
       List.map
-        (fun (name, typ) ->
-          let gen = Some (recdef (exp_id ("gen_" ^ name))) in
-          (name, {typ with gen}) )
+        (fun (name, _) ->
+          let func = Some (rec_def (exp_id (header ^ "_" ^ name))) in
+          func )
         typs
-    with Invalid_argument _ ->
-      List.map (fun (name, typ) -> (name, {typ with gen= None})) typs
+    with Invalid_argument _ -> List.map (fun _ -> None) typs
+
+  let finish typs =
+    let printers = make_mutually_rec "print" typs (fun typ -> typ.print) in
+    let generators = make_mutually_rec "gen" typs (fun typ -> typ.gen) in
+    let specs = make_mutually_rec "spec" typs (fun typ -> typ.spec) in
+    List.map4
+      (fun print gen spec (name, typ) -> (name, {typ with print; gen; spec}))
+      printers generators specs typs
 end
 
 (** {2 Type composition} *)
@@ -339,7 +347,7 @@ module Sum = struct
                  Helper.pair (weight card)
                    (constr_generator constr typs |> Option.get) )
                variants ) ]
-      |> Option.some
+      |> lambda_s "rs" |> Option.some
     with Exit | Invalid_argument _ -> None
 
   let generator_one_of (variants : (string with_loc * t list) list) =
@@ -354,7 +362,7 @@ module Sum = struct
                    (constr_generator constr typs |> Option.get) )
                variants )
         ; exp_id "rs" ]
-      |> Option.some
+      |> lambda_s "rs" |> Option.some
     with Exit | Invalid_argument _ -> None
 
   let constr_printer {txt; _} typs =

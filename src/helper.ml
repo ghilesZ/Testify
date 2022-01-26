@@ -1,4 +1,4 @@
-(* This module provides helpers for ast building *)
+(* This module provides helpers for ast building (and other stuff) *)
 
 (* keep this before open as module Parse is shadowed by open
    Migrate_parsetree *)
@@ -307,3 +307,18 @@ let rec_nonrec recflag typs =
   let rec_ = recursive recflag typs in
   let nonrec_ = List.filter (fun t -> not (List.mem t rec_)) typs in
   (rec_, nonrec_)
+
+(** {2 Add some functions to the stdlib} *)
+
+module List = struct
+  include List
+
+  (** Yeah I know... *)
+  let rec map4 f l1 l2 l3 l4 =
+    match (l1, l2, l3, l4) with
+    | [], [], [], [] -> []
+    | x1 :: l1, x2 :: l2, x3 :: l3, x4 :: l4 ->
+        let y = f x1 x2 x3 x4 in
+        y :: map4 f l1 l2 l3 l4
+    | _ -> invalid_arg "List.map4"
+end
