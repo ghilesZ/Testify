@@ -157,19 +157,30 @@ let derive state (recflag, typs) =
           state typs
     | Nonrecursive -> state
   in
+  let rec_, nonrec_ = rec_nonrec recflag typs in
+  let is_rec td =
+    List.exists (fun td' -> td'.ptype_name.txt = td.ptype_name.txt) rec_
+  in
   (* we build the bodies of the functions *)
-  let state =
+  let state, later =
     List.fold_left
-      (fun acc td ->
+      (fun (acc, later) td ->
         let id = lparse td.ptype_name.txt in
         match td.ptype_params with
         | [] ->
             let typrepr = derive_decl acc [] td in
-            Module_state.update acc id typrepr
-        | _ -> Module_state.update_param state id td )
-      state typs
+            if is_rec td then (acc, (id, typrepr) :: later)
+            else (Module_state.update acc id typrepr, later)
+        | _ -> (Module_state.update_param state id td, later) )
+      (state, []) typs
   in
-  let rec_, nonrec_ = rec_nonrec recflag typs in
+  (* Registering recursive functions is delayed so as to avoid inlining the body
+     of their generators within each other. *)
+  let state =
+    List.fold_left
+      (fun state (id, typ) -> Module_state.update state id typ)
+      state later
+  in
   List.iter
     (fun td ->
       let id = lparse td.ptype_name.txt in
