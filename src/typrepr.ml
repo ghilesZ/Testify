@@ -184,18 +184,13 @@ module Rec = struct
     ; card= Infinite }
 
   let make_mutually_rec header typs get_field =
-    (* XXX. Aaaaaarg, ugly code! *)
     try
-      let vb_list =
+      let rec_def =
         List.map
-          (fun (name, typ) ->
-            { pvb_pat= pat_s (header ^ "_" ^ name)
-            ; pvb_expr= get_field typ |> Option.get
-            ; pvb_attributes= []
-            ; pvb_loc= Location.none } )
+          (fun (id, typ) -> (header ^ "_" ^ id, get_field typ |> Option.get))
           typs
+        |> let_rec_and
       in
-      let rec_def = Exp.let_ Recursive vb_list in
       List.map
         (fun (name, _) ->
           let func = Some (rec_def (exp_id (header ^ "_" ^ name))) in
