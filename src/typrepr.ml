@@ -7,36 +7,11 @@ open Location
 
 (** representation of an OCaml type *)
 
-module Card = struct
-  type t = Unknown | Infinite | Finite of Z.t
-
-  (** {3 Shorthands to build values} *)
-
-  let finite (n : Z.t) = Finite n
-
-  let of_int n = finite (Z.of_int n)
-
-  (** {3 Shorthands to access values} *)
-
-  let as_z = function
-    | Finite n -> n
-    | Infinite | Unknown -> invalid_arg "Card.as_z"
-
-  let is_finite = function Finite _ -> true | Infinite | Unknown -> false
-
-  (** {3 Pretty printing} *)
-
-  let pp fmt = function
-    | Unknown -> Format.pp_print_string fmt "unknown"
-    | Infinite -> Format.pp_print_string fmt "infinite"
-    | Finite n -> Helper.print_bigint fmt n
-end
-
 type t =
   { gen: expression option
   ; spec: expression option
   ; card: Card.t
-  ; print: expression option }
+  ; print: expression }
 
 let print_expr fmt e =
   Format.fprintf fmt "\n```ocaml@.@[%a@]\n```" print_expression e
@@ -47,19 +22,20 @@ let print fmt {gen; spec; card; print; _} =
     | Some e -> f fmt e
   in
   Format.fprintf fmt "- Cardinality: %a\n" Card.pp card ;
-  Format.fprintf fmt "- Printer:%a\n" (print_opt print_expr) print ;
+  Format.fprintf fmt "- Printer:%a\n" print_expr print ;
   Format.fprintf fmt "- Specification:%a\n" (print_opt print_expr) spec ;
   Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen
 
-let empty = {gen= None; spec= None; card= Unknown; print= None}
+let empty =
+  {gen= None; spec= None; card= Unknown; print= lambda_s "_" (string_ "")}
 
-let add_printer info p = {info with print= Some p}
+let add_printer info p = {info with print= p}
 
 let add_generator info g = {info with gen= Some g}
 
 let add_specification info s = {info with spec= Some s}
 
-let free g c p = {print= Some p; gen= Some g; spec= None; card= c}
+let free g c p = {print= p; gen= Some g; spec= None; card= c}
 
 let make print gen spec card = {gen; spec; card; print}
 
@@ -67,7 +43,7 @@ let end_module name typ =
   { typ with
     gen= Option.map (let_open name) typ.gen
   ; spec= Option.map (let_open name) typ.spec
-  ; print= Option.map (let_open name) typ.print }
+  ; print= let_open name typ.print }
 
 (* Predefined types *)
 
@@ -178,7 +154,7 @@ let list_ =
 
 module Rec = struct
   let make typ_name =
-    { print= Some (exp_id ("print_" ^ typ_name))
+    { print= exp_id ("print_" ^ typ_name)
     ; gen= Some (exp_id ("gen_" ^ typ_name))
     ; spec= Some (exp_id ("spec_" ^ typ_name))
     ; card= Infinite }
@@ -199,7 +175,10 @@ module Rec = struct
     with Invalid_argument _ -> List.map (fun _ -> None) typs
 
   let finish typs =
-    let printers = make_mutually_rec "print" typs (fun typ -> typ.print) in
+    let printers =
+      make_mutually_rec "print" typs (fun typ -> Some typ.print)
+      |> List.map Option.get
+    in
     let generators = make_mutually_rec "gen" typs (fun typ -> typ.gen) in
     let specs = make_mutually_rec "spec" typs (fun typ -> typ.spec) in
     List.map4
@@ -243,30 +222,18 @@ module Product = struct
         let pats, body = List.fold_left compose ([], None) typs in
         Option.map (lambda (Pat.tuple (List.rev pats))) body
 
-  let cardinality =
-    let rec prod acc = function
-      | [] -> Card.finite acc
-      | {card= Finite n; _} :: typs -> prod (Z.mul n acc) typs
-      | {card= Infinite; _} :: _ ->
-          Infinite (* XXX. Assumes that no type has cardinality zero. *)
-      | {card= Unknown; _} :: _ -> Unknown
-    in
-    prod Z.one
+  let cardinality typs = List.map (fun t -> t.card) typs |> Card.product
 
   let printer typs =
     let get_name = id_gen_gen () in
-    let np = function
-      | {print= Some p; _} ->
-          let n, id = get_name () in
-          (apply_nolbl p [id], pat_s n)
-      | {print= None; _} -> raise Exit
+    let np p =
+      let n, id = get_name () in
+      (apply_nolbl p.print [id], pat_s n)
     in
-    try
-      let names, pats = List.split (List.map np typs) in
-      let b = string_concat ~sep:", " names in
-      let b' = string_concat [string_ "("; b; string_ ")"] in
-      lambda (Pat.tuple pats) b' |> Option.some
-    with Exit -> None
+    let names, pats = List.split (List.map np typs) in
+    let b = string_concat ~sep:", " names in
+    let b' = string_concat [string_ "("; b; string_ ")"] in
+    lambda (Pat.tuple pats) b'
 
   let make typs =
     make (printer typs) (generator typs) (specification typs)
@@ -275,18 +242,11 @@ end
 
 (** ADTs *)
 module Sum = struct
-  let cardinality =
-    let rec sum acc = function
-      | [] -> Card.finite acc
-      | (_, args) :: variants -> (
-        match Product.cardinality args with
-        | Finite n -> sum (Z.add acc n) variants
-        | (Infinite | Unknown) as c -> c )
-    in
-    sum Z.zero
+  let cardinality typs =
+    typs |> List.map (fun (_, args) -> Product.cardinality args) |> Card.sum
 
   let constr_generator constr args =
-    let constr = Exp.construct (lid_loc constr.txt) in
+    let constr = Exp.construct (lid_loc constr) in
     match args with
     | [] -> lambda_s "_" (constr None) |> Option.some
     | [{gen= Some g; _}] ->
@@ -297,7 +257,7 @@ module Sum = struct
       try lambda_s "rs" (constr (Some (Product.gen_body l))) |> Option.some
       with Exit -> None )
 
-  let generator (variants : (string with_loc * t list) list) totalcard =
+  let generator (variants : (string * t list) list) totalcard =
     try
       let weight c =
         Q.div (Q.of_bigint c) (Q.of_bigint totalcard)
@@ -315,7 +275,7 @@ module Sum = struct
       |> lambda_s "rs" |> Option.some
     with Exit | Invalid_argument _ -> None
 
-  let generator_one_of (variants : (string with_loc * t list) list) =
+  let generator_one_of (variants : (string * t list) list) =
     try
       let t = List.length variants in
       let weight = 1. /. float_of_int t |> Helper.float_ in
@@ -330,18 +290,16 @@ module Sum = struct
       |> lambda_s "rs" |> Option.some
     with Exit | Invalid_argument _ -> None
 
-  let constr_printer {txt; _} typs =
+  let constr_printer txt typs =
     let id = id_gen_gen () in
     let constr pat = Pat.construct (lid_loc txt) pat in
     match typs with
-    | [] -> Exp.case (constr None) (string_ txt) |> Option.some
-    | [{print= Some p; _}] ->
+    | [] -> Exp.case (constr None) (string_ txt)
+    | [{print; _}] ->
         let pat, expr = id () in
         Exp.case
           (constr (Some (pat_s pat)))
-          (string_concat [string_ txt; apply_nolbl p [expr]])
-        |> Option.some
-    | [{print= None; _}] -> None
+          (string_concat [string_ txt; apply_nolbl print [expr]])
     | p ->
         let pat, exp =
           List.map
@@ -351,22 +309,18 @@ module Sum = struct
             p
           |> List.split
         in
-        Option.map
-          (fun print ->
-            Exp.case
-              (constr (Some (Pat.tuple pat)))
-              (string_concat
-                 [string_ txt; apply_nolbl print [Exp.tuple exp]] ) )
-          (Product.printer p)
+        Exp.case
+          (constr (Some (Pat.tuple pat)))
+          (string_concat
+             [string_ txt; apply_nolbl (Product.printer p) [Exp.tuple exp]] )
 
   let printer variants =
     let cases =
       List.map (fun (constr, args) -> constr_printer constr args) variants
     in
-    try Some (Exp.function_ (List.map Option.get cases))
-    with Exit | Invalid_argument _ -> None
+    Exp.function_ cases
 
-  let constr_spec {txt; _} args =
+  let constr_spec txt args =
     let constr pat = Pat.construct (lid_loc txt) pat in
     match args with
     | [] -> (constr None, None)
@@ -429,7 +383,7 @@ module Record = struct
 
   let printer fields =
     let field (n, t) =
-      let field = apply_nolbl (t.print |> Option.get) [exp_id n] in
+      let field = apply_nolbl t.print [exp_id n] in
       let field_name = n ^ " = " in
       (field_name, field, (lid_loc n, pat_s n))
     in
@@ -447,7 +401,7 @@ module Record = struct
         in
         let app = string_concat (List.rev fields) in
         let app = string_concat [app; string_ "}"] in
-        lambda (Pat.record (List.rev pat) Closed) app |> Option.some
+        lambda (Pat.record (List.rev pat) Closed) app
 
   let specification fields =
     let field (n, t) =
@@ -559,7 +513,7 @@ module Arrow = struct
         lambda_s "rs"
           (apply_nolbl_s "memo" [lambda_s "_" (apply_nolbl g [exp_id "rs"])]) )
 
-  let printer = Some (lambda_s "_" (string_ "(_ -> _)"))
+  let printer = lambda_s "_" (string_ "(_ -> _)")
 
   let make _input output =
     let c = Card.Unknown in

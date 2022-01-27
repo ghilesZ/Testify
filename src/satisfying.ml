@@ -92,7 +92,7 @@ let rec derive_decl (s : Module_state.t) params
           let constr_f c =
             match c.pcd_args with
             | Pcstr_tuple ct ->
-                (c.pcd_name, List.map (derive_ctype s params) ct)
+                (c.pcd_name.txt, List.map (derive_ctype s params) ct)
             | Pcstr_record _labs -> raise Exit
           in
           Typrepr.Sum.make (List.map constr_f constructors)
@@ -247,21 +247,14 @@ let get_infos (s : Module_state.t) e =
         let {gen; print; _} =
           Option.get (Module_state.get (lparse "unit") s)
         in
-        (gen |> Option.get, print |> Option.get)
+        (gen |> Option.get, print)
     | Ppat_constraint (_, t) -> (
         let {gen; print; _} = derive_ctype s [] t in
-        match (gen, print) with
-        | None, None ->
-            Log.print "Missing generator and printer for type `%a`\n%!"
-              print_coretype t ;
-            raise Exit
-        | None, _ ->
+        match gen with
+        | None ->
             Log.print "Missing generator for type `%a`\n%!" print_coretype t ;
             raise Exit
-        | _, None ->
-            Log.print "Missing printer for type `%a`\n%!" print_coretype t ;
-            raise Exit
-        | Some g, Some p -> (g, p) )
+        | Some g -> (g, print) )
     | _ ->
         Log.print "Missing type annotation for argument `%a`\n%!" print_pat
           pat ;
@@ -305,7 +298,7 @@ let gather_tests vb state =
           let info = derive_ctype state [] ct in
           Log.print "Return type `%a`%!" print_coretype ct ;
           match info with
-          | {spec= Some prop; print= Some p; _} ->
+          | {spec= Some prop; print= p; _} ->
               Log.print
                 " is attached a specification. Generating a test.\n%!" ;
               let name =
