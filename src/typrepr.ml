@@ -70,7 +70,7 @@ let float =
 let param list = List.map (fun s -> (Typ.var s, Asttypes.Invariant)) list
 
 let ptype ?manifest name params kind =
-  { ptype_name= none_loc name
+  { ptype_name= def_loc name
   ; ptype_params= List.map (fun s -> (Typ.var s, Asttypes.Invariant)) params
   ; ptype_cstrs= []
   ; ptype_kind= kind
@@ -91,8 +91,7 @@ let option_ =
     let some = Type.constructor_s ~args:(Pcstr_tuple alpha) "Some" in
     let kind = Ptype_variant [none; some] in
     ptype
-      ~manifest:
-        (Typ.poly [none_loc "a"] (Typ.constr (lid_loc "option") alpha))
+      ~manifest:(Typ.poly ["a"] (Typ.constr_s "option" alpha))
       "option" vars kind
   in
   {vars; body}
@@ -104,8 +103,7 @@ let ref_ =
     let contents = Type.field_s ~mut:Mutable "contents" alpha in
     let kind = Ptype_record [contents] in
     ptype
-      ~manifest:
-        (Typ.poly [none_loc "a"] (Typ.constr (lid_loc "ref") [alpha]))
+      ~manifest:(Typ.poly ["a"] (Typ.constr_s "ref" [alpha]))
       "ref" vars kind
   in
   {vars; body}
@@ -115,16 +113,13 @@ let result_ =
   let alpha = Typ.var "a" in
   let beta = Typ.var "b" in
   let body =
-    let ok = Type.constructor ~args:(Pcstr_tuple [alpha]) (none_loc "Ok") in
+    let ok = Type.constructor ~args:(Pcstr_tuple [alpha]) (def_loc "Ok") in
     let error =
-      Type.constructor ~args:(Pcstr_tuple [beta]) (none_loc "Error")
+      Type.constructor ~args:(Pcstr_tuple [beta]) (def_loc "Error")
     in
     let kind = Ptype_variant [ok; error] in
     ptype
-      ~manifest:
-        (Typ.poly
-           [none_loc "a"; none_loc "b"]
-           (Typ.constr (lid_loc "error") [alpha; beta]) )
+      ~manifest:(Typ.poly ["a"; "b"] (Typ.constr_s "error" [alpha; beta]))
       "error" vars kind
   in
   {vars; body}
@@ -132,18 +127,15 @@ let result_ =
 let list_ =
   let vars = ["a"] in
   let alpha = Typ.var "a" in
-  let alpha_list = Typ.constr (lid_loc "list") [alpha] in
+  let alpha_list = Typ.constr_s "list" [alpha] in
   let body =
     let cons =
-      Type.constructor
-        ~args:(Pcstr_tuple [alpha; alpha_list])
-        (none_loc "::")
+      Type.constructor ~args:(Pcstr_tuple [alpha; alpha_list]) (def_loc "::")
     in
-    let empty = Type.constructor (none_loc "[]") in
+    let empty = Type.constructor (def_loc "[]") in
     let kind = Ptype_variant [cons; empty] in
     ptype
-      ~manifest:
-        (Typ.poly [none_loc "a"] (Typ.constr (lid_loc "list") [alpha]))
+      ~manifest:(Typ.poly ["a"] (Typ.constr_s "list" [alpha]))
       "list" vars kind
   in
   {vars; body}

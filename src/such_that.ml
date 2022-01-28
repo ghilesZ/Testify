@@ -2,7 +2,6 @@ open Migrate_parsetree
 open Ast_410
 open Parsetree
 open Ast_mapper
-open Ast_helper
 open Helper
 
 let ocaml_version = Versions.ocaml_410
@@ -16,10 +15,11 @@ let handle_record labels e =
   let names =
     List.map
       (fun l ->
-        (Location.mkloc (lparse l.pld_name.txt) l.pld_loc, Pat.var l.pld_name))
+        ( Location.mkloc (lparse l.pld_name.txt) l.pld_loc
+        , pat_s l.pld_name.txt ) )
       labels
   in
-  lambda (Pat.record names Closed) e
+  lambda (pat_record_closed names) e
 
 let unsugarize kind (attrs : attributes) =
   match kind with
@@ -30,10 +30,10 @@ let unsugarize kind (attrs : attributes) =
             match a with
             | {attr_payload= PStr [{pstr_desc= Pstr_eval (e, _); _}]; _} ->
                 let pred = handle_record records e in
-                let payload = PStr [Str.eval pred] in
-                Attr.mk (none_loc "satisfying") payload
+                let payload = PStr [Ast_helper.Str.eval pred] in
+                Ast_helper.Attr.mk (def_loc "satisfying") payload
             | _ -> failwith "bad s.t attribute"
-          else a)
+          else a )
         attrs
   | _ -> attrs
 

@@ -4,7 +4,6 @@ open Migrate_parsetree
 open Signatures
 open Ast_410
 open Parsetree
-open Ast_helper
 open Helper
 module Conv = Convert (OCaml_410) (OCaml_current)
 open Tools
@@ -27,7 +26,7 @@ let fill =
     match p.ppat_desc with
     (* we prefix the name with % to avoid name clash *)
     | Ppat_any ->
-        {p with ppat_desc= Ppat_var (none_loc ("%" ^ fst (get_name ())))}
+        {p with ppat_desc= Ppat_var (def_loc ("%" ^ fst (get_name ())))}
     | Ppat_var _ -> p
     | Ppat_tuple ptup -> {p with ppat_desc= Ppat_tuple (List.map aux ptup)}
     | _ -> raise (Lang.OutOfSubset "pattern")
@@ -54,7 +53,7 @@ let collect_ct core_type pattern : SSet.t * SSet.t =
 let collect_record labs : SSet.t * SSet.t =
   List.fold_left
     (fun (i_s, f_s) {pld_name; pld_type; _} ->
-      let i, f = collect_ct pld_type (Pat.var pld_name) in
+      let i, f = collect_ct pld_type (pat_s pld_name.txt) in
       (SSet.union i i_s, SSet.union f f_s) )
     (SSet.empty, SSet.empty) labs
 
@@ -67,7 +66,7 @@ let flatten_ct_ind core_type pattern =
      |Ptyp_constr ({txt= Lident "float"; _}, []), Ppat_var {txt= ptxt; _} ->
         List.assoc ptxt
     | Ptyp_tuple t, Ppat_tuple p ->
-        fun v -> List.map2 (fun t p -> aux t p v) t p |> Exp.tuple
+        fun v -> List.map2 (fun t p -> aux t p v) t p |> tuple
     | _ -> raise (Lang.OutOfSubset "core_type or pattern")
   in
   aux core_type (fill pattern)
@@ -76,11 +75,11 @@ let flatten_record_ind labs =
   let r =
     List.fold_left
       (fun acc {pld_name; pld_type; _} ->
-        let r = flatten_ct_ind pld_type (Pat.var pld_name) in
+        let r = flatten_ct_ind pld_type (pat_s pld_name.txt) in
         (fun vars -> (lid_loc pld_name.txt, r vars)) :: acc )
       [] labs
   in
-  fun vars -> Exp.record (List.map (fun r -> r vars) r) None
+  fun vars -> record (List.map (fun r -> r vars) r) None
 
 (* given a type 't' and a pattern, builds an exepression corresponding to a
    reconstruction function of type 'instance -> t' *)
@@ -97,7 +96,7 @@ let flatten_ct core_type pattern =
           List.fold_left2 (fun acc tt pt -> aux tt pt :: acc) [] ttup ptup
         in
         let b = List.rev_map (fun f -> apply_nolbl f [exp_id "i"]) sons in
-        lambda_s "i" (Exp.tuple b)
+        lambda_s "i" (tuple b)
     | _ -> raise (Lang.OutOfSubset "core_type or pattern")
   in
   aux core_type (fill pattern)
@@ -106,11 +105,11 @@ let flatten_record labs =
   let r =
     List.fold_left
       (fun acc {pld_name; pld_type; _} ->
-        let r = flatten_ct pld_type (Pat.var pld_name) in
+        let r = flatten_ct pld_type (pat_s pld_name.txt) in
         (lid_loc pld_name.txt, apply_nolbl r [exp_id "i"]) :: acc )
       [] labs
   in
-  lambda_s "i" (Exp.record r None)
+  lambda_s "i" (record r None)
 
 let split_fun f =
   match f.pexp_desc with
@@ -156,12 +155,12 @@ let craft_generator inner outer total pattern r_dep r_ind =
         List.fold_left
           (fun acc (w, reject, g) ->
             let g = apply_nolbl_s "reject" [lambda pattern reject; gen g] in
-            cons_exp (Exp.tuple [float_ w; g]) acc )
+            cons_exp (tuple [float_ w; g]) acc )
           empty_list_exp (List.rev outer)
       in
       let inner_outer_gens =
         List.fold_left
-          (fun acc (w, g) -> cons_exp (Exp.tuple [float_ w; gen g]) acc)
+          (fun acc (w, g) -> cons_exp (tuple [float_ w; gen g]) acc)
           outer_gens (List.rev inner)
       in
       apply_nolbl_s "weighted" [inner_outer_gens]

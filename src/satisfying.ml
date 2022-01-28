@@ -336,7 +336,8 @@ let mapper =
           aux (tests @ ({h' with pstr_loc= !current_loc} :: res)) tl
       | h :: tl ->
           Helper.update_loc h.pstr_loc ;
-          aux (mapper.structure_item mapper h :: res) tl
+          let h' = mapper.structure_item mapper h in
+          aux ({h' with pstr_loc= !current_loc} :: res) tl
     in
     aux [] str
   in

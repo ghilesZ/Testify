@@ -19,18 +19,18 @@ let current_loc = ref Location.none
 let update_loc l = current_loc := l
 
 (* same as mkloc but with optional argument; default is Location.none*)
-let none_loc ?loc s =
+let def_loc ?loc s =
   let loc = match loc with None -> !current_loc | Some loc -> loc in
   Location.mkloc s loc
 
 (* builds a Longident.t Location.t from a string *)
-let lid_loc ?loc id = none_loc ?loc (lparse id)
+let lid_loc ?loc id = def_loc ?loc (lparse id)
 
 (* pattern of string *)
 let pat_s = function
   | "_" -> Pat.any ~loc:!current_loc ()
   | "()" -> Pat.construct (lid_loc "()") None
-  | s -> Pat.var (none_loc s)
+  | s -> Pat.var (def_loc s)
 
 let pat_tuple = Pat.tuple ~loc:!current_loc
 
@@ -41,7 +41,7 @@ let pat_record list = Pat.record ~loc:!current_loc list
 let pat_record_closed list = Pat.record ~loc:!current_loc list Closed
 
 (* given a string [name], builds the identifier [name] *)
-let exp_id ?loc name = lid_loc ?loc name |> Exp.ident
+let exp_id name = lid_loc name |> Exp.ident
 
 (* same as apply but argument are not labelled *)
 let apply_nolbl f args =
@@ -142,7 +142,7 @@ let function_ = Exp.function_ ~loc:!current_loc
 (* ast for lists *)
 let empty_list_exp = construct "[]" None
 
-let cons_exp h t = construct "( :: )" (Some (Exp.tuple [h; t]))
+let cons_exp h t = construct "( :: )" (Some (tuple [h; t]))
 
 let list_of_list l = List.fold_right cons_exp l empty_list_exp
 
@@ -359,19 +359,21 @@ end
 module Typ = struct
   let var = Typ.var ~loc:!current_loc
 
-  let poly = Typ.poly ~loc:!current_loc
+  let poly args = Typ.poly ~loc:!current_loc (List.map def_loc args)
 
   let constr = Typ.constr ~loc:!current_loc
+
+  let constr_s id = Typ.constr ~loc:!current_loc (lid_loc id)
 end
 
 module Type = struct
   let constructor = Type.constructor
 
   let constructor_s ?attrs ?info ?res ?args str =
-    Type.constructor ~loc:!current_loc ?attrs ?info ?res ?args (none_loc str)
+    Type.constructor ~loc:!current_loc ?attrs ?info ?res ?args (def_loc str)
 
   let field ?attrs ?info ?mut =
     Type.field ?attrs ?info ?mut ~loc:!current_loc
 
-  let field_s ?attrs ?info ?mut str = field ?attrs ?info ?mut (none_loc str)
+  let field_s ?attrs ?info ?mut str = field ?attrs ?info ?mut (def_loc str)
 end
