@@ -20,6 +20,8 @@ depends: [
   "zarith"
   "dune" {>= "1.2"}
   "apronext"
+  "picasso"
+  "interval_base" {with-test}
 ]
 synopsis:"Ppx_testify syntax extension"
 description:"Ppx_testify is a syntax-extension that allows to generate automatically test for your programs with a minimum effort from your end."
