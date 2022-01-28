@@ -41,7 +41,7 @@ let pat_record list = Pat.record ~loc:!current_loc list
 let pat_record_closed list = Pat.record ~loc:!current_loc list Closed
 
 (* given a string [name], builds the identifier [name] *)
-let exp_id name = lid_loc name |> Exp.ident
+let exp_id name = lid_loc name |> Exp.ident ~loc:!current_loc
 
 (* same as apply but argument are not labelled *)
 let apply_nolbl f args =
@@ -253,9 +253,9 @@ let rec compatible pat exp =
 let trim exp =
   match exp.pexp_desc with
   | Pexp_apply
-      ({pexp_desc= Pexp_fun (Nolabel, None, pat, body); _}, [(Nolabel, arg)])
-    ->
-      if compatible pat arg then body else exp
+      ( {pexp_desc= Pexp_fun (Nolabel, None, pat, body); pexp_loc; _}
+      , [(Nolabel, arg)] ) ->
+      if compatible pat arg then {body with pexp_loc} else exp
   | _ -> exp
 
 (* we overload applies function to simplify them by default *)
