@@ -55,14 +55,6 @@ let capitalize_first_char str =
   Bytes.set b 0 (Char.uppercase_ascii str.[0]) ;
   Bytes.to_string b
 
-(* opens locally the module "Name" and builds the expression *)
-let let_open mod_ exp =
-  let mod_ = capitalize_first_char mod_ in
-  Exp.open_ ~loc:!current_loc (Opn.mk (Mod.ident (lid_loc mod_))) exp
-
-(* opens the runtime and then build exp *)
-let open_runtime = let_open "Testify_runtime"
-
 (* calls a function defined in the runtime *)
 let apply_runtime s = apply_nolbl_s ("Testify_runtime." ^ s)
 
@@ -77,6 +69,8 @@ let ( |><| ) f g = lambda_s "x" (apply_nolbl f [apply_nolbl g [exp_id "x"]])
 
 (* double application *)
 let ( @@@ ) f g e = apply_nolbl f [apply_nolbl g e]
+
+let constant = Exp.constant ~loc:!current_loc
 
 let record = Exp.record ~loc:!current_loc
 
@@ -99,8 +93,8 @@ let int_ x =
   else if x = max_int then exp_id "max_int"
   else if x < -4096 || x > 4096 then
     let x = Format.asprintf "0x%x" x in
-    Exp.constant (Pconst_integer (x, None))
-  else Exp.constant (Const.int x)
+    constant (Pconst_integer (x, None))
+  else constant (Const.int x)
 
 let one = int_ 1
 
@@ -108,10 +102,9 @@ let float_ x =
   Format.(
     if x < -4096. || x > 4096. then asprintf "%h" x
     else asprintf "%a" pp_print_float x)
-  |> Const.float
-  |> Exp.constant ~loc:!current_loc
+  |> Const.float |> constant
 
-let string_ x = Exp.constant ~loc:!current_loc (Const.string x)
+let string_ x = constant (Const.string x)
 
 let unit = construct "()" None
 
@@ -145,6 +138,19 @@ let empty_list_exp = construct "[]" None
 let cons_exp h t = construct "( :: )" (Some (tuple [h; t]))
 
 let list_of_list l = List.fold_right cons_exp l empty_list_exp
+
+(* opens locally the module "Name" and builds the expression *)
+let let_open mod_ exp =
+  let w = PStr [Str.eval (string_ "-33")] in
+  let mod_ = capitalize_first_char mod_ in
+  Exp.open_
+    ~attrs:[Attr.mk (def_loc "warning") w]
+    ~loc:!current_loc
+    (Opn.mk ~loc:!current_loc (Mod.ident ~loc:!current_loc (lid_loc mod_)))
+    exp
+
+(* opens the runtime and then build exp *)
+let open_runtime = let_open "Testify_runtime"
 
 (* fresh identifier generator generator *)
 let id_gen_gen () =
