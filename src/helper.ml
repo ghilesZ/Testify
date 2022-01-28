@@ -14,23 +14,38 @@ open Parsetree
 open Asttypes
 open Ast_helper
 
+let current_loc = ref Location.none
+
+let update_loc l = current_loc := l
+
 (* same as mkloc but with optional argument; default is Location.none*)
-let none_loc ?(loc = Location.none) s = Location.mkloc s loc
+let none_loc ?loc s =
+  let loc = match loc with None -> !current_loc | Some loc -> loc in
+  Location.mkloc s loc
 
 (* builds a Longident.t Location.t from a string *)
-let lid_loc ?(loc = Location.none) id = none_loc ~loc (lparse id)
+let lid_loc ?loc id = none_loc ?loc (lparse id)
 
 (* pattern of string *)
 let pat_s = function
-  | "_" -> Pat.any ()
+  | "_" -> Pat.any ~loc:!current_loc ()
   | "()" -> Pat.construct (lid_loc "()") None
   | s -> Pat.var (none_loc s)
+
+let pat_tuple = Pat.tuple ~loc:!current_loc
+
+let pat_construct = Pat.construct ~loc:!current_loc
+
+let pat_record list = Pat.record ~loc:!current_loc list
+
+let pat_record_closed list = Pat.record ~loc:!current_loc list Closed
 
 (* given a string [name], builds the identifier [name] *)
 let exp_id ?loc name = lid_loc ?loc name |> Exp.ident
 
 (* same as apply but argument are not labelled *)
-let apply_nolbl f args = Exp.apply f (List.map (fun a -> (Nolabel, a)) args)
+let apply_nolbl f args =
+  Exp.apply ~loc:!current_loc f (List.map (fun a -> (Nolabel, a)) args)
 
 (* same as apply_nolbl but function name is a string *)
 let apply_nolbl_s s = apply_nolbl (exp_id s)
@@ -43,7 +58,7 @@ let capitalize_first_char str =
 (* opens locally the module "Name" and builds the expression *)
 let let_open mod_ exp =
   let mod_ = capitalize_first_char mod_ in
-  Exp.open_ (Opn.mk (Mod.ident (lid_loc mod_))) exp
+  Exp.open_ ~loc:!current_loc (Opn.mk (Mod.ident (lid_loc mod_))) exp
 
 (* opens the runtime and then build exp *)
 let open_runtime = let_open "Testify_runtime"
@@ -52,7 +67,7 @@ let open_runtime = let_open "Testify_runtime"
 let apply_runtime s = apply_nolbl_s ("Testify_runtime." ^ s)
 
 (* Same as Exp.fun_ *)
-let lambda = Exp.fun_ Nolabel None
+let lambda = Exp.fun_ ~loc:!current_loc Nolabel None
 
 (* Same as lambda with string instead of pattern *)
 let lambda_s s = lambda (pat_s s)
@@ -63,10 +78,14 @@ let ( |><| ) f g = lambda_s "x" (apply_nolbl f [apply_nolbl g [exp_id "x"]])
 (* double application *)
 let ( @@@ ) f g e = apply_nolbl f [apply_nolbl g e]
 
-(* boolean expressions *)
-let true_ = Exp.construct (lid_loc "true") None
+let record = Exp.record ~loc:!current_loc
 
-let false_ = Exp.construct (lid_loc "false") None
+let construct name = Exp.construct ~loc:!current_loc (lid_loc name)
+
+(* boolean expressions *)
+let true_ = construct "true" None
+
+let false_ = construct "false" None
 
 (* && over ast *)
 let ( &&@ ) a b = apply_nolbl_s " (&&) " [a; b]
@@ -89,30 +108,41 @@ let float_ x =
   Format.(
     if x < -4096. || x > 4096. then asprintf "%h" x
     else asprintf "%a" pp_print_float x)
-  |> Const.float |> Exp.constant
+  |> Const.float
+  |> Exp.constant ~loc:!current_loc
 
-let string_ x = Exp.constant (Const.string x)
+let string_ x = Exp.constant ~loc:!current_loc (Const.string x)
 
-let unit = Exp.construct (lid_loc "()") None
+let unit = construct "()" None
 
-let pair a b = Exp.tuple [a; b]
+let tuple = Exp.tuple ~loc:!current_loc
+
+let pair a b = tuple [a; b]
 
 (* value binding with string *)
-let vb_s id exp = Vb.mk (pat_s id) exp
+let vb_s id exp = Vb.mk ~loc:!current_loc (pat_s id) exp
 
-let letunit exp = Str.value Nonrecursive [vb_s "()" exp]
+let letunit exp = Str.value ~loc:!current_loc Nonrecursive [vb_s "()" exp]
 
-let let_ id exp in_ = Exp.let_ Nonrecursive [vb_s id exp] in_
+let let_ id exp in_ =
+  Exp.let_ ~loc:!current_loc Nonrecursive [vb_s id exp] in_
 
-let let_rec id exp in_ = Exp.let_ Recursive [vb_s id exp] in_
+let let_rec id exp in_ =
+  Exp.let_ ~loc:!current_loc Recursive [vb_s id exp] in_
 
 let let_rec_and vb in_ =
-  Exp.let_ Recursive (List.map (fun (s, e) -> vb_s s e) vb) in_
+  Exp.let_ ~loc:!current_loc Recursive
+    (List.map (fun (s, e) -> vb_s s e) vb)
+    in_
+
+let case = Exp.case
+
+let function_ = Exp.function_ ~loc:!current_loc
 
 (* ast for lists *)
-let empty_list_exp = Exp.construct (lid_loc "[]") None
+let empty_list_exp = construct "[]" None
 
-let cons_exp h t = Exp.construct (lid_loc "( :: )") (Some (Exp.tuple [h; t]))
+let cons_exp h t = construct "( :: )" (Some (Exp.tuple [h; t]))
 
 let list_of_list l = List.fold_right cons_exp l empty_list_exp
 
@@ -324,4 +354,24 @@ module List = struct
         let y = f x1 x2 x3 x4 in
         y :: map4 f l1 l2 l3 l4
     | _ -> invalid_arg "List.map4"
+end
+
+module Typ = struct
+  let var = Typ.var ~loc:!current_loc
+
+  let poly = Typ.poly ~loc:!current_loc
+
+  let constr = Typ.constr ~loc:!current_loc
+end
+
+module Type = struct
+  let constructor = Type.constructor
+
+  let constructor_s ?attrs ?info ?res ?args str =
+    Type.constructor ~loc:!current_loc ?attrs ?info ?res ?args (none_loc str)
+
+  let field ?attrs ?info ?mut =
+    Type.field ?attrs ?info ?mut ~loc:!current_loc
+
+  let field_s ?attrs ?info ?mut str = field ?attrs ?info ?mut (none_loc str)
 end

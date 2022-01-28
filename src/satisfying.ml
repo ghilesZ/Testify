@@ -323,16 +323,20 @@ let mapper =
           in
           List.rev (if !in_attr > 0 then res else run () :: t)
       (* type declaration *)
-      | ({pstr_desc= Pstr_type (recflag, types); _} as h) :: tl ->
+      | ({pstr_desc= Pstr_type (recflag, types); pstr_loc; _} as h) :: tl ->
           state := derive !state (recflag, types) ;
-          aux (h :: res) tl
+          update_loc pstr_loc ;
+          aux ({h with pstr_loc= !current_loc} :: res) tl
       (* value declaration *)
-      | ({pstr_desc= Pstr_value (_, [pvb]); _} as h) :: tl ->
+      | ({pstr_desc= Pstr_value (_, [pvb]); pstr_loc; _} as h) :: tl ->
           let tests = gather_tests pvb !state in
           (* let s = global |> check_gen pvb |> check_print pvb in *)
           let h' = mapper.structure_item mapper h in
-          aux (tests @ (h' :: res)) tl
-      | h :: tl -> aux (mapper.structure_item mapper h :: res) tl
+          Helper.update_loc pstr_loc ;
+          aux (tests @ ({h' with pstr_loc= !current_loc} :: res)) tl
+      | h :: tl ->
+          Helper.update_loc h.pstr_loc ;
+          aux (mapper.structure_item mapper h :: res) tl
     in
     aux [] str
   in

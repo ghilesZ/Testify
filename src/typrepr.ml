@@ -2,7 +2,6 @@ open Migrate_parsetree
 open Ast_410
 open Parsetree
 open Helper
-open Ast_helper
 open Location
 
 (** representation of an OCaml type *)
@@ -26,8 +25,9 @@ let print fmt {gen; spec; card; print; _} =
   Format.fprintf fmt "- Specification:%a\n" (print_opt print_expr) spec ;
   Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen
 
-let empty =
-  {gen= None; spec= None; card= Unknown; print= lambda_s "_" (string_ "")}
+let default_printer = lambda_s "_" (string_ "<...>")
+
+let empty = {gen= None; spec= None; card= Unknown; print= default_printer}
 
 let add_printer info p = {info with print= p}
 
@@ -87,10 +87,8 @@ let option_ =
   let vars = ["a"] in
   let alpha = [Typ.var "a"] in
   let body =
-    let none = Type.constructor (none_loc "None") in
-    let some =
-      Type.constructor ~args:(Pcstr_tuple alpha) (none_loc "Some")
-    in
+    let none = Type.constructor_s "None" in
+    let some = Type.constructor_s ~args:(Pcstr_tuple alpha) "Some" in
     let kind = Ptype_variant [none; some] in
     ptype
       ~manifest:
@@ -103,7 +101,7 @@ let ref_ =
   let vars = ["a"] in
   let alpha = Typ.var "a" in
   let body =
-    let contents = Type.field ~mut:Mutable (none_loc "contents") alpha in
+    let contents = Type.field_s ~mut:Mutable "contents" alpha in
     let kind = Ptype_record [contents] in
     ptype
       ~manifest:
@@ -196,7 +194,7 @@ module Product = struct
         | {gen= Some g; _} -> apply_nolbl g [exp_id "rs"] | _ -> raise Exit
         )
       typs
-    |> Exp.tuple
+    |> tuple
 
   let generator typs =
     try gen_body typs |> lambda_s "rs" |> Option.some with Exit -> None
@@ -209,7 +207,7 @@ module Product = struct
         let get_name = id_gen_gen () in
         let compose (pats, body) p =
           match (body, p.spec) with
-          | x, None -> (Pat.any () :: pats, x)
+          | x, None -> (pat_s "_" :: pats, x)
           | None, Some p ->
               let name, id = get_name () in
               let app = apply_nolbl p [id] in
@@ -220,7 +218,7 @@ module Product = struct
               (pat_s name :: pats, Some (p' &&@ app))
         in
         let pats, body = List.fold_left compose ([], None) typs in
-        Option.map (lambda (Pat.tuple (List.rev pats))) body
+        Option.map (lambda (pat_tuple (List.rev pats))) body
 
   let cardinality typs = List.map (fun t -> t.card) typs |> Card.product
 
@@ -233,7 +231,7 @@ module Product = struct
     let names, pats = List.split (List.map np typs) in
     let b = string_concat ~sep:", " names in
     let b' = string_concat [string_ "("; b; string_ ")"] in
-    lambda (Pat.tuple pats) b'
+    lambda (pat_tuple pats) b'
 
   let make typs =
     make (printer typs) (generator typs) (specification typs)
@@ -246,7 +244,7 @@ module Sum = struct
     typs |> List.map (fun (_, args) -> Product.cardinality args) |> Card.sum
 
   let constr_generator constr args =
-    let constr = Exp.construct (lid_loc constr) in
+    let constr = construct constr in
     match args with
     | [] -> lambda_s "_" (constr None) |> Option.some
     | [{gen= Some g; _}] ->
@@ -292,12 +290,12 @@ module Sum = struct
 
   let constr_printer txt typs =
     let id = id_gen_gen () in
-    let constr pat = Pat.construct (lid_loc txt) pat in
+    let constr pat = pat_construct (lid_loc txt) pat in
     match typs with
-    | [] -> Exp.case (constr None) (string_ txt)
+    | [] -> case (constr None) (string_ txt)
     | [{print; _}] ->
         let pat, expr = id () in
-        Exp.case
+        case
           (constr (Some (pat_s pat)))
           (string_concat [string_ txt; apply_nolbl print [expr]])
     | p ->
@@ -309,19 +307,19 @@ module Sum = struct
             p
           |> List.split
         in
-        Exp.case
-          (constr (Some (Pat.tuple pat)))
+        case
+          (constr (Some (pat_tuple pat)))
           (string_concat
-             [string_ txt; apply_nolbl (Product.printer p) [Exp.tuple exp]] )
+             [string_ txt; apply_nolbl (Product.printer p) [tuple exp]] )
 
   let printer variants =
     let cases =
       List.map (fun (constr, args) -> constr_printer constr args) variants
     in
-    Exp.function_ cases
+    function_ cases
 
   let constr_spec txt args =
-    let constr pat = Pat.construct (lid_loc txt) pat in
+    let constr pat = pat_construct (lid_loc txt) pat in
     match args with
     | [] -> (constr None, None)
     | [last] ->
@@ -329,7 +327,7 @@ module Sum = struct
         let id = id_gen_gen () in
         let p, e = id () in
         let pat = constr (Some (pat_s p)) in
-        (pat, Exp.case pat (apply_nolbl prop [e]) |> Option.some)
+        (pat, case pat (apply_nolbl prop [e]) |> Option.some)
     | p ->
         let id = id_gen_gen () in
         let pat, exp =
@@ -340,12 +338,11 @@ module Sum = struct
             p
           |> List.split
         in
-        let pat = Pat.tuple pat in
+        let pat = pat_tuple pat in
         ( pat
         , Option.map
             (fun spec ->
-              Exp.case (constr (Some pat)) (apply_nolbl spec [Exp.tuple exp])
-              )
+              case (constr (Some pat)) (apply_nolbl spec [tuple exp]) )
             (Product.specification args) )
 
   let specification variants =
@@ -354,9 +351,9 @@ module Sum = struct
       if List.for_all (fun (_, c) -> c = None) cases then None
       else
         Some
-          (Exp.function_
+          (function_
              (List.map
-                (function p, None -> Exp.case p true_ | _, Some c -> c)
+                (function p, None -> case p true_ | _, Some c -> c)
                 cases ) )
     with Exit | Invalid_argument _ -> None
 
@@ -379,7 +376,7 @@ module Record = struct
     let field (n, t) =
       (lid_loc n, apply_nolbl (t.gen |> Option.get) [exp_id "rs"])
     in
-    Exp.record (List.map field fields) None |> lambda_s "rs" |> Option.some
+    record (List.map field fields) None |> lambda_s "rs" |> Option.some
 
   let printer fields =
     let field (n, t) =
@@ -401,7 +398,7 @@ module Record = struct
         in
         let app = string_concat (List.rev fields) in
         let app = string_concat [app; string_ "}"] in
-        lambda (Pat.record (List.rev pat) Closed) app
+        lambda (pat_record_closed (List.rev pat)) app
 
   let specification fields =
     let field (n, t) =
@@ -413,7 +410,7 @@ module Record = struct
       match fields with
       | h :: tl ->
           List.fold_left ( &&@ ) h tl
-          |> lambda (Pat.record pat Closed)
+          |> lambda (pat_record_closed pat)
           |> Option.some
       | _ -> (*record with 0 field*) assert false
     with Invalid_argument _ -> None
@@ -437,12 +434,12 @@ module Constrained = struct
       try
         Some
           ( List.map2 (fun e1 e2 -> Option.get (unify_patterns e1 e2)) t t'
-          |> Pat.tuple )
+          |> pat_tuple )
       with Invalid_argument _ -> None )
     | Ppat_record (r1, c), Ppat_record (r2, _) -> (
       try
         Some
-          (Pat.record
+          (pat_record
              (List.map2
                 (fun (l1, p1) (l2, p2) ->
                   if l1.txt = l2.txt then
@@ -516,9 +513,6 @@ module Arrow = struct
   let printer = lambda_s "_" (string_ "(_ -> _)")
 
   let make _input output =
-    let c = Card.Unknown in
     let g = generator output.gen in
-    let p = printer in
-    let s = None in
-    make p g s c
+    make printer g None Card.Unknown
 end
