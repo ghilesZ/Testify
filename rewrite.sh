@@ -16,4 +16,3 @@ mv log.markdown "$dir"
 echo "(executable (name a)(libraries testify_runtime)) " > "$dir/dune"
 dune build "$dir"
 cd "$dir"
-$EDITOR a.ml

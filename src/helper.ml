@@ -34,11 +34,17 @@ let pat_s = function
 
 let pat_tuple = Pat.tuple ~loc:!current_loc
 
-let pat_construct = Pat.construct ~loc:!current_loc
+let pat_construct_s str = Pat.construct ~loc:!current_loc (lid_loc str)
 
 let pat_record list = Pat.record ~loc:!current_loc list
 
 let pat_record_closed list = Pat.record ~loc:!current_loc list Closed
+
+let pat_string s = Pat.constant ~loc:!current_loc (Const.string s)
+
+let rec pat_list = function
+  | [] -> pat_construct_s "[]" None
+  | a :: t -> pat_construct_s "::" (Some (pat_tuple [a; pat_list t]))
 
 (* given a string [name], builds the identifier [name] *)
 let exp_id name = lid_loc name |> Exp.ident ~loc:!current_loc
@@ -116,6 +122,17 @@ let pair a b = tuple [a; b]
 let vb_s id exp = Vb.mk ~loc:!current_loc (pat_s id) exp
 
 let letunit exp = Str.value ~loc:!current_loc Nonrecursive [vb_s "()" exp]
+
+(* pattern of string *)
+let pat_s = function
+  | "_" -> Pat.any ~loc:!current_loc ()
+  | "()" -> Pat.construct (lid_loc "()") None
+  | s -> Pat.var (def_loc s)
+
+let let_pat pats exp in_ =
+  Exp.let_ ~loc:!current_loc Nonrecursive
+    [Vb.mk ~loc:!current_loc pats exp]
+    in_
 
 let let_ id exp in_ =
   Exp.let_ ~loc:!current_loc Nonrecursive [vb_s id exp] in_
@@ -206,6 +223,8 @@ let print_expression fmt e =
 
 let print_longident fmt l =
   l |> Longident.flatten |> String.concat "." |> Format.pp_print_string fmt
+
+let lid_to_string l = Format.asprintf "%a" print_longident l
 
 let print_pat fmt p = Pprintast.pattern fmt (Conv.copy_pattern p)
 
@@ -353,12 +372,12 @@ module List = struct
   include List
 
   (** Yeah I know... *)
-  let rec map4 f l1 l2 l3 l4 =
-    match (l1, l2, l3, l4) with
-    | [], [], [], [] -> []
-    | x1 :: l1, x2 :: l2, x3 :: l3, x4 :: l4 ->
-        let y = f x1 x2 x3 x4 in
-        y :: map4 f l1 l2 l3 l4
+  let rec map5 f l1 l2 l3 l4 l5 =
+    match (l1, l2, l3, l4, l5) with
+    | [], [], [], [], [] -> []
+    | x1 :: l1, x2 :: l2, x3 :: l3, x4 :: l4, x5 :: l5 ->
+        let y = f x1 x2 x3 x4 x5 in
+        y :: map5 f l1 l2 l3 l4 l5
     | _ -> invalid_arg "List.map4"
 end
 

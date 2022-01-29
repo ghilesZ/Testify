@@ -10,12 +10,13 @@ type t =
   { gen: expression option
   ; spec: expression option
   ; card: Card.t
-  ; print: expression }
+  ; print: expression
+  ; of_arbogen: expression option }
 
 let print_expr fmt e =
   Format.fprintf fmt "\n```ocaml@.@[%a@]\n```" print_expression e
 
-let print fmt {gen; spec; card; print; _} =
+let print fmt {gen; spec; card; print; of_arbogen} =
   let print_opt f fmt = function
     | None -> Format.fprintf fmt " none"
     | Some e -> f fmt e
@@ -23,11 +24,17 @@ let print fmt {gen; spec; card; print; _} =
   Format.fprintf fmt "- Cardinality: %a\n" Card.pp card ;
   Format.fprintf fmt "- Printer:%a\n" print_expr print ;
   Format.fprintf fmt "- Specification:%a\n" (print_opt print_expr) spec ;
-  Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen
+  Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen ;
+  Format.fprintf fmt "- Of_arbogen: %a\n" (print_opt print_expr) of_arbogen
 
 let default_printer = lambda_s "_" (string_ "<...>")
 
-let empty = {gen= None; spec= None; card= Unknown; print= default_printer}
+let empty =
+  { gen= None
+  ; spec= None
+  ; card= Unknown
+  ; print= default_printer
+  ; of_arbogen= None }
 
 let add_printer info p = {info with print= p}
 
@@ -35,9 +42,10 @@ let add_generator info g = {info with gen= Some g}
 
 let add_specification info s = {info with spec= Some s}
 
-let free g c p = {print= p; gen= Some g; spec= None; card= c}
+let free g c p of_arbogen =
+  {print= p; gen= Some g; spec= None; card= c; of_arbogen}
 
-let make print gen spec card = {gen; spec; card; print}
+let make print gen spec card of_arbogen = {gen; spec; card; print; of_arbogen}
 
 let end_module name typ =
   { typ with
@@ -48,24 +56,35 @@ let end_module name typ =
 (* Predefined types *)
 
 let unit =
-  free (exp_id "QCheck.Gen.unit") (Finite Z.one) (exp_id "QCheck.Print.unit")
+  free
+    (exp_id "QCheck.Gen.unit")
+    (Finite Z.one)
+    (exp_id "QCheck.Print.unit")
+    (Some (exp_id "arbogen_to_unit"))
 
 let bool =
-  free (exp_id "QCheck.Gen.bool") (Card.of_int 2) (exp_id "string_of_bool")
+  free
+    (exp_id "QCheck.Gen.bool")
+    (Card.of_int 2) (exp_id "string_of_bool")
+    (Some (exp_id "arbogen_to_bool"))
 
 let char =
-  free (exp_id "QCheck.Gen.char") (Card.of_int 256) (exp_id "string_of_char")
+  free
+    (exp_id "QCheck.Gen.char")
+    (Card.of_int 256) (exp_id "string_of_char") None
 
 let int =
   free (exp_id "QCheck.Gen.int")
     (Z.pow (Z.of_int 2) (Sys.int_size - 1) |> Card.finite)
     (exp_id "string_of_int")
+    (Some (exp_id "arbogen_to_int"))
 
 let float =
   free
     (exp_id "QCheck.Gen.float")
     (Z.pow (Z.of_int 2) 64 |> Card.finite)
     (exp_id "string_of_float")
+    (Some (exp_id "arbogen_to_float"))
 
 let param list = List.map (fun s -> (Typ.var s, Asttypes.Invariant)) list
 
@@ -147,7 +166,8 @@ module Rec = struct
     { print= exp_id ("print_" ^ typ_name)
     ; gen= Some (exp_id ("gen_" ^ typ_name))
     ; spec= Some (exp_id ("spec_" ^ typ_name))
-    ; card= Infinite }
+    ; card= Infinite
+    ; of_arbogen= Some (exp_id ("of_arbogen_" ^ typ_name)) }
 
   let make_mutually_rec header typs get_field =
     try
@@ -171,9 +191,13 @@ module Rec = struct
     in
     let generators = make_mutually_rec "gen" typs (fun typ -> typ.gen) in
     let specs = make_mutually_rec "spec" typs (fun typ -> typ.spec) in
-    List.map4
-      (fun print gen spec (name, typ) -> (name, {typ with print; gen; spec}))
-      printers generators specs typs
+    let of_arbogen =
+      make_mutually_rec "of_arbogen" typs (fun typ -> typ.of_arbogen)
+    in
+    List.map5
+      (fun print gen spec (name, typ) of_arbogen ->
+        (name, {typ with print; gen; spec; of_arbogen}) )
+      printers generators specs typs of_arbogen
 end
 
 (** {2 Type composition} *)
@@ -225,9 +249,26 @@ module Product = struct
     let b' = string_concat [string_ "("; b; string_ ")"] in
     lambda (pat_tuple pats) b'
 
+  let arbogen typs =
+    try
+      let get_name = id_gen_gen () in
+      let np p =
+        let n, id = get_name () in
+        (apply_nolbl (p.of_arbogen |> Option.get) [id; exp_id "queue"], n)
+      in
+      let bodies, pats = List.split (List.map np typs) in
+      List.fold_left2
+        (fun acc p body ->
+          let pat = pat_tuple [pat_s p; pat_s "queue"] in
+          let_pat pat body acc )
+        (tuple (List.map exp_id pats))
+        (List.rev pats) (List.rev bodies)
+      |> lambda_s "queue" |> Option.some
+    with Invalid_argument _ -> None
+
   let make typs =
     make (printer typs) (generator typs) (specification typs)
-      (cardinality typs)
+      (cardinality typs) (arbogen typs)
 end
 
 (** ADTs *)
@@ -282,7 +323,7 @@ module Sum = struct
 
   let constr_printer txt typs =
     let id = id_gen_gen () in
-    let constr pat = pat_construct (lid_loc txt) pat in
+    let constr pat = pat_construct_s txt pat in
     match typs with
     | [] -> case (constr None) (string_ txt)
     | [{print; _}] ->
@@ -311,17 +352,16 @@ module Sum = struct
     function_ cases
 
   let constr_spec txt args =
-    let constr pat = pat_construct (lid_loc txt) pat in
+    let id = id_gen_gen () in
+    let constr pat = pat_construct_s txt pat in
     match args with
     | [] -> (constr None, None)
     | [last] ->
         let prop = Option.get last.spec in
-        let id = id_gen_gen () in
         let p, e = id () in
         let pat = constr (Some (pat_s p)) in
         (pat, case pat (apply_nolbl prop [e]) |> Option.some)
     | p ->
-        let id = id_gen_gen () in
         let pat, exp =
           List.map
             (fun _ ->
@@ -349,6 +389,37 @@ module Sum = struct
                 cases ) )
     with Exit | Invalid_argument _ -> None
 
+  let constr_arbg name args =
+    let id = id_gen_gen () in
+    let constr pats =
+      let pat_l = Helper.pat_list pats in
+      pat_construct_s "Node" (Some (pat_tuple [pat_string name; pat_l]))
+    in
+    match args with
+    | [] -> case (constr []) (tuple [construct name None; exp_id "queue"])
+    | [x] ->
+        let of_arbg = Option.get x.of_arbogen in
+        let p, e = id () in
+        let pat = constr [pat_s p] in
+        case pat (apply_nolbl of_arbg [e])
+    | p ->
+        let pat, _exp =
+          List.map
+            (fun _ ->
+              let p, e = id () in
+              (pat_s p, e) )
+            p
+          |> List.split
+        in
+        let pat = pat |> constr in
+        case pat (construct name (Some (Product.arbogen args |> Option.get)))
+
+  let arbogen variants =
+    try
+      let cases = List.map (fun (c, a) -> constr_arbg c a) variants in
+      Some (function_ cases)
+    with Exit | Invalid_argument _ -> None
+
   let make variants =
     let print = printer variants in
     let card = cardinality variants in
@@ -357,7 +428,8 @@ module Sum = struct
       else generator_one_of variants
     in
     let spec = specification variants in
-    make print gen spec card
+    let of_arbogen = arbogen variants in
+    make print gen spec card of_arbogen
 end
 
 module Record = struct
@@ -407,12 +479,15 @@ module Record = struct
       | _ -> (*record with 0 field*) assert false
     with Invalid_argument _ -> None
 
+  let arbogen _fields = None
+
   let make fields =
     let c = cardinality fields in
     let g = generator fields in
     let p = printer fields in
     let s = specification fields in
-    make p g s c
+    let arbg = arbogen fields in
+    make p g s c arbg
 end
 
 module Constrained = struct
@@ -464,6 +539,22 @@ module Constrained = struct
 
   let rejection pred gen = apply_nolbl_s "reject" [pred; gen]
 
+  let global_constraints = ["alldiff"; "increasing"; "decreasing"]
+
+  let is_global_constraint (c : expression) =
+    match c.pexp_desc with
+    | Pexp_ident id -> List.mem (lid_to_string id.txt) global_constraints
+    | Pexp_fun (Nolabel, None, pat, body) -> (
+      match (pat.ppat_desc, body.pexp_desc) with
+      | ( Ppat_var arg
+        , Pexp_apply
+            ( {pexp_desc= Pexp_ident funname; _}
+            , [(Nolabel, {pexp_desc= Pexp_ident arg'; _})] ) ) ->
+          List.mem (lid_to_string funname.txt) global_constraints
+          && arg.txt = lid_to_string arg'.txt
+      | _ -> false )
+    | _ -> false
+
   let make ct typ e =
     let spec =
       match typ.spec with Some p -> compose_properties p e | None -> e
@@ -491,6 +582,9 @@ module Constrained = struct
     match Gegen.solve_td td e with
     | Some (gen, card) -> {default with gen= Some gen; card= Finite card}
     | _ -> default
+
+  let make_td td typ e =
+    if is_global_constraint e then typ else make_td td typ e
 end
 
 (* generators for function 'a -> 'b are synthetized using only the 'b
@@ -506,5 +600,5 @@ module Arrow = struct
 
   let make _input output =
     let g = generator output.gen in
-    make printer g None Card.Unknown
+    make printer g None Card.Unknown None
 end
