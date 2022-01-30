@@ -254,7 +254,10 @@ module Product = struct
       let get_name = id_gen_gen () in
       let np p =
         let n, id = get_name () in
-        (apply_nolbl (p.of_arbogen |> Option.get) [id; exp_id "queue"], n)
+        ( apply_nolbl
+            (p.of_arbogen |> Option.get)
+            [id; exp_id "queue"; exp_id "rs"]
+        , n )
       in
       let bodies, pats = List.split (List.map np typs) in
       List.fold_left2
@@ -263,7 +266,7 @@ module Product = struct
           let_pat pat body acc )
         (tuple (List.map exp_id pats))
         (List.rev pats) (List.rev bodies)
-      |> lambda_s "queue" |> Option.some
+      |> lambda_s "queue" |> lambda_s "rs" |> Option.some
     with Invalid_argument _ -> None
 
   let make typs =
@@ -401,7 +404,7 @@ module Sum = struct
         let of_arbg = Option.get x.of_arbogen in
         let p, e = id () in
         let pat = constr [Pat.of_string p] in
-        case pat (apply_nolbl of_arbg [e])
+        case pat (apply_nolbl of_arbg [e; exp_id "rs"])
     | p ->
         let pat, exp =
           List.map
@@ -413,7 +416,9 @@ module Sum = struct
         in
         let pat_c = pat |> constr in
         let tup =
-          apply_nolbl (Product.arbogen args |> Option.get) [exp_id "queue"]
+          apply_nolbl
+            (Product.arbogen args |> Option.get)
+            [exp_id "queue"; exp_id "rs"]
         in
         let body =
           let_pat (Pat.tuple pat) tup (construct name (Some (tuple exp)))
@@ -424,7 +429,8 @@ module Sum = struct
     try
       let cases = List.map (fun (c, a) -> constr_arbg c a) variants in
       Some
-        (lambda_s "arbg" (lambda_s "queue" (match_ (exp_id "arbg") cases)))
+        (lambda_s "arbg"
+           (lambda_s "queue" (lambda_s "rs" (match_ (exp_id "arbg") cases))) )
     with Exit | Invalid_argument _ -> None
 
   let make variants =
@@ -592,7 +598,11 @@ module Constrained = struct
     | _ -> default
 
   let make_td td typ e =
-    if is_global_constraint e then typ else make_td td typ e
+    if is_global_constraint e then
+      if Card.is_finite typ.card then
+        failwith "global constraints only allowed on recursive types"
+      else typ
+    else make_td td typ e
 end
 
 (* generators for function 'a -> 'b are synthetized using only the 'b

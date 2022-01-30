@@ -15,7 +15,6 @@
      ocaml-migrate-parsetree
      apron apron.boxMPQ apron.polkaMPQ apronext
      picasso)
-  (foreign_stubs (language c) (names sicstus_stubs))
   (modules :standard \ Rewriter))
 
 (executable
