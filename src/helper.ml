@@ -26,25 +26,33 @@ let def_loc ?loc s =
 (* builds a Longident.t Location.t from a string *)
 let lid_loc ?loc id = def_loc ?loc (lparse id)
 
-(* pattern of string *)
-let pat_s = function
-  | "_" -> Pat.any ~loc:!current_loc ()
-  | "()" -> Pat.construct (lid_loc "()") None
-  | s -> Pat.var (def_loc s)
+module Pat = struct
+  include Pat
 
-let pat_tuple = Pat.tuple ~loc:!current_loc
+  (* pattern of string *)
+  let of_string = function
+    | "_" -> Pat.any ~loc:!current_loc ()
+    | "()" -> Pat.construct (lid_loc "()") None
+    | s -> Pat.var (def_loc s)
 
-let pat_construct_s str = Pat.construct ~loc:!current_loc (lid_loc str)
+  let tuple = Pat.tuple ~loc:!current_loc
 
-let pat_record list = Pat.record ~loc:!current_loc list
+  let construct_s str = Pat.construct ~loc:!current_loc (lid_loc str)
 
-let pat_record_closed list = Pat.record ~loc:!current_loc list Closed
+  let record list = Pat.record ~loc:!current_loc list
 
-let pat_string s = Pat.constant ~loc:!current_loc (Const.string s)
+  let record_closed list = Pat.record ~loc:!current_loc list Closed
 
-let rec pat_list = function
-  | [] -> pat_construct_s "[]" None
-  | a :: t -> pat_construct_s "::" (Some (pat_tuple [a; pat_list t]))
+  let string s = Pat.constant ~loc:!current_loc (Const.string s)
+
+  let rec list = function
+    | [] -> construct_s "[]" None
+    | a :: t -> construct_s "::" (Some (tuple [a; list t]))
+
+  let rec list_at_least = function
+    | [] -> of_string "_"
+    | a :: t -> construct_s "::" (Some (tuple [a; list_at_least t]))
+end
 
 (* given a string [name], builds the identifier [name] *)
 let exp_id name = lid_loc name |> Exp.ident ~loc:!current_loc
@@ -68,7 +76,7 @@ let apply_runtime s = apply_nolbl_s ("Testify_runtime." ^ s)
 let lambda = Exp.fun_ ~loc:!current_loc Nolabel None
 
 (* Same as lambda with string instead of pattern *)
-let lambda_s s = lambda (pat_s s)
+let lambda_s s = lambda (Pat.of_string s)
 
 (* function composition at ast level *)
 let ( |><| ) f g = lambda_s "x" (apply_nolbl f [apply_nolbl g [exp_id "x"]])
@@ -119,15 +127,9 @@ let tuple = Exp.tuple ~loc:!current_loc
 let pair a b = tuple [a; b]
 
 (* value binding with string *)
-let vb_s id exp = Vb.mk ~loc:!current_loc (pat_s id) exp
+let vb_s id exp = Vb.mk ~loc:!current_loc (Pat.of_string id) exp
 
 let letunit exp = Str.value ~loc:!current_loc Nonrecursive [vb_s "()" exp]
-
-(* pattern of string *)
-let pat_s = function
-  | "_" -> Pat.any ~loc:!current_loc ()
-  | "()" -> Pat.construct (lid_loc "()") None
-  | s -> Pat.var (def_loc s)
 
 let let_pat pats exp in_ =
   Exp.let_ ~loc:!current_loc Nonrecursive
@@ -148,6 +150,8 @@ let let_rec_and vb in_ =
 let case = Exp.case
 
 let function_ = Exp.function_ ~loc:!current_loc
+
+let match_ = Exp.match_ ~loc:!current_loc
 
 (* ast for lists *)
 let empty_list_exp = construct "[]" None
@@ -277,10 +281,10 @@ let trim exp =
       if compatible pat arg then {body with pexp_loc} else exp
   | _ -> exp
 
-(* we overload applies function to simplify them by default *)
-let apply_nolbl_s name args = apply_nolbl_s name args |> trim
-
-let apply_nolbl func args = apply_nolbl func args |> trim
+(* (\* we overload applies function to simplify them by default *\)
+ * let apply_nolbl_s name args = apply_nolbl_s name args |> trim
+ *
+ * let apply_nolbl func args = apply_nolbl func args |> trim *)
 
 (* recursive type detection *)
 (****************************)

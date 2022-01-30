@@ -53,7 +53,7 @@ let collect_ct core_type pattern : SSet.t * SSet.t =
 let collect_record labs : SSet.t * SSet.t =
   List.fold_left
     (fun (i_s, f_s) {pld_name; pld_type; _} ->
-      let i, f = collect_ct pld_type (pat_s pld_name.txt) in
+      let i, f = collect_ct pld_type (Pat.of_string pld_name.txt) in
       (SSet.union i i_s, SSet.union f f_s) )
     (SSet.empty, SSet.empty) labs
 
@@ -75,7 +75,7 @@ let flatten_record_ind labs =
   let r =
     List.fold_left
       (fun acc {pld_name; pld_type; _} ->
-        let r = flatten_ct_ind pld_type (pat_s pld_name.txt) in
+        let r = flatten_ct_ind pld_type (Pat.of_string pld_name.txt) in
         (fun vars -> (lid_loc pld_name.txt, r vars)) :: acc )
       [] labs
   in
@@ -105,7 +105,7 @@ let flatten_record labs =
   let r =
     List.fold_left
       (fun acc {pld_name; pld_type; _} ->
-        let r = flatten_ct pld_type (pat_s pld_name.txt) in
+        let r = flatten_ct pld_type (Pat.of_string pld_name.txt) in
         (lid_loc pld_name.txt, apply_nolbl r [exp_id "i"]) :: acc )
       [] labs
   in

@@ -223,18 +223,18 @@ module Product = struct
         let get_name = id_gen_gen () in
         let compose (pats, body) p =
           match (body, p.spec) with
-          | x, None -> (pat_s "_" :: pats, x)
+          | x, None -> (Pat.of_string "_" :: pats, x)
           | None, Some p ->
               let name, id = get_name () in
               let app = apply_nolbl p [id] in
-              (pat_s name :: pats, Some app)
+              (Pat.of_string name :: pats, Some app)
           | Some p', Some p ->
               let name, id = get_name () in
               let app = apply_nolbl p [id] in
-              (pat_s name :: pats, Some (p' &&@ app))
+              (Pat.of_string name :: pats, Some (p' &&@ app))
         in
         let pats, body = List.fold_left compose ([], None) typs in
-        Option.map (lambda (pat_tuple (List.rev pats))) body
+        Option.map (lambda (Pat.tuple (List.rev pats))) body
 
   let cardinality typs = List.map (fun t -> t.card) typs |> Card.product
 
@@ -242,12 +242,12 @@ module Product = struct
     let get_name = id_gen_gen () in
     let np p =
       let n, id = get_name () in
-      (apply_nolbl p.print [id], pat_s n)
+      (apply_nolbl p.print [id], Pat.of_string n)
     in
     let names, pats = List.split (List.map np typs) in
     let b = string_concat ~sep:", " names in
     let b' = string_concat [string_ "("; b; string_ ")"] in
-    lambda (pat_tuple pats) b'
+    lambda (Pat.tuple pats) b'
 
   let arbogen typs =
     try
@@ -259,7 +259,7 @@ module Product = struct
       let bodies, pats = List.split (List.map np typs) in
       List.fold_left2
         (fun acc p body ->
-          let pat = pat_tuple [pat_s p; pat_s "queue"] in
+          let pat = Pat.tuple [Pat.of_string p; Pat.of_string "queue"] in
           let_pat pat body acc )
         (tuple (List.map exp_id pats))
         (List.rev pats) (List.rev bodies)
@@ -323,25 +323,25 @@ module Sum = struct
 
   let constr_printer txt typs =
     let id = id_gen_gen () in
-    let constr pat = pat_construct_s txt pat in
+    let constr pat = Pat.construct_s txt pat in
     match typs with
     | [] -> case (constr None) (string_ txt)
     | [{print; _}] ->
         let pat, expr = id () in
         case
-          (constr (Some (pat_s pat)))
+          (constr (Some (Pat.of_string pat)))
           (string_concat [string_ txt; apply_nolbl print [expr]])
     | p ->
         let pat, exp =
           List.map
             (fun _ ->
               let p, e = id () in
-              (pat_s p, e) )
+              (Pat.of_string p, e) )
             p
           |> List.split
         in
         case
-          (constr (Some (pat_tuple pat)))
+          (constr (Some (Pat.tuple pat)))
           (string_concat
              [string_ txt; apply_nolbl (Product.printer p) [tuple exp]] )
 
@@ -353,24 +353,24 @@ module Sum = struct
 
   let constr_spec txt args =
     let id = id_gen_gen () in
-    let constr pat = pat_construct_s txt pat in
+    let constr pat = Pat.construct_s txt pat in
     match args with
     | [] -> (constr None, None)
     | [last] ->
         let prop = Option.get last.spec in
         let p, e = id () in
-        let pat = constr (Some (pat_s p)) in
+        let pat = constr (Some (Pat.of_string p)) in
         (pat, case pat (apply_nolbl prop [e]) |> Option.some)
     | p ->
         let pat, exp =
           List.map
             (fun _ ->
               let p, e = id () in
-              (pat_s p, e) )
+              (Pat.of_string p, e) )
             p
           |> List.split
         in
-        let pat = pat_tuple pat in
+        let pat = Pat.tuple pat in
         ( pat
         , Option.map
             (fun spec ->
@@ -392,32 +392,39 @@ module Sum = struct
   let constr_arbg name args =
     let id = id_gen_gen () in
     let constr pats =
-      let pat_l = Helper.pat_list pats in
-      pat_construct_s "Node" (Some (pat_tuple [pat_string name; pat_l]))
+      let pat_l = Pat.list_at_least pats in
+      Pat.construct_s "Node" (Some (Pat.tuple [Pat.string name; pat_l]))
     in
     match args with
     | [] -> case (constr []) (tuple [construct name None; exp_id "queue"])
     | [x] ->
         let of_arbg = Option.get x.of_arbogen in
         let p, e = id () in
-        let pat = constr [pat_s p] in
+        let pat = constr [Pat.of_string p] in
         case pat (apply_nolbl of_arbg [e])
     | p ->
-        let pat, _exp =
+        let pat, exp =
           List.map
             (fun _ ->
               let p, e = id () in
-              (pat_s p, e) )
+              (Pat.of_string p, e) )
             p
           |> List.split
         in
-        let pat = pat |> constr in
-        case pat (construct name (Some (Product.arbogen args |> Option.get)))
+        let pat_c = pat |> constr in
+        let tup =
+          apply_nolbl (Product.arbogen args |> Option.get) [exp_id "queue"]
+        in
+        let body =
+          let_pat (Pat.tuple pat) tup (construct name (Some (tuple exp)))
+        in
+        case pat_c (tuple [body; exp_id "queue"])
 
   let arbogen variants =
     try
       let cases = List.map (fun (c, a) -> constr_arbg c a) variants in
-      Some (function_ cases)
+      Some
+        (lambda_s "arbg" (lambda_s "queue" (match_ (exp_id "arbg") cases)))
     with Exit | Invalid_argument _ -> None
 
   let make variants =
@@ -446,7 +453,7 @@ module Record = struct
     let field (n, t) =
       let field = apply_nolbl t.print [exp_id n] in
       let field_name = n ^ " = " in
-      (field_name, field, (lid_loc n, pat_s n))
+      (field_name, field, (lid_loc n, Pat.of_string n))
     in
     match fields with
     | [] -> assert false
@@ -462,11 +469,12 @@ module Record = struct
         in
         let app = string_concat (List.rev fields) in
         let app = string_concat [app; string_ "}"] in
-        lambda (pat_record_closed (List.rev pat)) app
+        lambda (Pat.record_closed (List.rev pat)) app
 
   let specification fields =
     let field (n, t) =
-      (apply_nolbl (t.spec |> Option.get) [exp_id n], (lid_loc n, pat_s n))
+      ( apply_nolbl (t.spec |> Option.get) [exp_id n]
+      , (lid_loc n, Pat.of_string n) )
     in
     try
       let fields = List.map field fields in
@@ -474,7 +482,7 @@ module Record = struct
       match fields with
       | h :: tl ->
           List.fold_left ( &&@ ) h tl
-          |> lambda (pat_record_closed pat)
+          |> lambda (Pat.record_closed pat)
           |> Option.some
       | _ -> (*record with 0 field*) assert false
     with Invalid_argument _ -> None
@@ -501,12 +509,12 @@ module Constrained = struct
       try
         Some
           ( List.map2 (fun e1 e2 -> Option.get (unify_patterns e1 e2)) t t'
-          |> pat_tuple )
+          |> Pat.tuple )
       with Invalid_argument _ -> None )
     | Ppat_record (r1, c), Ppat_record (r2, _) -> (
       try
         Some
-          (pat_record
+          (Pat.record
              (List.map2
                 (fun (l1, p1) (l2, p2) ->
                   if l1.txt = l2.txt then
