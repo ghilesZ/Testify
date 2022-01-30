@@ -493,7 +493,19 @@ module Record = struct
       | _ -> (*record with 0 field*) assert false
     with Invalid_argument _ -> None
 
-  let arbogen _fields = None
+  let arbogen fields =
+    try
+      let get_name = id_gen_gen () in
+      let np (field, p) =
+        let _, id = get_name () in
+        ( lid_loc field
+        , apply_nolbl
+            (p.of_arbogen |> Option.get)
+            [id; exp_id "queue"; exp_id "rs"] )
+      in
+      let f = List.map np fields in
+      record f None |> lambda_s "queue" |> lambda_s "rs" |> Option.some
+    with Invalid_argument _ -> None
 
   let make fields =
     let c = cardinality fields in
