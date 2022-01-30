@@ -273,18 +273,26 @@ let rec compatible pat exp =
   | _ -> false
 
 (* elementary simplification of some ast patterns *)
-let trim exp =
+let rec trim exp =
   match exp.pexp_desc with
   | Pexp_apply
       ( {pexp_desc= Pexp_fun (Nolabel, None, pat, body); pexp_loc; _}
       , [(Nolabel, arg)] ) ->
       if compatible pat arg then {body with pexp_loc} else exp
+  | Pexp_apply ({pexp_desc= Pexp_fun (Nolabel, None, pat, body); _}, args)
+    -> (
+    match List.rev args with
+    | (Nolabel, h) :: tl ->
+        if compatible pat h then
+          trim {exp with pexp_desc= Pexp_apply (body, List.rev tl)}
+        else exp
+    | _ -> exp )
   | _ -> exp
 
-(* (\* we overload applies function to simplify them by default *\)
- * let apply_nolbl_s name args = apply_nolbl_s name args |> trim
- *
- * let apply_nolbl func args = apply_nolbl func args |> trim *)
+(* we overload applies function to simplify them by default *)
+let apply_nolbl_s name args = apply_nolbl_s name args |> trim
+
+let apply_nolbl func args = apply_nolbl func args |> trim
 
 (* recursive type detection *)
 (****************************)
