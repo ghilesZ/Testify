@@ -71,13 +71,13 @@ let unit =
     (exp_id "QCheck.Gen.unit")
     (Finite Z.one)
     (exp_id "QCheck.Print.unit")
-    (Some (exp_id "arbogen_to_unit"))
+    (Some (exp_id "Arbg.to_unit"))
 
 let bool =
   free (Arbogen.Grammar.Z 0)
     (exp_id "QCheck.Gen.bool")
     (Card.of_int 2) (exp_id "string_of_bool")
-    (Some (exp_id "arbogen_to_bool"))
+    (Some (exp_id "Arbg.to_bool"))
 
 let char =
   free (Arbogen.Grammar.Z 0)
@@ -88,14 +88,14 @@ let int =
   free (Arbogen.Grammar.Z 0) (exp_id "QCheck.Gen.int")
     (Z.pow (Z.of_int 2) (Sys.int_size - 1) |> Card.finite)
     (exp_id "string_of_int")
-    (Some (exp_id "arbogen_to_int"))
+    (Some (exp_id "Arbg.to_int"))
 
 let float =
   free (Arbogen.Grammar.Z 0)
     (exp_id "QCheck.Gen.float")
     (Z.pow (Z.of_int 2) 64 |> Card.finite)
     (exp_id "string_of_float")
-    (Some (exp_id "arbogen_to_float"))
+    (Some (exp_id "Arbg.to_float"))
 
 let param list = List.map (fun s -> (Typ.var s, Asttypes.Invariant)) list
 
@@ -193,11 +193,10 @@ module Rec = struct
       Arbogen.Boltzmann.(
         WeightedGrammar.of_grammar (Oracle.Naive.make grammar) grammar)
     in
-    fun name ->
+    fun name of_arbogen ->
       [%expr
         fun rs ->
           let sicstus_something _ = assert false in
-          let of_arbogen _ _ = assert false in
           let module R = Randtools.OcamlRandom in
           let module AB = Arbogen.Boltzmann in
           Random.set_state rs ;
@@ -213,15 +212,9 @@ module Rec = struct
           | Some (_size, state) ->
               R.set_state state ;
               let tree, _ = AB.free_gen (module R) wg [%e string_ name] in
-              let nb_collect =
-                Arbogen.Tree.fold
-                  (fun lab ->
-                    List.fold_left ( + )
-                      (if String.equal lab "@collect" then 1 else 0) )
-                  tree
-              in
-              let vals = sicstus_something nb_collect in
-              of_arbogen vals tree
+              let nb_collect = Arbg.count_collect tree in
+              let queue = sicstus_something nb_collect in
+              [%e of_arbogen] tree queue rs
           | None -> assert false]
 
   let make_mutually_rec header typs get_field =
@@ -244,14 +237,16 @@ module Rec = struct
       make_mutually_rec "print" typs (fun typ -> Some typ.print)
       |> List.map Option.get
     in
-    let generators =
-      let make_gen = make_generator typs in
-      List.map (fun (name, _) -> Some (make_gen name)) typs
-    in
-    let specs = make_mutually_rec "spec" typs (fun typ -> typ.spec) in
     let of_arbogen =
       make_mutually_rec "of_arbogen" typs (fun typ -> typ.of_arbogen)
     in
+    let generators =
+      let make_gen = make_generator typs in
+      List.map
+        (fun (name, t) -> Option.map (make_gen name) t.of_arbogen)
+        typs
+    in
+    let specs = make_mutually_rec "spec" typs (fun typ -> typ.spec) in
     List.map5
       (fun print gen spec (name, typ) of_arbogen ->
         (name, {typ with print; gen; spec; of_arbogen}) )
@@ -653,7 +648,7 @@ module Record = struct
     let g = generator fields in
     let p = printer fields in
     let s = specification fields in
-    let arbg = arbogen fields in
+    let arbg = None in
     make (boltzmann_specification fields) p g s c arbg
 end
 
@@ -706,7 +701,12 @@ module Constrained = struct
 
   let rejection pred gen = apply_nolbl_s "reject" [pred; gen]
 
-  let global_constraints = ["alldiff"; "increasing"; "decreasing"]
+  let global_constraints =
+    [ "alldiff"
+    ; "increasing"
+    ; "decreasing"
+    ; "increasing_strict"
+    ; "decreasing_strict" ]
 
   let is_global_constraint (c : expression) =
     match c.pexp_desc with

@@ -99,25 +99,25 @@ let weighted (gens : (float * 'a QCheck.Gen.t) list) : 'a QCheck.Gen.t =
 module Arbg = struct
   open Arbogen.Tree
 
-  let arbogen_to_unit arbg lst rs =
+  let to_unit arbg lst rs =
     match arbg with
     | Node ("@collect", []) -> consume lst
     | Node (_, []) -> (QCheck.Gen.unit rs, lst)
     | Node (_, _) -> invalid_arg "arbogen_to_unit"
 
-  let arbogen_to_bool arbg lst rs =
+  let to_bool arbg lst rs =
     match arbg with
     | Node ("@collect", []) -> consume lst
     | Node (_, []) -> (QCheck.Gen.bool rs, lst)
     | Node (_, _) -> invalid_arg "arbogen_to_bool"
 
-  let arbogen_to_int arbg lst rs =
+  let to_int arbg lst rs =
     match arbg with
     | Node ("@collect", []) -> consume lst
     | Node (_, []) -> (QCheck.Gen.int rs, lst)
     | Node (_, _) -> invalid_arg "arbogen_to_int"
 
-  let arbogen_to_float arbg lst rs =
+  let to_float arbg lst rs =
     match arbg with
     | Node ("@collect", []) -> consume lst
     | Node (_, []) -> (QCheck.Gen.float rs, lst)
