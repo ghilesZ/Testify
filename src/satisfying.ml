@@ -333,15 +333,15 @@ let mapper =
           List.rev (if !in_attr > 0 then res else run () :: t)
       (* type declaration *)
       | ({pstr_desc= Pstr_type (recflag, types); pstr_loc; _} as h) :: tl ->
+          Helper.update_loc pstr_loc ;
           state := derive !state (recflag, types) ;
-          update_loc pstr_loc ;
           aux ({h with pstr_loc= !current_loc} :: res) tl
       (* value declaration *)
       | ({pstr_desc= Pstr_value (_, [pvb]); pstr_loc; _} as h) :: tl ->
+          Helper.update_loc pstr_loc ;
           let tests = gather_tests pvb !state in
           (* let s = global |> check_gen pvb |> check_print pvb in *)
           let h' = mapper.structure_item mapper h in
-          Helper.update_loc pstr_loc ;
           aux (tests @ ({h' with pstr_loc= !current_loc} :: res)) tl
       | h :: tl ->
           Helper.update_loc h.pstr_loc ;
@@ -359,9 +359,10 @@ let mapper =
   let handle_module mapper module_ =
     let name = match module_.pmb_name.txt with None -> "_" | Some s -> s in
     state := Module_state.begin_ !state name ;
+    Helper.update_loc module_.pmb_loc ;
     let res = default_mapper.module_binding mapper module_ in
     state := Module_state.end_ !state ;
-    res
+    {res with pmb_loc= module_.pmb_loc}
   in
   { default_mapper with
     structure= handle_str

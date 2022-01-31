@@ -15,11 +15,10 @@ let handle_record labels e =
   let names =
     List.map
       (fun l ->
-        ( Location.mkloc (lparse l.pld_name.txt) l.pld_loc
-        , pat_s l.pld_name.txt ) )
+        (def_loc (lparse l.pld_name.txt), Pat.of_string l.pld_name.txt) )
       labels
   in
-  lambda (pat_record_closed names) e
+  lambda (Pat.record_closed names) e
 
 let unsugarize kind (attrs : attributes) =
   match kind with

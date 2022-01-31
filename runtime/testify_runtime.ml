@@ -96,6 +96,38 @@ let weighted (gens : (float * 'a QCheck.Gen.t) list) : 'a QCheck.Gen.t =
     let r = QCheck.Gen.float_bound_exclusive total_weight rs in
     (aux r gens) rs
 
+module Arbg = struct
+  open Arbogen.Tree
+
+  let arbogen_to_unit arbg lst rs =
+    match arbg with
+    | Node ("@collect", []) -> consume lst
+    | Node (_, []) -> (QCheck.Gen.unit rs, lst)
+    | Node (_, _) -> invalid_arg "arbogen_to_unit"
+
+  let arbogen_to_bool arbg lst rs =
+    match arbg with
+    | Node ("@collect", []) -> consume lst
+    | Node (_, []) -> (QCheck.Gen.bool rs, lst)
+    | Node (_, _) -> invalid_arg "arbogen_to_bool"
+
+  let arbogen_to_int arbg lst rs =
+    match arbg with
+    | Node ("@collect", []) -> consume lst
+    | Node (_, []) -> (QCheck.Gen.int rs, lst)
+    | Node (_, _) -> invalid_arg "arbogen_to_int"
+
+  let arbogen_to_float arbg lst rs =
+    match arbg with
+    | Node ("@collect", []) -> consume lst
+    | Node (_, []) -> (QCheck.Gen.float rs, lst)
+    | Node (_, _) -> invalid_arg "arbogen_to_float"
+
+  let count_collect =
+    fold (fun lab ->
+        List.fold_left ( + ) (if String.equal lab "@collect" then 1 else 0) )
+end
+
 let count = ref 1000
 
 let reject pred g = QCheck.find_example ~f:pred ~count:!count g

@@ -230,9 +230,6 @@ let default_volume abs =
 let volume pol =
   (* if is_simplex pol then vol_simplex pol else *) default_volume pol
 
-open Migrate_parsetree
-open Ast_410
-
 let compile pol =
   let rec aux acc pol =
     if is_simplex pol then (volume pol, pol) :: acc
@@ -247,12 +244,11 @@ let compile pol =
       let total =
         List.fold_left (fun acc (x, _) -> Z.add acc x) Z.zero simplices
       in
-      let open Ast_helper in
       let gens =
         List.fold_left
           (fun acc (w, p) ->
             cons_exp
-              (Exp.tuple
+              (tuple
                  [float_ (Q.make w total |> Q.to_float); compile_simplex p] )
               acc )
           empty_list_exp simplices

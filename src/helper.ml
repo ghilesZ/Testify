@@ -26,22 +26,36 @@ let def_loc ?loc s =
 (* builds a Longident.t Location.t from a string *)
 let lid_loc ?loc id = def_loc ?loc (lparse id)
 
-(* pattern of string *)
-let pat_s = function
-  | "_" -> Pat.any ~loc:!current_loc ()
-  | "()" -> Pat.construct (lid_loc "()") None
-  | s -> Pat.var (def_loc s)
+module Pat = struct
+  include Pat
 
-let pat_tuple = Pat.tuple ~loc:!current_loc
+  (* pattern of string *)
+  let of_string = function
+    | "_" -> Pat.any ~loc:!current_loc ()
+    | "()" -> Pat.construct (lid_loc "()") None
+    | s -> Pat.var (def_loc s)
 
-let pat_construct = Pat.construct ~loc:!current_loc
+  let tuple = Pat.tuple ~loc:!current_loc
 
-let pat_record list = Pat.record ~loc:!current_loc list
+  let construct_s str = Pat.construct ~loc:!current_loc (lid_loc str)
 
-let pat_record_closed list = Pat.record ~loc:!current_loc list Closed
+  let record list = Pat.record ~loc:!current_loc list
+
+  let record_closed list = Pat.record ~loc:!current_loc list Closed
+
+  let string s = Pat.constant ~loc:!current_loc (Const.string s)
+
+  let rec list = function
+    | [] -> construct_s "[]" None
+    | a :: t -> construct_s "::" (Some (tuple [a; list t]))
+
+  let rec list_at_least = function
+    | [] -> of_string "_"
+    | a :: t -> construct_s "::" (Some (tuple [a; list_at_least t]))
+end
 
 (* given a string [name], builds the identifier [name] *)
-let exp_id name = lid_loc name |> Exp.ident
+let exp_id name = lid_loc name |> Exp.ident ~loc:!current_loc
 
 (* same as apply but argument are not labelled *)
 let apply_nolbl f args =
@@ -62,7 +76,7 @@ let apply_runtime s = apply_nolbl_s ("Testify_runtime." ^ s)
 let lambda = Exp.fun_ ~loc:!current_loc Nolabel None
 
 (* Same as lambda with string instead of pattern *)
-let lambda_s s = lambda (pat_s s)
+let lambda_s s = lambda (Pat.of_string s)
 
 (* function composition at ast level *)
 let ( |><| ) f g = lambda_s "x" (apply_nolbl f [apply_nolbl g [exp_id "x"]])
@@ -113,9 +127,14 @@ let tuple = Exp.tuple ~loc:!current_loc
 let pair a b = tuple [a; b]
 
 (* value binding with string *)
-let vb_s id exp = Vb.mk ~loc:!current_loc (pat_s id) exp
+let vb_s id exp = Vb.mk ~loc:!current_loc (Pat.of_string id) exp
 
 let letunit exp = Str.value ~loc:!current_loc Nonrecursive [vb_s "()" exp]
+
+let let_pat pats exp in_ =
+  Exp.let_ ~loc:!current_loc Nonrecursive
+    [Vb.mk ~loc:!current_loc pats exp]
+    in_
 
 let let_ id exp in_ =
   Exp.let_ ~loc:!current_loc Nonrecursive [vb_s id exp] in_
@@ -131,6 +150,8 @@ let let_rec_and vb in_ =
 let case = Exp.case
 
 let function_ = Exp.function_ ~loc:!current_loc
+
+let match_ = Exp.match_ ~loc:!current_loc
 
 (* ast for lists *)
 let empty_list_exp = construct "[]" None
@@ -230,6 +251,8 @@ let print_expression fmt e =
 let print_longident fmt l =
   l |> Longident.flatten |> String.concat "." |> Format.pp_print_string fmt
 
+let lid_to_string l = Format.asprintf "%a" print_longident l
+
 let print_pat fmt p = Pprintast.pattern fmt (Conv.copy_pattern p)
 
 let print_coretype fmt t = Pprintast.core_type fmt (Conv.copy_core_type t)
@@ -273,12 +296,20 @@ let rec compatible pat exp =
   | _ -> false
 
 (* elementary simplification of some ast patterns *)
-let trim exp =
+let rec trim exp =
   match exp.pexp_desc with
   | Pexp_apply
-      ({pexp_desc= Pexp_fun (Nolabel, None, pat, body); _}, [(Nolabel, arg)])
-    ->
-      if compatible pat arg then body else exp
+      ( {pexp_desc= Pexp_fun (Nolabel, None, pat, body); pexp_loc; _}
+      , [(Nolabel, arg)] ) ->
+      if compatible pat arg then {body with pexp_loc} else exp
+  | Pexp_apply ({pexp_desc= Pexp_fun (Nolabel, None, pat, body); _}, args)
+    -> (
+    match List.rev args with
+    | (Nolabel, h) :: tl ->
+        if compatible pat h then
+          trim {exp with pexp_desc= Pexp_apply (body, List.rev tl)}
+        else exp
+    | _ -> exp )
   | _ -> exp
 
 (* we overload applies function to simplify them by default *)
@@ -376,12 +407,12 @@ module List = struct
   include List
 
   (** Yeah I know... *)
-  let rec map4 f l1 l2 l3 l4 =
-    match (l1, l2, l3, l4) with
-    | [], [], [], [] -> []
-    | x1 :: l1, x2 :: l2, x3 :: l3, x4 :: l4 ->
-        let y = f x1 x2 x3 x4 in
-        y :: map4 f l1 l2 l3 l4
+  let rec map5 f l1 l2 l3 l4 l5 =
+    match (l1, l2, l3, l4, l5) with
+    | [], [], [], [], [] -> []
+    | x1 :: l1, x2 :: l2, x3 :: l3, x4 :: l4, x5 :: l5 ->
+        let y = f x1 x2 x3 x4 x5 in
+        y :: map5 f l1 l2 l3 l4 l5
     | _ -> invalid_arg "List.map4"
 end
 
