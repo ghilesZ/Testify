@@ -198,9 +198,6 @@ module Rec = struct
         fun rs ->
           let sicstus_something _ = assert false in
           Random.set_state rs ;
-          let target = 30 in
-          (* XXX. arbitrary size *)
-          let max_try = 1_000_000 in
           let wg = [%e AGPrint.weighted_grammar wg] in
           let state = Arbg.search_seed wg in
           Randtools.OcamlRandom.set_state state ;
@@ -229,16 +226,21 @@ module Rec = struct
       make_mutually_rec "print" typs (fun typ -> Some typ.print)
       |> List.map Option.get
     in
+    let specs = make_mutually_rec "spec" typs (fun typ -> typ.spec) in
     let of_arbogen =
       make_mutually_rec "of_arbogen" typs (fun typ -> typ.of_arbogen)
     in
     let generators =
       let make_gen = make_generator typs in
       List.map
-        (fun (name, t) -> Option.map (make_gen name) t.of_arbogen)
+        (fun (name, t) ->
+          Option.map
+            (fun arbg ->
+              let_ ("of_arbogen_" ^ name) arbg
+                (make_gen name (exp_id ("of_arbogen_" ^ name))) )
+            t.of_arbogen )
         typs
     in
-    let specs = make_mutually_rec "spec" typs (fun typ -> typ.spec) in
     List.map5
       (fun print gen spec (name, typ) of_arbogen ->
         (name, {typ with print; gen; spec; of_arbogen}) )
@@ -264,9 +266,6 @@ module Infinite = struct
         let sicstus_something _ = assert false in
         let of_arbogen _ _ = assert false in
         Random.set_state rs ;
-        let target = 30 in
-        (* XXX. arbitraty size *)
-        let max_try = 1_000_000 in
         let wg = [%e AGPrint.weighted_grammar wg] in
         let state = Arbg.search_seed wg in
         Randtools.OcamlRandom.set_state state ;
