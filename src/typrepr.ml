@@ -25,12 +25,12 @@ let print fmt {gen; spec; card; print; boltz_spec; of_arbogen} =
   Format.fprintf fmt "- Cardinality: %a\n" Card.pp card ;
   Format.fprintf fmt "- Printer:%a\n" print_expr print ;
   Format.fprintf fmt "- Specification:%a\n" (print_opt print_expr) spec ;
-  Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen ;
-  Format.fprintf fmt "- Boltzmann specification:%a"
+  Format.fprintf fmt "- Boltzmann specification: %a\n"
     (print_opt
        (Arbogen.Grammar.pp_expression ~pp_ref:Format.pp_print_string) )
     boltz_spec ;
-  Format.fprintf fmt "- Of_arbogen: %a\n" (print_opt print_expr) of_arbogen
+  Format.fprintf fmt "- Of_arbogen: %a\n" (print_opt print_expr) of_arbogen ;
+  Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen
 
 let default_printer = lambda_s "_" (string_ "<...>")
 
@@ -197,25 +197,17 @@ module Rec = struct
       [%expr
         fun rs ->
           let sicstus_something _ = assert false in
-          let module R = Randtools.OcamlRandom in
-          let module AB = Arbogen.Boltzmann in
           Random.set_state rs ;
           let target = 30 in
           (* XXX. arbitrary size *)
           let max_try = 1_000_000 in
           let wg = [%e AGPrint.weighted_grammar wg] in
-          match
-            AB.search_seed
-              (module R)
-              wg ~size_min:target ~size_max:target ~max_try
-          with
-          | Some (_size, state) ->
-              R.set_state state ;
-              let tree, _ = AB.free_gen (module R) wg [%e string_ name] in
-              let nb_collect = Arbg.count_collect tree in
-              let queue = sicstus_something nb_collect in
-              [%e of_arbogen] tree queue rs
-          | None -> assert false]
+          let state = Arbg.search_seed wg in
+          Randtools.OcamlRandom.set_state state ;
+          let tree = Arbg.free_gen wg [%e string_ name] in
+          let nb_collect = Arbg.count_collect tree in
+          let queue = sicstus_something nb_collect in
+          fst ([%e of_arbogen] tree queue rs)]
 
   let make_mutually_rec header typs get_field =
     try
@@ -271,31 +263,23 @@ module Infinite = struct
       fun rs ->
         let sicstus_something _ = assert false in
         let of_arbogen _ _ = assert false in
-        let module R = Randtools.OcamlRandom in
-        let module AB = Arbogen.Boltzmann in
         Random.set_state rs ;
         let target = 30 in
         (* XXX. arbitraty size *)
         let max_try = 1_000_000 in
         let wg = [%e AGPrint.weighted_grammar wg] in
-        match
-          AB.search_seed
-            (module R)
-            wg ~size_min:target ~size_max:target ~max_try
-        with
-        | Some (_size, state) ->
-            R.set_state state ;
-            let tree, _ = AB.free_gen (module R) wg in
-            let nb_collect =
-              Arbogen.Tree.fold
-                (fun lab ->
-                  List.fold_left ( + )
-                    (if String.equal lab "@collect" then 1 else 0) )
-                tree
-            in
-            let vals = sicstus_something nb_collect in
-            of_arbogen vals tree
-        | None -> assert false]
+        let state = Arbg.search_seed wg in
+        Randtools.OcamlRandom.set_state state ;
+        let tree = Arbg.free_gen wg in
+        let nb_collect =
+          Arbogen.Tree.fold
+            (fun lab ->
+              List.fold_left ( + )
+                (if String.equal lab "@collect" then 1 else 0) )
+            tree
+        in
+        let vals = sicstus_something nb_collect in
+        fst (of_arbogen vals tree)]
 end
 
 (** {2 Type composition} *)

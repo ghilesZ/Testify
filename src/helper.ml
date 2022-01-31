@@ -312,10 +312,10 @@ let rec trim exp =
     | _ -> exp )
   | _ -> exp
 
-(* (\* we overload applies function to simplify them by default *\)
- * let apply_nolbl_s name args = apply_nolbl_s name args |> trim
- *
- * let apply_nolbl func args = apply_nolbl func args |> trim *)
+(* we overload applies function to simplify them by default *)
+let apply_nolbl_s name args = apply_nolbl_s name args |> trim
+
+let apply_nolbl func args = apply_nolbl func args |> trim
 
 (* recursive type detection *)
 (****************************)

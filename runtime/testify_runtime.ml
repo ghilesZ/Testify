@@ -97,7 +97,12 @@ let weighted (gens : (float * 'a QCheck.Gen.t) list) : 'a QCheck.Gen.t =
     (aux r gens) rs
 
 module Arbg = struct
-  open Arbogen.Tree
+  open Arbogen
+  open Tree
+
+  let max_try = ref 1_000_000
+
+  let size = ref 30
 
   let to_unit arbg lst rs =
     match arbg with
@@ -126,6 +131,21 @@ module Arbg = struct
   let count_collect =
     fold (fun lab ->
         List.fold_left ( + ) (if String.equal lab "@collect" then 1 else 0) )
+
+  let search_seed grammar =
+    let s =
+      Boltzmann.search_seed
+        (module Randtools.OcamlRandom)
+        grammar
+        ~size_min:(int_of_float (0.9 *. float !size))
+        ~size_max:!size
+    in
+    match s with
+    | Some (_size, state) -> state
+    | None -> failwith "could not find seed"
+
+  let free_gen grammar name =
+    fst @@ Boltzmann.free_gen (module Randtools.OcamlRandom) grammar name
 end
 
 let count = ref 1000
