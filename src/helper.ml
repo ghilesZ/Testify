@@ -37,6 +37,8 @@ module Pat = struct
 
   let tuple = Pat.tuple ~loc:!current_loc
 
+  let pair a b = tuple [a; b]
+
   let construct_s str = Pat.construct ~loc:!current_loc (lid_loc str)
 
   let record list = Pat.record ~loc:!current_loc list
@@ -71,6 +73,8 @@ let capitalize_first_char str =
 
 (* calls a function defined in the runtime *)
 let apply_runtime s = apply_nolbl_s ("Testify_runtime." ^ s)
+
+let assert_ = Exp.assert_ ~loc:!current_loc
 
 (* Same as Exp.fun_ *)
 let lambda = Exp.fun_ ~loc:!current_loc Nolabel None

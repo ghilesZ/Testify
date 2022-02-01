@@ -236,7 +236,7 @@ module Rec = struct
         (fun (name, t) ->
           Option.map
             (fun arbg ->
-              let_ ("of_arbogen_" ^ name) arbg
+              let_rec ("of_arbogen_" ^ name) arbg
                 (make_gen name (exp_id ("of_arbogen_" ^ name))) )
             t.of_arbogen )
         typs
@@ -345,7 +345,7 @@ module Product = struct
         (fun acc p body ->
           let pat = Pat.tuple [Pat.of_string p; Pat.of_string "queue"] in
           let_pat pat body acc )
-        (tuple (List.map exp_id pats))
+        (pair (tuple (List.map exp_id pats)) (exp_id "queue"))
         (List.rev pats) (List.rev bodies)
       |> lambda_s "queue" |> lambda_s "rs" |> Option.some
     with Invalid_argument _ -> None
@@ -508,7 +508,8 @@ module Sum = struct
     let id = id_gen_gen () in
     let constr pats =
       let pat_l = Pat.list_at_least pats in
-      Pat.construct_s "Node" (Some (Pat.tuple [Pat.string name; pat_l]))
+      Pat.construct_s "Arbogen.Tree.Node"
+        (Some (Pat.tuple [Pat.string name; pat_l]))
     in
     match args with
     | [] -> case (constr []) (tuple [construct name None; exp_id "queue"])
@@ -533,16 +534,21 @@ module Sum = struct
             [exp_id "queue"; exp_id "rs"]
         in
         let body =
-          let_pat (Pat.tuple pat) tup (construct name (Some (tuple exp)))
+          let_pat
+            (Pat.pair (Pat.tuple pat) (Pat.of_string "queue"))
+            tup
+            (pair (construct name (Some (tuple exp))) (exp_id "queue"))
         in
-        case pat_c (tuple [body; exp_id "queue"])
+        case pat_c body
 
   let arbogen variants =
     try
       let cases = List.map (fun (c, a) -> constr_arbg c a) variants in
+      let default = case (Pat.of_string "_") (assert_ false_) in
       Some
         (lambda_s "arbg"
-           (lambda_s "queue" (lambda_s "rs" (match_ (exp_id "arbg") cases))) )
+           (lambda_s "queue"
+              (lambda_s "rs" (match_ (exp_id "arbg") (cases @ [default]))) ) )
     with Exit | Invalid_argument _ -> None
 
   let make name variants =
