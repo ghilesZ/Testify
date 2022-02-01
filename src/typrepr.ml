@@ -12,12 +12,13 @@ type t =
   ; spec: expression option
   ; card: Card.t
   ; print: expression
-  ; of_arbogen: expression option }
+  ; of_arbogen: expression option
+  ; collector: expression option }
 
 let print_expr fmt e =
   Format.fprintf fmt "\n```ocaml@.@[%a@]\n```" print_expression e
 
-let print fmt {gen; spec; card; print; boltz_spec; of_arbogen} =
+let print fmt {gen; spec; card; print; boltz_spec; of_arbogen; collector} =
   let print_opt f fmt = function
     | None -> Format.fprintf fmt " none"
     | Some e -> f fmt e
@@ -30,7 +31,8 @@ let print fmt {gen; spec; card; print; boltz_spec; of_arbogen} =
        (Arbogen.Grammar.pp_expression ~pp_ref:Format.pp_print_string) )
     boltz_spec ;
   Format.fprintf fmt "- Of_arbogen: %a\n" (print_opt print_expr) of_arbogen ;
-  Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen
+  Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen ;
+  Format.fprintf fmt "- Collector: %a\n" (print_opt print_expr) collector
 
 let default_printer = lambda_s "_" (string_ "<...>")
 
@@ -40,7 +42,8 @@ let empty =
   ; spec= None
   ; card= Unknown
   ; print= default_printer
-  ; of_arbogen= None }
+  ; of_arbogen= None
+  ; collector= None }
 
 let add_printer info p = {info with print= p}
 
@@ -48,22 +51,25 @@ let add_generator info g = {info with gen= Some g}
 
 let add_specification info s = {info with spec= Some s}
 
-let free bs g c p of_arbogen =
+let free bs g c p of_arbogen col =
   { boltz_spec= Some bs
   ; print= p
   ; gen= Some g
   ; spec= None
   ; card= c
-  ; of_arbogen }
+  ; of_arbogen
+  ; collector= Some col }
 
-let make boltz_spec print gen spec card of_arbogen =
-  {boltz_spec; gen; spec; card; print; of_arbogen}
+let make boltz_spec print gen spec card of_arbogen collector =
+  {boltz_spec; gen; spec; card; print; of_arbogen; collector}
 
 let end_module name typ =
   { typ with
     gen= Option.map (let_open name) typ.gen
   ; spec= Option.map (let_open name) typ.spec
-  ; print= let_open name typ.print }
+  ; print= let_open name typ.print
+  ; of_arbogen= Option.map (let_open name) typ.of_arbogen
+  ; collector= Option.map (let_open name) typ.collector }
 
 (* Predefined types *)
 let unit =
@@ -72,23 +78,26 @@ let unit =
     (Finite Z.one)
     (exp_id "QCheck.Print.unit")
     (Some (exp_id "Arbg.to_unit"))
+    (exp_id "Collect.unit")
 
 let bool =
   free (Arbogen.Grammar.Z 0)
     (exp_id "QCheck.Gen.bool")
     (Card.of_int 2) (exp_id "string_of_bool")
     (Some (exp_id "Arbg.to_bool"))
+    (exp_id "Collect.bool")
 
 let char =
   free (Arbogen.Grammar.Z 0)
     (exp_id "QCheck.Gen.char")
-    (Card.of_int 256) (exp_id "string_of_char") None
+    (Card.of_int 256) (exp_id "string_of_char") None (exp_id "Collect.char")
 
 let int =
   free (Arbogen.Grammar.Z 0) (exp_id "QCheck.Gen.int")
     (Z.pow (Z.of_int 2) (Sys.int_size - 1) |> Card.finite)
     (exp_id "string_of_int")
     (Some (exp_id "Arbg.to_int"))
+    (exp_id "Collect.int")
 
 let float =
   free (Arbogen.Grammar.Z 0)
@@ -96,6 +105,7 @@ let float =
     (Z.pow (Z.of_int 2) 64 |> Card.finite)
     (exp_id "string_of_float")
     (Some (exp_id "Arbg.to_float"))
+    (exp_id "Collect.float")
 
 let param list = List.map (fun s -> (Typ.var s, Asttypes.Invariant)) list
 
@@ -107,7 +117,7 @@ let ptype ?manifest name params kind =
   ; ptype_private= Asttypes.Public
   ; ptype_manifest= manifest
   ; ptype_attributes= []
-  ; ptype_loc= Location.none }
+  ; ptype_loc= !current_loc }
 
 (** {2 Polymorphic types} *)
 
@@ -179,7 +189,8 @@ module Rec = struct
     ; spec= Some (exp_id ("spec_" ^ typ_name))
     ; card= Infinite
     ; boltz_spec= Some (Arbogen.Grammar.Ref typ_name)
-    ; of_arbogen= Some (exp_id ("of_arbogen_" ^ typ_name)) }
+    ; of_arbogen= Some (exp_id ("of_arbogen_" ^ typ_name))
+    ; collector= Some (exp_id ("collect_" ^ typ_name)) }
 
   let make_generator typs =
     let loc = Location.none in
@@ -230,6 +241,9 @@ module Rec = struct
     let of_arbogen =
       make_mutually_rec "of_arbogen" typs (fun typ -> typ.of_arbogen)
     in
+    let collector =
+      make_mutually_rec "collector" typs (fun typ -> typ.of_arbogen)
+    in
     let generators =
       let make_gen = make_generator typs in
       List.map
@@ -245,10 +259,10 @@ module Rec = struct
           with _ -> None )
         typs
     in
-    List.map5
-      (fun print gen spec (name, typ) of_arbogen ->
-        (name, {typ with print; gen; spec; of_arbogen}) )
-      printers generators specs typs of_arbogen
+    List.map6
+      (fun print gen spec (name, typ) of_arbogen collector ->
+        (name, {typ with print; gen; spec; of_arbogen; collector}) )
+      printers generators specs typs of_arbogen collector
 end
 
 (** {2 Infinite types} *)
@@ -353,11 +367,26 @@ module Product = struct
       |> Arbogen.Grammar.product_n |> Option.some
     with Invalid_argument _ -> None
 
-  let make typs =
+  let collector typs =
+    let get_name = id_gen_gen () in
+    let np = function
+      | {collector= Some c; _} ->
+          let n, id = get_name () in
+          (apply_nolbl c [id], Pat.of_string n)
+      | {collector= None; _} -> raise Exit
+    in
+    try
+      let names, pats = List.split (List.map np typs) in
+      let b = list_of_list names in
+      lambda (Pat.tuple pats) (apply_nolbl_s "List.flatten" [b])
+      |> Option.some
+    with Exit -> None
+
+  let make typs : t =
     make
       (boltzmann_specification typs)
       (printer typs) (generator typs) (specification typs) (cardinality typs)
-      (arbogen typs)
+      (arbogen typs) (collector typs)
 end
 
 (** ADTs *)
@@ -528,14 +557,24 @@ module Sum = struct
   let arbogen variants =
     try
       let cases = List.map (fun (c, a) -> constr_arbg c a) variants in
-      let default = case (Pat.of_string "_") (assert_ false_) in
+      let default =
+        case (Pat.of_string "_") (failwith_ (string_ "arity error"))
+      in
       Some
         (lambda_s "arbg"
            (lambda_s "queue"
               (lambda_s "rs" (match_ (exp_id "arbg") (cases @ [default]))) ) )
     with Exit | Invalid_argument _ -> None
 
-  let make name variants =
+  let constr_collect _ _ = raise Exit
+
+  let collector variants =
+    try
+      let cases = List.map (fun (c, a) -> constr_collect c a) variants in
+      Some (function_ (List.map (fun (_, c) -> Option.get c) cases))
+    with Exit | Invalid_argument _ -> None
+
+  let make name variants : t =
     let print = printer variants in
     let card = cardinality variants in
     let boltz_spec = boltzmann_specification variants in
@@ -549,7 +588,7 @@ module Sum = struct
     let of_arbogen =
       arbogen (List.map (fun (s, args) -> (s, List.map fst args)) variants)
     in
-    make boltz_spec print gen spec card of_arbogen
+    make boltz_spec print gen spec card of_arbogen (collector variants)
 end
 
 module Record = struct
@@ -622,7 +661,7 @@ module Record = struct
     let p = printer fields in
     let s = specification fields in
     let arbg = None in
-    make (boltzmann_specification fields) p g s c arbg
+    make (boltzmann_specification fields) p g s c arbg None
 end
 
 module Constrained = struct
@@ -746,5 +785,5 @@ module Arrow = struct
     let bs = None in
     let c = Card.Unknown in
     let g = generator output.gen in
-    make bs printer g None c None
+    make bs printer g None c None None
 end

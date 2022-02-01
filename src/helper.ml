@@ -76,6 +76,8 @@ let apply_runtime s = apply_nolbl_s ("Testify_runtime." ^ s)
 
 let assert_ = Exp.assert_ ~loc:!current_loc
 
+let failwith_ str = apply_nolbl_s "failwith" [str]
+
 (* Same as Exp.fun_ *)
 let lambda = Exp.fun_ ~loc:!current_loc Nolabel None
 
@@ -411,12 +413,12 @@ module List = struct
   include List
 
   (** Yeah I know... *)
-  let rec map5 f l1 l2 l3 l4 l5 =
-    match (l1, l2, l3, l4, l5) with
-    | [], [], [], [], [] -> []
-    | x1 :: l1, x2 :: l2, x3 :: l3, x4 :: l4, x5 :: l5 ->
-        let y = f x1 x2 x3 x4 x5 in
-        y :: map5 f l1 l2 l3 l4 l5
+  let rec map6 f l1 l2 l3 l4 l5 l6 =
+    match (l1, l2, l3, l4, l5, l6) with
+    | [], [], [], [], [], [] -> []
+    | x1 :: l1, x2 :: l2, x3 :: l3, x4 :: l4, x5 :: l5, x6 :: l6 ->
+        let y = f x1 x2 x3 x4 x5 x6 in
+        y :: map6 f l1 l2 l3 l4 l5 l6
     | _ -> invalid_arg "List.map4"
 end
 

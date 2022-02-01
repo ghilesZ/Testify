@@ -151,6 +151,19 @@ module Arbg = struct
     fst @@ Boltzmann.free_gen (module Randtools.OcamlRandom) grammar name
 end
 
+(* collectors *)
+module Collect = struct
+  let unit l () = () :: l
+
+  let bool l (x : bool) = x :: l
+
+  let char l (x : char) = x :: l
+
+  let int l (x : int) = x :: l
+
+  let float l (x : float) = x :: l
+end
+
 let count = ref 1000
 
 let reject pred g = QCheck.find_example ~f:pred ~count:!count g
@@ -194,6 +207,24 @@ let simplex seed (x : instance) (vectors : instance list) (nb_dim : int) =
       List.rev_map (fun f -> 1. -. f) random_vecs
     else List.rev random_vecs )
     vectors
+
+let is_increasing l =
+  match l with
+  | h :: t -> (
+    try
+      List.fold_left (fun acc e -> if acc <= e then e else raise Exit) h t ;
+      true
+    with Exit -> false )
+  | [] -> true
+
+let is_increasing_s l =
+  match l with
+  | h :: t -> (
+    try
+      List.fold_left (fun acc e -> if acc < e then e else raise Exit) h t ;
+      true
+    with Exit -> false )
+  | [] -> true
 
 let memo f =
   let tbl = Hashtbl.create 1000 in
