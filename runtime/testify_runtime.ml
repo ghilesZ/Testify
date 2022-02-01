@@ -132,19 +132,22 @@ module Arbg = struct
     fold (fun lab ->
         List.fold_left ( + ) (if String.equal lab "@collect" then 1 else 0) )
 
-  let search_seed grammar =
-    let s =
-      Boltzmann.search_seed
-        (module Randtools.OcamlRandom)
-        grammar
-        ~size_min:(int_of_float (0.9 *. float !size))
-        ~size_max:!size
+  let free_gen grammar name rs =
+    let search_seed grammar =
+      let s =
+        Boltzmann.search_seed
+          (module Randtools.OcamlRandom)
+          grammar
+          ~size_min:(int_of_float (0.9 *. float !size))
+          ~size_max:!size
+      in
+      match s with
+      | Some (_size, state) -> state
+      | None -> failwith "could not find seed"
     in
-    match s with
-    | Some (_size, state) -> state
-    | None -> failwith "could not find seed"
-
-  let free_gen grammar name =
+    Random.set_state rs ;
+    let state = search_seed grammar in
+    Randtools.OcamlRandom.set_state state ;
     fst @@ Boltzmann.free_gen (module Randtools.OcamlRandom) grammar name
 end
 

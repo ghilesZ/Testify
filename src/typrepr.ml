@@ -197,26 +197,26 @@ module Rec = struct
       [%expr
         fun rs ->
           let sicstus_something _ = assert false in
-          Random.set_state rs ;
           let wg = [%e AGPrint.weighted_grammar wg] in
-          let state = Arbg.search_seed wg in
-          Randtools.OcamlRandom.set_state state ;
-          let tree = Arbg.free_gen wg [%e string_ name] in
+          let tree = Arbg.free_gen wg [%e string_ name] rs in
           let nb_collect = Arbg.count_collect tree in
           let queue = sicstus_something nb_collect in
           fst ([%e of_arbogen] tree queue rs)]
 
+  let rec_def header get_field typs =
+    List.map
+      (fun (id, typ) -> (header ^ "_" ^ id, get_field typ |> Option.get))
+      typs
+    |> let_rec_and
+
   let make_mutually_rec header typs get_field =
     try
-      let rec_def =
-        List.map
-          (fun (id, typ) -> (header ^ "_" ^ id, get_field typ |> Option.get))
-          typs
-        |> let_rec_and
-      in
       List.map
         (fun (name, _) ->
-          let func = Some (rec_def (exp_id (header ^ "_" ^ name))) in
+          let func =
+            Some
+              (rec_def header get_field typs (exp_id (header ^ "_" ^ name)))
+          in
           func )
         typs
     with Invalid_argument _ -> List.map (fun _ -> None) typs
@@ -234,11 +234,15 @@ module Rec = struct
       let make_gen = make_generator typs in
       List.map
         (fun (name, t) ->
-          Option.map
-            (fun arbg ->
-              let_rec ("of_arbogen_" ^ name) arbg
-                (make_gen name (exp_id ("of_arbogen_" ^ name))) )
-            t.of_arbogen )
+          try
+            Option.map
+              (fun _arbg ->
+                let pre =
+                  rec_def "of_arbogen" (fun typ -> typ.of_arbogen) typs
+                in
+                pre (make_gen name (exp_id ("of_arbogen_" ^ name))) )
+              t.of_arbogen
+          with _ -> None )
         typs
     in
     List.map5
@@ -265,18 +269,9 @@ module Infinite = struct
       fun rs ->
         let sicstus_something _ = assert false in
         let of_arbogen _ _ = assert false in
-        Random.set_state rs ;
         let wg = [%e AGPrint.weighted_grammar wg] in
-        let state = Arbg.search_seed wg in
-        Randtools.OcamlRandom.set_state state ;
-        let tree = Arbg.free_gen wg in
-        let nb_collect =
-          Arbogen.Tree.fold
-            (fun lab ->
-              List.fold_left ( + )
-                (if String.equal lab "@collect" then 1 else 0) )
-            tree
-        in
+        let tree = Arbg.free_gen wg rs in
+        let nb_collect = Arbg.count_collect tree in
         let vals = sicstus_something nb_collect in
         fst (of_arbogen vals tree)]
 end
@@ -330,24 +325,25 @@ module Product = struct
     let b' = string_concat [string_ "("; b; string_ ")"] in
     lambda (Pat.tuple pats) b'
 
+  let arbogen_body typs =
+    let get_name = id_gen_gen () in
+    let np p =
+      let n, id = get_name () in
+      ( apply_nolbl
+          (p.of_arbogen |> Option.get)
+          [id; exp_id "queue"; exp_id "rs"]
+      , n )
+    in
+    let bodies, pats = List.split (List.map np typs) in
+    List.fold_left2
+      (fun acc p body ->
+        let pat = Pat.tuple [Pat.of_string p; Pat.of_string "queue"] in
+        let_pat pat body acc )
+      (pair (tuple (List.map exp_id pats)) (exp_id "queue"))
+      (List.rev pats) (List.rev bodies)
+
   let arbogen typs =
-    try
-      let get_name = id_gen_gen () in
-      let np p =
-        let n, id = get_name () in
-        ( apply_nolbl
-            (p.of_arbogen |> Option.get)
-            [id; exp_id "queue"; exp_id "rs"]
-        , n )
-      in
-      let bodies, pats = List.split (List.map np typs) in
-      List.fold_left2
-        (fun acc p body ->
-          let pat = Pat.tuple [Pat.of_string p; Pat.of_string "queue"] in
-          let_pat pat body acc )
-        (pair (tuple (List.map exp_id pats)) (exp_id "queue"))
-        (List.rev pats) (List.rev bodies)
-      |> lambda_s "queue" |> lambda_s "rs" |> Option.some
+    try arbogen_body typs |> lambda_s "queue" |> lambda_s "rs" |> Option.some
     with Invalid_argument _ -> None
 
   let boltzmann_specification typs =
@@ -412,6 +408,14 @@ module Sum = struct
       |> lambda_s "rs" |> Option.some
     with Exit | Invalid_argument _ -> None
 
+  let pat_exp p id =
+    List.map
+      (fun _ ->
+        let p, e = id () in
+        (Pat.of_string p, e) )
+      p
+    |> List.split
+
   let constr_printer txt typs =
     let id = id_gen_gen () in
     let constr pat = Pat.construct_s txt pat in
@@ -423,14 +427,7 @@ module Sum = struct
           (constr (Some (Pat.of_string pat)))
           (string_concat [string_ txt; apply_nolbl print [expr]])
     | p ->
-        let pat, exp =
-          List.map
-            (fun _ ->
-              let p, e = id () in
-              (Pat.of_string p, e) )
-            p
-          |> List.split
-        in
+        let pat, exp = pat_exp p id in
         case
           (constr (Some (Pat.tuple pat)))
           (string_concat
@@ -449,30 +446,25 @@ module Sum = struct
     let constr pat = Pat.construct_s txt pat in
     match args with
     | [] -> (constr None, None)
-    | [(last, _)] ->
+    | [last] ->
         let prop = Option.get last.spec in
         let p, e = id () in
         let pat = constr (Some (Pat.of_string p)) in
         (pat, case pat (apply_nolbl prop [e]) |> Option.some)
     | p ->
-        let pat, exp =
-          List.map
-            (fun _ ->
-              let p, e = id () in
-              (Pat.of_string p, e) )
-            p
-          |> List.split
-        in
+        let pat, exp = pat_exp p id in
         let pat = Pat.tuple pat in
         ( pat
         , Option.map
             (fun spec ->
               case (constr (Some pat)) (apply_nolbl spec [tuple exp]) )
-            (args |> List.map fst |> Product.specification) )
+            (args |> Product.specification) )
 
   let specification (variants : variants) =
     try
-      let cases = List.map (fun (c, a) -> constr_spec c a) variants in
+      let cases =
+        List.map (fun (c, a) -> constr_spec c (List.map fst a)) variants
+      in
       if List.for_all (fun (_, c) -> c = None) cases then None
       else
         Some
@@ -507,9 +499,8 @@ module Sum = struct
   let constr_arbg name args =
     let id = id_gen_gen () in
     let constr pats =
-      let pat_l = Pat.list_at_least pats in
       Pat.construct_s "Arbogen.Tree.Node"
-        (Some (Pat.tuple [Pat.string name; pat_l]))
+        (Some (Pat.pair (Pat.string name) (Pat.list pats)))
     in
     match args with
     | [] -> case (constr []) (tuple [construct name None; exp_id "queue"])
@@ -519,14 +510,7 @@ module Sum = struct
         let pat = constr [Pat.of_string p] in
         case pat (apply_nolbl of_arbg [e; exp_id "rs"])
     | p ->
-        let pat, exp =
-          List.map
-            (fun _ ->
-              let p, e = id () in
-              (Pat.of_string p, e) )
-            p
-          |> List.split
-        in
+        let pat, exp = pat_exp p id in
         let pat_c = pat |> constr in
         let tup =
           apply_nolbl
