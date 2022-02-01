@@ -153,15 +153,15 @@ end
 
 (* collectors *)
 module Collect = struct
-  let unit l () = () :: l
+  let unit () = [()]
 
-  let bool l (x : bool) = x :: l
+  let bool (x : bool) = [x]
 
-  let char l (x : char) = x :: l
+  let char (x : char) = [x]
 
-  let int l (x : int) = x :: l
+  let int (x : int) = [x]
 
-  let float l (x : float) = x :: l
+  let float (x : float) = [x]
 end
 
 let count = ref 1000

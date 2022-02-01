@@ -242,7 +242,7 @@ module Rec = struct
       make_mutually_rec "of_arbogen" typs (fun typ -> typ.of_arbogen)
     in
     let collector =
-      make_mutually_rec "collector" typs (fun typ -> typ.of_arbogen)
+      make_mutually_rec "collector" typs (fun typ -> typ.collector)
     in
     let generators =
       let make_gen = make_generator typs in
@@ -532,7 +532,7 @@ module Sum = struct
         (Some (Pat.pair (Pat.string name) (Pat.list pats)))
     in
     match args with
-    | [] -> case (constr []) (tuple [construct name None; exp_id "queue"])
+    | [] -> case (constr []) (pair (construct name None) (exp_id "queue"))
     | [x] ->
         let of_arbg = Option.get x.of_arbogen in
         let p, e = id () in
@@ -566,12 +566,28 @@ module Sum = struct
               (lambda_s "rs" (match_ (exp_id "arbg") (cases @ [default]))) ) )
     with Exit | Invalid_argument _ -> None
 
-  let constr_collect _ _ = raise Exit
+  let constr_collect name args =
+    let id = id_gen_gen () in
+    match args with
+    | [] -> case (Pat.construct_s name None) empty_list_exp
+    | [x] ->
+        let col = Option.get x.collector in
+        let p, e = id () in
+        let pat = Pat.construct_s name (Some (Pat.of_string p)) in
+        case pat (apply_nolbl col [e])
+    | p ->
+        let pat, exp = pat_exp p id in
+        let tup =
+          apply_nolbl (Product.collector args |> Option.get) [tuple exp]
+        in
+        case (Pat.construct_s name (Some (Pat.tuple pat))) tup
 
   let collector variants =
     try
-      let cases = List.map (fun (c, a) -> constr_collect c a) variants in
-      Some (function_ (List.map (fun (_, c) -> Option.get c) cases))
+      let cases =
+        List.map (fun (c, a) -> constr_collect c (List.map fst a)) variants
+      in
+      Some (function_ cases)
     with Exit | Invalid_argument _ -> None
 
   let make name variants : t =
