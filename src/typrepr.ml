@@ -357,7 +357,10 @@ module Product = struct
       (List.rev pats) (List.rev bodies)
 
   let arbogen typs =
-    try arbogen_body typs |> lambda_s "queue" |> lambda_s "rs" |> Option.some
+    try
+      let loc = !Helper.current_loc in
+      let body = arbogen_body typs in
+      Some [%expr fun queue rs -> [%e body]]
     with Invalid_argument _ -> None
 
   let boltzmann_specification typs =
@@ -524,43 +527,45 @@ module Sum = struct
 
   let constr_arbg name args =
     let id = id_gen_gen () in
+    let loc = !Helper.current_loc in
     let constr pats =
-      Pat.construct_s "Arbogen.Tree.Label"
-        (Some (Pat.pair (Pat.string name) (Pat.list pats)))
+      [%pat? Arbogen.Tree.Label ([%p Pat.string name], [%p Pat.list pats])]
     in
     match args with
-    | [] -> case (constr []) (pair (construct name None) (exp_id "queue"))
-    | [x] ->
+    | [] -> case (constr []) [%expr [%e construct name None], queue]
+    | [(x, _collect)] ->
         let of_arbg = Option.get x.of_arbogen in
-        let p, e = id () in
-        let pat = constr [Pat.of_string p] in
-        case pat (apply_nolbl of_arbg [e; exp_id "rs"])
+        case
+          (constr [[%pat? x1]])
+          [%expr
+            let x1', queue' = [%e of_arbg] x1 queue rs in
+            [%e construct name (Some [%expr x1'])]]
     | p ->
-        let pat, exp = pat_exp p id in
-        let pat_c = pat |> constr in
-        let tup =
-          apply_nolbl
-            (Product.arbogen args |> Option.get)
-            [exp_id "queue"; exp_id "rs"]
-        in
+        let pat, exp = pat_exp (List.map fst p) id in
+        let pat_c = constr pat in
         let body =
-          let_pat
-            (Pat.pair (Pat.tuple pat) (Pat.of_string "queue"))
-            tup
-            (pair (construct name (Some (tuple exp))) (exp_id "queue"))
+          [%expr
+            let [%p Pat.tuple pat], queue =
+              [%e Product.arbogen (List.map fst args) |> Option.get] queue rs
+            in
+            ([%e construct name (Some (tuple exp))], queue)]
         in
         case pat_c body
 
-  let arbogen variants =
+  let arbogen name variants =
+    let loc = !Helper.current_loc in
     try
       let cases = List.map (fun (c, a) -> constr_arbg c a) variants in
       let default =
-        case (Pat.of_string "_") (failwith_ (string_ "arity error"))
+        case [%pat? _] [%expr failwith "Ill-formed arbogen tree"]
       in
       Some
-        (lambda_s "arbg"
-           (lambda_s "queue"
-              (lambda_s "rs" (match_ (exp_id "arbg") (cases @ [default]))) ) )
+        [%expr
+          fun arbg queue rs ->
+            match arbg with
+            | Arbogen.Tree.Label ([%p Pat.string name], [Tuple []; child]) ->
+                [%e match_ [%expr child] (cases @ [default])]
+            | _ -> failwith "Ill-formed arbogen tree"]
     with Exit | Invalid_argument _ -> None
 
   let constr_collect name args =
@@ -602,9 +607,7 @@ module Sum = struct
       | Unknown -> None
     in
     let spec = specification variants in
-    let of_arbogen =
-      arbogen (List.map (fun (s, args) -> (s, List.map fst args)) variants)
-    in
+    let of_arbogen = arbogen name variants in
     make boltz print gen spec card of_arbogen (collector variants)
 end
 
