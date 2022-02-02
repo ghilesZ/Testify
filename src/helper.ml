@@ -224,17 +224,22 @@ module AGPrint = struct
   let array printer a = Exp.array (a |> Array.to_list |> List.map printer)
 
   let rec rule : Arbogen.Boltzmann.WeightedGrammar.expression -> expression =
-    let loc = Location.none in
+    let loc = !current_loc in
     function
     | Z n -> [%expr Z [%e int_ n]]
-    | Product (x, y) -> [%expr Product ([%e rule x], [%e rule y])]
-    | Union (w, x, y) ->
-        [%expr Union ([%e float_ w], [%e rule x], [%e rule y])]
+    | Product args -> [%expr Product [%e list_of_list (List.map rule args)]]
+    | Union args ->
+        let args =
+          args
+          |> List.map (fun (w, e) -> [%expr [%e float_ w], [%e rule e]])
+          |> list_of_list
+        in
+        [%expr Union [%e args]]
     | Seq (w, x) -> [%expr Seq ([%e float_ w], [%e rule x])]
     | Ref id -> [%expr Ref [%e int_ id]]
 
   let weighted_grammar (wg : Arbogen.Boltzmann.WeightedGrammar.t) =
-    let loc = Location.none in
+    let loc = !current_loc in
     [%expr
       Arbogen.Boltzmann.WeightedGrammar.
         {names= [%e array string_ wg.names]; rules= [%e array rule wg.rules]}]

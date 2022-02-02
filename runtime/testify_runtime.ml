@@ -106,44 +106,49 @@ module Arbg = struct
 
   let to_unit arbg lst rs =
     match arbg with
-    | Node ("@collect", []) -> consume lst
-    | Node (_, []) -> (QCheck.Gen.unit rs, lst)
-    | Node (_, _) -> invalid_arg "arbogen_to_unit"
+    | Label ("@collect", []) -> consume lst
+    | Label (_, []) -> (QCheck.Gen.unit rs, lst)
+    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_unit"
 
   let to_bool arbg lst rs =
     match arbg with
-    | Node ("@collect", []) -> consume lst
-    | Node (_, []) -> (QCheck.Gen.bool rs, lst)
-    | Node (_, _) -> invalid_arg "arbogen_to_bool"
+    | Label ("@collect", []) -> consume lst
+    | Label (_, []) -> (QCheck.Gen.bool rs, lst)
+    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_bool"
 
   let to_int arbg lst rs =
     match arbg with
-    | Node ("@collect", []) -> consume lst
-    | Node (_, []) -> (QCheck.Gen.int rs, lst)
-    | Node (_, _) -> invalid_arg "arbogen_to_int"
+    | Label ("@collect", []) -> consume lst
+    | Label (_, []) -> (QCheck.Gen.int rs, lst)
+    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_int"
 
   let to_float arbg lst rs =
     match arbg with
-    | Node ("@collect", []) -> consume lst
-    | Node (_, []) -> (QCheck.Gen.float rs, lst)
-    | Node (_, _) -> invalid_arg "arbogen_to_float"
+    | Label ("@collect", []) -> consume lst
+    | Label (_, []) -> (QCheck.Gen.float rs, lst)
+    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_float"
 
   let count_collect =
-    fold (fun lab ->
-        List.fold_left ( + ) (if String.equal lab "@collect" then 1 else 0) )
+    let sum = List.fold_left Int.add in
+    fold
+      ~label:(fun lab -> sum (if String.equal lab "@collect" then 1 else 0))
+      ~tuple:(sum 0)
 
-  let free_gen grammar name rs =
+  let generate grammar name rs =
     let search_seed grammar =
+      let size_min = int_of_float (0.9 *. float !size) in
+      let size_max = !size in
       let s =
         Boltzmann.search_seed
           (module Randtools.OcamlRandom)
-          grammar
-          ~size_min:(int_of_float (0.9 *. float !size))
-          ~size_max:!size
+          grammar ~size_min ~size_max
       in
       match s with
       | Some (_size, state) -> state
-      | None -> failwith "could not find seed"
+      | None ->
+          Format.ksprintf failwith
+            "Could not find a tree if size in [%d,\n      %d] in %d attempts"
+            size_min size_max !max_try
     in
     Random.set_state rs ;
     let state = search_seed grammar in

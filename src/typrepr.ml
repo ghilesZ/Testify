@@ -193,26 +193,36 @@ module Rec = struct
     ; collector= Some (exp_id ("collect_" ^ typ_name)) }
 
   let make_generator typs =
-    let loc = Location.none in
+    let loc = !current_loc in
     let grammar =
       typs
       |> List.map (fun (name, typ) -> (name, Option.get typ.boltz_spec))
       |> Arbogen.Frontend.ParseTree.completion
       |> Arbogen.Frontend.ParseTree.to_grammar
     in
-    let wg =
-      Arbogen.Boltzmann.(
-        WeightedGrammar.of_grammar (Oracle.Naive.make grammar) grammar)
-    in
-    fun name of_arbogen ->
-      [%expr
-        fun rs ->
-          let sicstus_something _ = assert false in
-          let wg = [%e AGPrint.weighted_grammar wg] in
-          let tree = Arbg.free_gen wg [%e string_ name] rs in
-          let nb_collect = Arbg.count_collect tree in
-          let queue = sicstus_something nb_collect in
-          fst ([%e of_arbogen] tree queue rs)]
+    try
+      let wg =
+        Arbogen.Boltzmann.(
+          WeightedGrammar.of_grammar
+            (Oracle.Naive.make_expectation 30 grammar)
+            grammar)
+      in
+      fun name of_arbogen ->
+        [%expr
+          fun rs ->
+            let sicstus_something _ = assert false in
+            let wg = [%e AGPrint.weighted_grammar wg] in
+            let tree = Arbg.free_gen wg [%e string_ name] rs in
+            let nb_collect = Arbg.count_collect tree in
+            let queue = sicstus_something nb_collect in
+            fst ([%e of_arbogen] tree queue rs)]
+    with Invalid_argument _ ->
+      fun _ _ ->
+        let loc = !current_loc in
+        [%expr
+          fun rs ->
+            ignore rs ;
+            assert false]
 
   let rec_def header get_field typs =
     List.map
@@ -270,14 +280,16 @@ end
 (** Functions specific to infinite types, regardless of their shape. *)
 module Infinite = struct
   let generator name expr =
-    let loc = Location.none in
+    let loc = !current_loc in
     let grammar =
       let open Arbogen.Frontend.ParseTree in
       to_grammar (completion [(name, expr)])
     in
     let wg =
       let open Arbogen.Boltzmann in
-      WeightedGrammar.of_grammar (Oracle.Naive.make grammar) grammar
+      WeightedGrammar.of_grammar
+        (Oracle.Naive.make_expectation 30 grammar)
+        grammar
     in
     [%expr
       fun rs ->
@@ -364,7 +376,7 @@ module Product = struct
     try
       typs
       |> List.map (fun typ -> Option.get typ.boltz_spec)
-      |> Arbogen.Grammar.product_n |> Option.some
+      |> Arbogen.Grammar.product |> Option.some
     with Invalid_argument _ -> None
 
   let collector typs =
@@ -514,15 +526,15 @@ module Sum = struct
                *)
                  if collect then Arbogen.Grammar.Ref "@collect"
                  else Option.get t.boltz_spec )
-          |> Arbogen.Grammar.product_n
-          |> Arbogen.Grammar.(product (Z 1))
+          |> List.cons (Arbogen.Grammar.Z 1)
+          |> Arbogen.Grammar.product
     in
     try
       match List.map variant_spec variants with
       | [] ->
           Log.warn "What should we do with empty sum types?" ;
           None
-      | es -> Some (Arbogen.Grammar.union_n es)
+      | es -> Some (Arbogen.Grammar.union es)
     with Invalid_argument _ -> None
 
   let constr_arbg name args =
