@@ -211,7 +211,7 @@ module Rec = struct
         fun rs ->
           let sicstus_something _ = assert false in
           let wg = [%e AGPrint.weighted_grammar wg] in
-          let tree = Arbg.free_gen wg [%e string_ name] rs in
+          let tree = Arbg.generate wg [%e string_ name] rs in
           let nb_collect = Arbg.count_collect tree in
           let queue = sicstus_something nb_collect in
           fst ([%e of_arbogen] tree queue rs)]
@@ -288,7 +288,7 @@ module Infinite = struct
         let sicstus_something _ = assert false in
         let of_arbogen _ _ = assert false in
         let wg = [%e AGPrint.weighted_grammar wg] in
-        let tree = Arbg.free_gen wg rs in
+        let tree = Arbg.generate wg [%e string_ name] rs in
         let nb_collect = Arbg.count_collect tree in
         let vals = sicstus_something nb_collect in
         fst (of_arbogen vals tree)]
@@ -518,8 +518,8 @@ module Sum = struct
                *)
                  if collect then Arbogen.Grammar.Ref "@collect"
                  else Option.get t.boltz_spec )
-          |> List.cons (Arbogen.Grammar.Z 1)
           |> Arbogen.Grammar.product
+          |> fun e -> Arbogen.Grammar.(product [Z 1; e])
     in
     try
       match List.map variant_spec variants with
@@ -532,7 +532,7 @@ module Sum = struct
   let constr_arbg name args =
     let id = id_gen_gen () in
     let constr pats =
-      Pat.construct_s "Arbogen.Tree.Node"
+      Pat.construct_s "Arbogen.Tree.Label"
         (Some (Pat.pair (Pat.string name) (Pat.list pats)))
     in
     match args with

@@ -202,9 +202,7 @@ let derive state (recflag, typs) =
             let name = td.ptype_name.txt in
             let typ =
               match Module_state.get (lparse name) state with
-              | Some typ ->
-                  assert (Option.is_some typ.gen) ;
-                  typ
+              | Some typ -> typ
               | None -> exit 1
             in
             ((name, typ) :: mono, poly)
