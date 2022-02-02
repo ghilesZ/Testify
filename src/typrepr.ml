@@ -7,7 +7,7 @@ open Location
 (** representation of an OCaml type *)
 
 type t =
-  { boltz: Boltz.t option
+  { boltz: (Boltz.t, string) Result.t
   ; gen: expression option
   ; spec: expression option
   ; card: Card.t
@@ -23,11 +23,15 @@ let print fmt {gen; spec; card; print; boltz; of_arbogen; collector} =
     | None -> Format.fprintf fmt " none"
     | Some e -> f fmt e
   in
+  let print_res f fmt = function
+    | Ok x -> f fmt x
+    | Error msg -> Format.fprintf fmt "Absent because: %s" msg
+  in
   Format.fprintf fmt "- Cardinality: %a\n" Card.pp card ;
   Format.fprintf fmt "- Printer:%a\n" print_expr print ;
   Format.fprintf fmt "- Specification:%a\n" (print_opt print_expr) spec ;
   Format.fprintf fmt "- Boltzmann specification:\n%a\n"
-    (print_opt Boltz.markdown)
+    (print_res Boltz.markdown)
     boltz ;
   Format.fprintf fmt "- Of_arbogen: %a\n" (print_opt print_expr) of_arbogen ;
   Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen ;
@@ -36,7 +40,7 @@ let print fmt {gen; spec; card; print; boltz; of_arbogen; collector} =
 let default_printer = lambda_s "_" (string_ "<...>")
 
 let empty =
-  { boltz= None
+  { boltz= Error "empty type"
   ; gen= None
   ; spec= None
   ; card= Unknown
@@ -51,7 +55,7 @@ let add_generator info g = {info with gen= Some g}
 let add_specification info s = {info with spec= Some s}
 
 let free bs g c p of_arbogen col =
-  { boltz= Some bs
+  { boltz= Ok bs
   ; print= p
   ; gen= Some g
   ; spec= None
@@ -187,34 +191,30 @@ module Rec = struct
     ; gen= Some (exp_id ("gen_" ^ typ_name))
     ; spec= Some (exp_id ("spec_" ^ typ_name))
     ; card= Infinite
-    ; boltz= Some (Boltz.ref typ_name)
+    ; boltz= Ok (Boltz.ref typ_name)
     ; of_arbogen= Some (exp_id ("of_arbogen_" ^ typ_name))
     ; collector= Some (exp_id ("collect_" ^ typ_name)) }
 
   let make_generator typs =
-    let loc = !current_loc in
     let grammar =
       typs
-      |> List.map (fun (name, typ) ->
-             Boltz.as_grammar name (Option.get typ.boltz) )
-      |> List.flatten |> Arbogen.Frontend.ParseTree.completion
-      |> Arbogen.Frontend.ParseTree.to_grammar
+      |> List.map_result (fun (name, typ) ->
+             Result.map (Boltz.as_grammar name) typ.boltz )
+      |> Result.map List.flatten
     in
-    let wg =
-      Arbogen.Boltzmann.(
-        WeightedGrammar.of_grammar
-          (Oracle.Naive.make_expectation 30 grammar)
-          grammar)
-    in
-    fun name of_arbogen ->
-      [%expr
-        fun rs ->
-          let sicstus_something _ = assert false in
-          let wg = [%e AGPrint.weighted_grammar wg] in
-          let tree = Arbg.generate wg [%e string_ name] rs in
-          let nb_collect = Arbg.count_collect tree in
-          let queue = sicstus_something nb_collect in
-          fst ([%e of_arbogen] tree queue rs)]
+    let wg = Result.map Boltz.compile grammar in
+    Result.map
+      (fun wg name of_arbogen ->
+        let loc = !current_loc in
+        [%expr
+          fun rs ->
+            let sicstus_something _ = assert false in
+            let wg = [%e wg] in
+            let tree = Arbg.generate wg [%e string_ name] rs in
+            let nb_collect = Arbg.count_collect tree in
+            let queue = sicstus_something nb_collect in
+            fst ([%e of_arbogen] tree queue rs)] )
+      wg
 
   let rec_def header get_field typs =
     List.map
@@ -247,19 +247,24 @@ module Rec = struct
       make_mutually_rec "collector" typs (fun typ -> typ.collector)
     in
     let generators =
-      let make_gen = make_generator typs in
-      List.map
-        (fun (name, t) ->
-          try
-            Option.map
-              (fun _arbg ->
-                let pre =
-                  rec_def "of_arbogen" (fun typ -> typ.of_arbogen) typs
-                in
-                pre (make_gen name (exp_id ("of_arbogen_" ^ name))) )
-              t.of_arbogen
-          with _ -> None )
-        typs
+      Result.fold
+        ~ok:(fun make_gen ->
+          List.map
+            (fun (name, t) ->
+              try
+                Option.map
+                  (fun _arbg ->
+                    let pre =
+                      rec_def "of_arbogen" (fun typ -> typ.of_arbogen) typs
+                    in
+                    pre (make_gen name (exp_id ("of_arbogen_" ^ name))) )
+                  t.of_arbogen
+              with _ -> None )
+            typs )
+        ~error:(fun msg ->
+          Log.warn "Unable to derive Boltzmann sampler: %s" msg ;
+          List.map (fun _ -> None) typs )
+        (make_generator typs)
     in
     List.map6
       (fun print gen spec (name, typ) of_arbogen collector ->
@@ -272,22 +277,13 @@ end
 (** Functions specific to infinite types, regardless of their shape. *)
 module Infinite = struct
   let generator name boltz =
+    let wg = Boltz.compile (Boltz.as_grammar name boltz) in
     let loc = !current_loc in
-    let grammar =
-      let open Arbogen.Frontend.ParseTree in
-      to_grammar (completion (Boltz.as_grammar name boltz))
-    in
-    let wg =
-      let open Arbogen.Boltzmann in
-      WeightedGrammar.of_grammar
-        (Oracle.Naive.make_expectation 30 grammar)
-        grammar
-    in
     [%expr
       fun rs ->
         let sicstus_something _ = assert false in
         let of_arbogen _ _ = assert false in
-        let wg = [%e AGPrint.weighted_grammar wg] in
+        let wg = [%e wg] in
         let tree = Arbg.generate wg [%e string_ name] rs in
         let nb_collect = Arbg.count_collect tree in
         let vals = sicstus_something nb_collect in
@@ -365,11 +361,9 @@ module Product = struct
     with Invalid_argument _ -> None
 
   let boltzmann_specification typs =
-    try
-      typs
-      |> List.map (fun typ -> Option.get typ.boltz)
-      |> Boltz.product |> Option.some
-    with Invalid_argument _ -> None
+    typs
+    |> List.map_result (fun typ -> typ.boltz)
+    |> Result.map Boltz.product
 
   let collector typs =
     let get_name = id_gen_gen () in
@@ -511,24 +505,22 @@ module Sum = struct
     let variant_spec (name, args) =
       let args_spec =
         match args with
-        | [] -> Boltz.epsilon
+        | [] -> Ok Boltz.epsilon
         | _ ->
             args
-            |> List.map (fun (t, collect) ->
+            |> List.map_result (fun (t, collect) ->
                    (* XXX. This assumes that [@collect] occurs only on atomic types *)
-                   if collect then Boltz.ref "@collect"
-                   else Option.get t.boltz )
-            |> Boltz.product
+                   if collect then Ok (Boltz.ref "@collect") else t.boltz )
+            |> Result.map Boltz.product
       in
-      Boltz.(product [z; indirection name args_spec])
+      Result.map
+        (fun args_spec -> Boltz.(product [z; indirection name args_spec]))
+        args_spec
     in
-    try
-      match List.map variant_spec variants with
-      | [] ->
-          Log.warn "What should we do with empty sum types?" ;
-          None
-      | es -> Some (Boltz.union es)
-    with Invalid_argument _ -> None
+    match List.map_result variant_spec variants with
+    | Ok [] -> Result.error "Empty sum type"
+    | Ok es -> Ok (Boltz.union es)
+    | Error _ as err -> err
 
   let constr_arbg name args =
     let id = id_gen_gen () in
@@ -601,7 +593,11 @@ module Sum = struct
     let boltz = boltzmann_specification variants in
     let gen =
       match card with
-      | Infinite -> Option.map (Infinite.generator name) boltz
+      | Infinite ->
+          Result.fold
+            ~ok:(Infinite.generator name >>> Option.some)
+            ~error:(fun _ -> None)
+            boltz
       | Finite n -> generator variants n
       | Unknown -> None
     in
@@ -803,7 +799,7 @@ module Arrow = struct
   let printer = lambda_s "_" (string_ "(_ -> _)")
 
   let make _input output =
-    let bs = None in
+    let bs = Result.error "Arrow types not supported" in
     let c = Card.Unknown in
     let g = generator output.gen in
     make bs printer g None c None None

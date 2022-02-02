@@ -31,6 +31,45 @@ let indirection name boltz =
 
 let as_grammar name {spec; aux_rules} = (name, spec) :: aux_rules
 
+module Printer = struct
+  open Migrate_parsetree
+  open Ast_410
+  open Parsetree
+  open Helper
+
+  let array printer a =
+    Ast_helper.Exp.array (a |> Array.to_list |> List.map printer)
+
+  let rec expr (r : Boltzmann.WeightedGrammar.expression) =
+    let loc = !Helper.current_loc in
+    match r with
+    | Z n -> [%expr Z [%e int_ n]]
+    | Product args -> [%expr Product [%e list_of_list (List.map expr args)]]
+    | Union args ->
+        let args =
+          args
+          |> List.map (fun (w, e) -> [%expr [%e float_ w], [%e expr e]])
+          |> list_of_list
+        in
+        [%expr Union [%e args]]
+    | Seq (w, x) -> [%expr Seq ([%e float_ w], [%e expr x])]
+    | Ref id -> [%expr Ref [%e int_ id]]
+
+  let weighted_grammar (wg : Boltzmann.WeightedGrammar.t) =
+    let loc = !current_loc in
+    [%expr
+      Arbogen.Boltzmann.WeightedGrammar.
+        {names= [%e array string_ wg.names]; rules= [%e array expr wg.rules]}]
+end
+
+let compile (rules : Frontend.ParseTree.t) =
+  let grammar =
+    rules |> Frontend.ParseTree.completion |> Frontend.ParseTree.to_grammar
+  in
+  let oracle = Boltzmann.Oracle.Naive.make_expectation 30 grammar in
+  let wg = Boltzmann.WeightedGrammar.of_grammar oracle grammar in
+  Printer.weighted_grammar wg
+
 (** {2 Pretty printing} *)
 
 let pp fmt {spec; aux_rules} =

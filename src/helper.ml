@@ -219,32 +219,6 @@ let has_attribute n attrs = get_attribute_payload n attrs |> Option.is_some
 
 (* printing *)
 
-(** AST printer of Arbogen values *)
-module AGPrint = struct
-  let array printer a = Exp.array (a |> Array.to_list |> List.map printer)
-
-  let rec rule : Arbogen.Boltzmann.WeightedGrammar.expression -> expression =
-    let loc = !current_loc in
-    function
-    | Z n -> [%expr Z [%e int_ n]]
-    | Product args -> [%expr Product [%e list_of_list (List.map rule args)]]
-    | Union args ->
-        let args =
-          args
-          |> List.map (fun (w, e) -> [%expr [%e float_ w], [%e rule e]])
-          |> list_of_list
-        in
-        [%expr Union [%e args]]
-    | Seq (w, x) -> [%expr Seq ([%e float_ w], [%e rule x])]
-    | Ref id -> [%expr Ref [%e int_ id]]
-
-  let weighted_grammar (wg : Arbogen.Boltzmann.WeightedGrammar.t) =
-    let loc = !current_loc in
-    [%expr
-      Arbogen.Boltzmann.WeightedGrammar.
-        {names= [%e array string_ wg.names]; rules= [%e array rule wg.rules]}]
-end
-
 (* same as [pp], but in bold blue] *)
 let bold_blue x = Format.asprintf "\x1b[34;1m%s\x1b[0m" x
 
@@ -424,7 +398,17 @@ module List = struct
     | x1 :: l1, x2 :: l2, x3 :: l3, x4 :: l4, x5 :: l5, x6 :: l6 ->
         let y = f x1 x2 x3 x4 x5 x6 in
         y :: map6 f l1 l2 l3 l4 l5 l6
-    | _ -> invalid_arg "List.map4"
+    | _ -> invalid_arg "List.map6"
+
+  let rec map_result f = function
+    | [] -> Ok []
+    | x :: xs -> (
+      match f x with
+      | Ok y -> (
+        match map_result f xs with
+        | Ok ys -> Ok (y :: ys)
+        | Error _ as err -> err )
+      | Error _ as err -> err )
 end
 
 module Typ = struct
@@ -448,3 +432,6 @@ module Type = struct
 
   let field_s ?attrs ?info ?mut str = field ?attrs ?info ?mut (def_loc str)
 end
+
+(** Left-to-right function composition *)
+let ( >>> ) f g x = x |> f |> g
