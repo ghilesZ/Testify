@@ -208,7 +208,8 @@ module Rec = struct
         let loc = !current_loc in
         [%expr
           fun rs ->
-            let sicstus_something _ = assert false in
+            (* let sicstus_something _ = assert false in *)
+            let sicstus_something n = List.init n Fun.id in
             let wg = [%e wg] in
             let tree = Arbg.generate wg [%e string_ name] rs in
             let nb_collect = Arbg.count_collect tree in
