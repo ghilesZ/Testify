@@ -155,18 +155,15 @@ let derive state (recflag, typs) =
   Log.type_decl (recflag, typs) ;
   (* we pre-fill the environment with the type being processed (for recursive
      types)*)
-  let state =
-    match recflag with
-    | Recursive ->
-        List.fold_left
-          (fun acc td ->
-            Module_state.update acc
-              (lparse td.ptype_name.txt)
-              (Typrepr.Rec.make td.ptype_name.txt) )
-          state typs
-    | Nonrecursive -> state
-  in
   let rec_, nonrec_ = rec_nonrec recflag typs in
+  let state =
+    List.fold_left
+      (fun acc td ->
+        Module_state.update acc
+          (lparse td.ptype_name.txt)
+          (Typrepr.Rec.make td.ptype_name.txt) )
+      state rec_
+  in
   let is_rec td =
     List.exists (fun td' -> td'.ptype_name.txt = td.ptype_name.txt) rec_
   in
@@ -214,7 +211,11 @@ let derive state (recflag, typs) =
         | _ -> (mono, td :: poly) )
       ([], []) rec_
   in
-  let mono_typs = Typrepr.Rec.finish (List.rev mono_typs) in
+  let mono_typs =
+    match mono_typs with
+    | [] -> []
+    | _ -> Typrepr.Rec.finish (List.rev mono_typs)
+  in
   let state =
     List.fold_left
       (fun state td ->

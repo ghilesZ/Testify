@@ -200,29 +200,21 @@ module Rec = struct
       |> Arbogen.Frontend.ParseTree.completion
       |> Arbogen.Frontend.ParseTree.to_grammar
     in
-    try
-      let wg =
-        Arbogen.Boltzmann.(
-          WeightedGrammar.of_grammar
-            (Oracle.Naive.make_expectation 30 grammar)
-            grammar)
-      in
-      fun name of_arbogen ->
-        [%expr
-          fun rs ->
-            let sicstus_something _ = assert false in
-            let wg = [%e AGPrint.weighted_grammar wg] in
-            let tree = Arbg.free_gen wg [%e string_ name] rs in
-            let nb_collect = Arbg.count_collect tree in
-            let queue = sicstus_something nb_collect in
-            fst ([%e of_arbogen] tree queue rs)]
-    with Invalid_argument _ ->
-      fun _ _ ->
-        let loc = !current_loc in
-        [%expr
-          fun rs ->
-            ignore rs ;
-            assert false]
+    let wg =
+      Arbogen.Boltzmann.(
+        WeightedGrammar.of_grammar
+          (Oracle.Naive.make_expectation 30 grammar)
+          grammar)
+    in
+    fun name of_arbogen ->
+      [%expr
+        fun rs ->
+          let sicstus_something _ = assert false in
+          let wg = [%e AGPrint.weighted_grammar wg] in
+          let tree = Arbg.free_gen wg [%e string_ name] rs in
+          let nb_collect = Arbg.count_collect tree in
+          let queue = sicstus_something nb_collect in
+          fst ([%e of_arbogen] tree queue rs)]
 
   let rec_def header get_field typs =
     List.map
