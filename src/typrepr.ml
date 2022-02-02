@@ -195,7 +195,7 @@ module Rec = struct
     ; of_arbogen= Some (exp_id ("of_arbogen_" ^ typ_name))
     ; collector= Some (exp_id ("collect_" ^ typ_name)) }
 
-  let make_generator typs =
+  let make_generator (glb_constr : GlobalConstraint.t option) typs =
     let grammar =
       typs
       |> List.map_result (fun (name, typ) ->
@@ -206,14 +206,17 @@ module Rec = struct
     Result.map
       (fun wg name of_arbogen ->
         let loc = !current_loc in
+        let value_provider =
+          match glb_constr with
+          | None -> [%expr fun _ -> []]
+          | Some e -> e.value_provider loc
+        in
         [%expr
           fun rs ->
-            (* let sicstus_something _ = assert false in *)
-            let sicstus_something n = List.init n Fun.id in
             let wg = [%e wg] in
             let tree = Arbg.generate wg [%e string_ name] rs in
             let nb_collect = Arbg.count_collect tree in
-            let queue = sicstus_something nb_collect in
+            let queue = [%e value_provider] nb_collect in
             fst ([%e of_arbogen] tree queue rs)] )
       wg
 
@@ -235,7 +238,7 @@ module Rec = struct
         typs
     with Invalid_argument _ -> List.map (fun _ -> None) typs
 
-  let finish typs =
+  let finish glb_constr typs =
     let printers =
       make_mutually_rec "print" typs (fun typ -> Some typ.print)
       |> List.map Option.get
@@ -265,7 +268,7 @@ module Rec = struct
         ~error:(fun msg ->
           Log.warn "Unable to derive Boltzmann sampler: %s" msg ;
           List.map (fun _ -> None) typs )
-        (make_generator typs)
+        (make_generator glb_constr typs)
     in
     List.map6
       (fun print gen spec (name, typ) of_arbogen collector ->
@@ -734,27 +737,6 @@ module Constrained = struct
 
   let rejection pred gen = apply_nolbl_s "reject" [pred; gen]
 
-  let global_constraints =
-    [ "alldiff"
-    ; "increasing"
-    ; "decreasing"
-    ; "increasing_strict"
-    ; "decreasing_strict" ]
-
-  let is_global_constraint (c : expression) =
-    match c.pexp_desc with
-    | Pexp_ident id -> List.mem (lid_to_string id.txt) global_constraints
-    | Pexp_fun (Nolabel, None, pat, body) -> (
-      match (pat.ppat_desc, body.pexp_desc) with
-      | ( Ppat_var arg
-        , Pexp_apply
-            ( {pexp_desc= Pexp_ident funname; _}
-            , [(Nolabel, {pexp_desc= Pexp_ident arg'; _})] ) ) ->
-          List.mem (lid_to_string funname.txt) global_constraints
-          && arg.txt = lid_to_string arg'.txt
-      | _ -> false )
-    | _ -> false
-
   let make ct typ e =
     let spec =
       match typ.spec with Some p -> compose_properties p e | None -> e
@@ -784,11 +766,12 @@ module Constrained = struct
     | _ -> default
 
   let make_td td typ e =
-    if is_global_constraint e then
-      if Card.is_finite typ.card then
-        failwith "global constraints only allowed on recursive types"
-      else typ
-    else make_td td typ e
+    match GlobalConstraint.search e with
+    | Some _ ->
+        if Card.is_finite typ.card then
+          failwith "global constraints only allowed on recursive types"
+        else typ
+    | None -> make_td td typ e
 end
 
 (* generators for function 'a -> 'b are synthetized using only the 'b

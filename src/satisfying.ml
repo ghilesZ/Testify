@@ -143,14 +143,6 @@ and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
         Typrepr.Arrow.make input output
     | _ -> Typrepr.empty )
 
-(*  true if the type is attached a specification. type must exist *)
-let is_constrained state id =
-  match Module_state.get (lparse id) state with
-  | None ->
-      Format.asprintf "%s not found in %a" id Module_state.print state
-      |> failwith
-  | Some t -> Option.is_some Typrepr.(t.spec)
-
 let derive state (recflag, typs) =
   Log.type_decl (recflag, typs) ;
   (* we pre-fill the environment with the type being processed (for recursive
@@ -194,9 +186,9 @@ let derive state (recflag, typs) =
       Log.print "%a\n%!" Typrepr.print typrepr )
     nonrec_ ;
   (* we wrap them into a recursive function *)
-  let mono_typs, poly_typs =
+  let mono_typs, poly_typs, glb_constr =
     List.fold_left
-      (fun (mono, poly) td ->
+      (fun (mono, poly, glb_constr) td ->
         match td.ptype_params with
         | [] ->
             let name = td.ptype_name.txt in
@@ -205,14 +197,28 @@ let derive state (recflag, typs) =
               | Some typ -> typ
               | None -> exit 1
             in
-            ((name, typ) :: mono, poly)
-        | _ -> (mono, td :: poly) )
-      ([], []) rec_
+            let glb_constr =
+              match get_attribute_pstr "satisfying" td.ptype_attributes with
+              | Some e -> (
+                match (glb_constr, GlobalConstraint.search e) with
+                | Some _, Some _ ->
+                    failwith
+                      "Found two global contraints, please only specify one"
+                | None, (Some _ as g) -> g
+                | _, None ->
+                    Format.ksprintf failwith
+                      "I didn't understand the global constraint for\n\
+                      \            type %s" td.ptype_name.txt )
+              | None -> glb_constr
+            in
+            ((name, typ) :: mono, poly, glb_constr)
+        | _ -> (mono, td :: poly, glb_constr) )
+      ([], [], None) rec_
   in
   let mono_typs =
     match mono_typs with
     | [] -> []
-    | _ -> Typrepr.Rec.finish (List.rev mono_typs)
+    | _ -> Typrepr.Rec.finish glb_constr (List.rev mono_typs)
   in
   let state =
     List.fold_left
