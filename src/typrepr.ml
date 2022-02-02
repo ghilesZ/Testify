@@ -8,11 +8,11 @@ open Location
 
 type t =
   { boltz: (Boltz.t, string) Result.t
+  ; of_arbogen: (expression, string) Result.t
   ; gen: expression option
   ; spec: expression option
   ; card: Card.t
   ; print: expression
-  ; of_arbogen: expression option
   ; collector: expression option }
 
 let print_expr fmt e =
@@ -33,19 +33,19 @@ let print fmt {gen; spec; card; print; boltz; of_arbogen; collector} =
   Format.fprintf fmt "- Boltzmann specification:\n%a\n"
     (print_res Boltz.markdown)
     boltz ;
-  Format.fprintf fmt "- Of_arbogen: %a\n" (print_opt print_expr) of_arbogen ;
+  Format.fprintf fmt "- Of_arbogen: %a\n" (print_res print_expr) of_arbogen ;
   Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen ;
   Format.fprintf fmt "- Collector: %a\n" (print_opt print_expr) collector
 
 let default_printer = lambda_s "_" (string_ "<...>")
 
 let empty =
-  { boltz= Error "empty type"
+  { boltz= Error "No Boltzmann spec for the empty type"
+  ; of_arbogen= Error "No of_arbogen function for the empty type"
   ; gen= None
   ; spec= None
   ; card= Unknown
   ; print= default_printer
-  ; of_arbogen= None
   ; collector= None }
 
 let add_printer info p = {info with print= p}
@@ -71,7 +71,7 @@ let end_module name typ =
     gen= Option.map (let_open name) typ.gen
   ; spec= Option.map (let_open name) typ.spec
   ; print= let_open name typ.print
-  ; of_arbogen= Option.map (let_open name) typ.of_arbogen
+  ; of_arbogen= Result.map (let_open name) typ.of_arbogen
   ; collector= Option.map (let_open name) typ.collector }
 
 (* Predefined types *)
@@ -80,26 +80,28 @@ let unit =
     (exp_id "QCheck.Gen.unit")
     (Finite Z.one)
     (exp_id "QCheck.Print.unit")
-    (Some (exp_id "Arbg.to_unit"))
+    (Ok (exp_id "Arbg.to_unit"))
     (exp_id "Collect.unit")
 
 let bool =
   free Boltz.epsilon
     (exp_id "QCheck.Gen.bool")
     (Card.of_int 2) (exp_id "string_of_bool")
-    (Some (exp_id "Arbg.to_bool"))
+    (Ok (exp_id "Arbg.to_bool"))
     (exp_id "Collect.bool")
 
 let char =
   free Boltz.epsilon
     (exp_id "QCheck.Gen.char")
-    (Card.of_int 256) (exp_id "string_of_char") None (exp_id "Collect.char")
+    (Card.of_int 256) (exp_id "string_of_char")
+    (Error "Not of_arbogen function for the type `char`")
+    (exp_id "Collect.char")
 
 let int =
   free Boltz.epsilon (exp_id "QCheck.Gen.int")
     (Z.pow (Z.of_int 2) (Sys.int_size - 1) |> Card.finite)
     (exp_id "string_of_int")
-    (Some (exp_id "Arbg.to_int"))
+    (Ok (exp_id "Arbg.to_int"))
     (exp_id "Collect.int")
 
 let float =
@@ -107,7 +109,7 @@ let float =
     (exp_id "QCheck.Gen.float")
     (Z.pow (Z.of_int 2) 64 |> Card.finite)
     (exp_id "string_of_float")
-    (Some (exp_id "Arbg.to_float"))
+    (Ok (exp_id "Arbg.to_float"))
     (exp_id "Collect.float")
 
 let param list = List.map (fun s -> (Typ.var s, Asttypes.Invariant)) list
@@ -192,8 +194,12 @@ module Rec = struct
     ; spec= Some (exp_id ("spec_" ^ typ_name))
     ; card= Infinite
     ; boltz= Ok (Boltz.ref typ_name)
-    ; of_arbogen= Some (exp_id ("of_arbogen_" ^ typ_name))
+    ; of_arbogen= Ok (exp_id ("of_arbogen_" ^ typ_name))
     ; collector= Some (exp_id ("collect_" ^ typ_name)) }
+
+  (* XXX. Get rid of this *)
+  let lift_opt opt =
+    Option.fold ~some:Result.ok ~none:(Result.error "Option is none") opt
 
   let make_generator (glb_constr : GlobalConstraint.t option) typs =
     let grammar =
@@ -221,59 +227,75 @@ module Rec = struct
       wg
 
   let rec_def header get_field typs =
-    List.map
-      (fun (id, typ) -> (header ^ "_" ^ id, get_field typ |> Option.get))
+    List.map_result
+      (fun (id, typ) ->
+        Result.map (fun field -> (header ^ "_" ^ id, field)) (get_field typ)
+        )
       typs
-    |> let_rec_and
+    |> Result.map let_rec_and
 
   let make_mutually_rec header typs get_field =
-    try
-      List.map
-        (fun (name, _) ->
-          let func =
-            Some
-              (rec_def header get_field typs (exp_id (header ^ "_" ^ name)))
-          in
-          func )
-        typs
-    with Invalid_argument _ -> List.map (fun _ -> None) typs
+    List.map_result
+      (fun (name, _) ->
+        match rec_def header get_field typs with
+        | Ok f -> Ok (f (exp_id (header ^ "_" ^ name)))
+        | Error _ as err -> err )
+      typs
 
   let finish glb_constr typs =
     let printers =
-      make_mutually_rec "print" typs (fun typ -> Some typ.print)
-      |> List.map Option.get
+      make_mutually_rec "print" typs (fun typ -> Ok typ.print)
+      |> Result.get_ok
     in
-    let specs = make_mutually_rec "spec" typs (fun typ -> typ.spec) in
+    let specs =
+      make_mutually_rec "spec" typs (fun typ -> lift_opt typ.spec)
+    in
     let of_arbogen =
       make_mutually_rec "of_arbogen" typs (fun typ -> typ.of_arbogen)
+      |> Result.fold ~ok:(List.map Result.ok) ~error:(fun msg ->
+             List.map (fun _ -> Result.error msg) typs )
     in
     let collector =
-      make_mutually_rec "collector" typs (fun typ -> typ.collector)
+      make_mutually_rec "collector" typs (fun typ -> lift_opt typ.collector)
     in
     let generators =
-      Result.fold
-        ~ok:(fun make_gen ->
-          List.map
+      Result.bind (make_generator glb_constr typs) (fun make_gen ->
+          List.map_result
             (fun (name, t) ->
-              try
-                Option.map
-                  (fun _arbg ->
-                    let pre =
+              Result.map
+                (fun _arbg ->
+                  let pre expr =
+                    match
                       rec_def "of_arbogen" (fun typ -> typ.of_arbogen) typs
-                    in
-                    pre (make_gen name (exp_id ("of_arbogen_" ^ name))) )
-                  t.of_arbogen
-              with _ -> None )
+                    with
+                    | Ok f -> Some (f expr)
+                    | Error msg ->
+                        Log.warn "Conversion from (Error _) to None: %s" msg ;
+                        None
+                  in
+                  pre (make_gen name (exp_id ("of_arbogen_" ^ name))) )
+                t.of_arbogen )
             typs )
+    in
+    let generators =
+      Result.fold ~ok:Fun.id
         ~error:(fun msg ->
           Log.warn "Unable to derive Boltzmann sampler: %s" msg ;
           List.map (fun _ -> None) typs )
-        (make_generator glb_constr typs)
+        generators
+    in
+    (* XXX. Get rid of this *)
+    let convert res =
+      Result.fold ~ok:(List.map Option.some)
+        ~error:(fun msg ->
+          Log.warn "Conversion from (Error _) to list of None: %s" msg ;
+          List.map (fun _ -> None) typs )
+        res
     in
     List.map6
       (fun print gen spec (name, typ) of_arbogen collector ->
         (name, {typ with print; gen; spec; of_arbogen; collector}) )
-      printers generators specs typs of_arbogen collector
+      printers generators (convert specs) typs of_arbogen (convert collector)
 end
 
 (** {2 Infinite types} *)
@@ -347,25 +369,28 @@ module Product = struct
     let get_name = id_gen_gen () in
     let np p =
       let n, id = get_name () in
-      ( apply_nolbl
-          (p.of_arbogen |> Option.get)
-          [id; exp_id "queue"; exp_id "rs"]
-      , n )
+      let loc = !Helper.current_loc in
+      Result.map
+        (fun of_arbogen -> ([%expr [%e of_arbogen] [%e id] queue rs], n))
+        p.of_arbogen
     in
-    let bodies, pats = List.split (List.map np typs) in
-    List.fold_left2
-      (fun acc p body ->
-        let pat = Pat.tuple [Pat.of_string p; Pat.of_string "queue"] in
-        let_pat pat body acc )
-      (pair (tuple (List.map exp_id pats)) (exp_id "queue"))
-      (List.rev pats) (List.rev bodies)
+    match List.map_result np typs with
+    | Ok nps ->
+        let bodies, pats = List.split nps in
+        List.fold_left2
+          (fun acc p body ->
+            let pat = Pat.tuple [Pat.of_string p; Pat.of_string "queue"] in
+            let_pat pat body acc )
+          (pair (tuple (List.map exp_id pats)) (exp_id "queue"))
+          (List.rev pats) (List.rev bodies)
+        |> Result.ok
+    | Error _ as err -> err
 
   let arbogen typs =
-    try
-      let loc = !Helper.current_loc in
-      let body = arbogen_body typs in
-      Some [%expr fun queue rs -> [%e body]]
-    with Invalid_argument _ -> None
+    let loc = !Helper.current_loc in
+    Result.map
+      (fun body -> [%expr fun queue rs -> [%e body]])
+      (arbogen_body typs)
 
   let boltzmann_specification typs =
     typs
@@ -536,41 +561,44 @@ module Sum = struct
       [%pat? Arbogen.Tree.Label ([%p Pat.string name], [%p Pat.list pats])]
     in
     match args with
-    | [] -> case (constr []) [%expr [%e construct name None], queue]
+    | [] -> Ok (case (constr []) [%expr [%e construct name None], queue])
     | [(x, _collect)] ->
-        let of_arbg = Option.get x.of_arbogen in
-        case
-          (constr [[%pat? x1]])
-          [%expr
-            let x1', queue' = [%e of_arbg] x1 queue rs in
-            [%e construct name (Some [%expr x1'])]]
+        Result.map
+          (fun of_arbg ->
+            case
+              (constr [[%pat? x1]])
+              [%expr
+                let x1', queue' = [%e of_arbg] x1 queue rs in
+                [%e construct name (Some [%expr x1'])]] )
+          x.of_arbogen
     | p ->
         let pat, exp = pat_exp (List.map fst p) id in
         let pat_c = constr pat in
-        let body =
-          [%expr
-            let [%p Pat.tuple pat], queue =
-              [%e Product.arbogen (List.map fst args) |> Option.get] queue rs
+        Result.map
+          (fun of_arbg ->
+            let body =
+              [%expr
+                let [%p Pat.tuple pat], queue = [%e of_arbg] queue rs in
+                ([%e construct name (Some (tuple exp))], queue)]
             in
-            ([%e construct name (Some (tuple exp))], queue)]
-        in
-        case pat_c body
+            case pat_c body )
+          (Product.arbogen (List.map fst args))
 
   let arbogen name variants =
     let loc = !Helper.current_loc in
-    try
-      let cases = List.map (fun (c, a) -> constr_arbg c a) variants in
-      let default =
-        case [%pat? _] [%expr failwith "Ill-formed arbogen tree"]
-      in
-      Some
+    let cases = List.map_result (fun (c, a) -> constr_arbg c a) variants in
+    let default =
+      case [%pat? _] [%expr failwith "Ill-formed arbogen tree"]
+    in
+    Result.map
+      (fun cases ->
         [%expr
           fun arbg queue rs ->
             match arbg with
             | Arbogen.Tree.Label ([%p Pat.string name], [Tuple []; child]) ->
                 [%e match_ [%expr child] (cases @ [default])]
-            | _ -> failwith "Ill-formed arbogen tree"]
-    with Exit | Invalid_argument _ -> None
+            | _ -> failwith "Ill-formed arbogen tree"] )
+      cases
 
   let constr_collect name args =
     let id = id_gen_gen () in
@@ -666,25 +694,25 @@ module Record = struct
     fields |> List.map snd |> Product.boltzmann_specification
 
   let arbogen fields =
-    try
-      let get_name = id_gen_gen () in
-      let np (field, p) =
-        let _, id = get_name () in
-        ( lid_loc field
-        , apply_nolbl
-            (p.of_arbogen |> Option.get)
-            [id; exp_id "queue"; exp_id "rs"] )
-      in
-      let f = List.map np fields in
-      record f None |> lambda_s "queue" |> lambda_s "rs" |> Option.some
-    with Invalid_argument _ -> None
+    let get_name = id_gen_gen () in
+    let loc = !Helper.current_loc in
+    let np (field, p) =
+      let _, id = get_name () in
+      Result.map
+        (fun of_arbogen ->
+          (lid_loc field, [%expr [%e of_arbogen] [%e id] queue rs]) )
+        p.of_arbogen
+    in
+    Result.map
+      (fun f -> [%expr fun queue rs -> [%e record f None]])
+      (List.map_result np fields)
 
   let make fields =
     let c = cardinality fields in
     let g = generator fields in
     let p = printer fields in
     let s = specification fields in
-    let arbg = None in
+    let arbg = arbogen fields in
     make (boltzmann_specification fields) p g s c arbg None
 end
 
@@ -789,5 +817,7 @@ module Arrow = struct
     let bs = Result.error "Arrow types not supported" in
     let c = Card.Unknown in
     let g = generator output.gen in
-    make bs printer g None c None None
+    make bs printer g None c
+      (Result.error "No of_arbogen function for arrow types")
+      None
 end
