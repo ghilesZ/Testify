@@ -7,7 +7,7 @@ open Location
 (** representation of an OCaml type *)
 
 type t =
-  { boltz_spec: string Arbogen.Grammar.expression option
+  { boltz: Boltz.t option
   ; gen: expression option
   ; spec: expression option
   ; card: Card.t
@@ -18,7 +18,7 @@ type t =
 let print_expr fmt e =
   Format.fprintf fmt "\n```ocaml@.@[%a@]\n```" print_expression e
 
-let print fmt {gen; spec; card; print; boltz_spec; of_arbogen; collector} =
+let print fmt {gen; spec; card; print; boltz; of_arbogen; collector} =
   let print_opt f fmt = function
     | None -> Format.fprintf fmt " none"
     | Some e -> f fmt e
@@ -26,10 +26,9 @@ let print fmt {gen; spec; card; print; boltz_spec; of_arbogen; collector} =
   Format.fprintf fmt "- Cardinality: %a\n" Card.pp card ;
   Format.fprintf fmt "- Printer:%a\n" print_expr print ;
   Format.fprintf fmt "- Specification:%a\n" (print_opt print_expr) spec ;
-  Format.fprintf fmt "- Boltzmann specification: %a\n"
-    (print_opt
-       (Arbogen.Grammar.pp_expression ~pp_ref:Format.pp_print_string) )
-    boltz_spec ;
+  Format.fprintf fmt "- Boltzmann specification:\n%a\n"
+    (print_opt Boltz.markdown)
+    boltz ;
   Format.fprintf fmt "- Of_arbogen: %a\n" (print_opt print_expr) of_arbogen ;
   Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen ;
   Format.fprintf fmt "- Collector: %a\n" (print_opt print_expr) collector
@@ -37,7 +36,7 @@ let print fmt {gen; spec; card; print; boltz_spec; of_arbogen; collector} =
 let default_printer = lambda_s "_" (string_ "<...>")
 
 let empty =
-  { boltz_spec= None
+  { boltz= None
   ; gen= None
   ; spec= None
   ; card= Unknown
@@ -52,7 +51,7 @@ let add_generator info g = {info with gen= Some g}
 let add_specification info s = {info with spec= Some s}
 
 let free bs g c p of_arbogen col =
-  { boltz_spec= Some bs
+  { boltz= Some bs
   ; print= p
   ; gen= Some g
   ; spec= None
@@ -60,8 +59,8 @@ let free bs g c p of_arbogen col =
   ; of_arbogen
   ; collector= Some col }
 
-let make boltz_spec print gen spec card of_arbogen collector =
-  {boltz_spec; gen; spec; card; print; of_arbogen; collector}
+let make boltz print gen spec card of_arbogen collector =
+  {boltz; gen; spec; card; print; of_arbogen; collector}
 
 let end_module name typ =
   { typ with
@@ -73,7 +72,7 @@ let end_module name typ =
 
 (* Predefined types *)
 let unit =
-  free (Arbogen.Grammar.Z 0)
+  free Boltz.epsilon
     (exp_id "QCheck.Gen.unit")
     (Finite Z.one)
     (exp_id "QCheck.Print.unit")
@@ -81,26 +80,26 @@ let unit =
     (exp_id "Collect.unit")
 
 let bool =
-  free (Arbogen.Grammar.Z 0)
+  free Boltz.epsilon
     (exp_id "QCheck.Gen.bool")
     (Card.of_int 2) (exp_id "string_of_bool")
     (Some (exp_id "Arbg.to_bool"))
     (exp_id "Collect.bool")
 
 let char =
-  free (Arbogen.Grammar.Z 0)
+  free Boltz.epsilon
     (exp_id "QCheck.Gen.char")
     (Card.of_int 256) (exp_id "string_of_char") None (exp_id "Collect.char")
 
 let int =
-  free (Arbogen.Grammar.Z 0) (exp_id "QCheck.Gen.int")
+  free Boltz.epsilon (exp_id "QCheck.Gen.int")
     (Z.pow (Z.of_int 2) (Sys.int_size - 1) |> Card.finite)
     (exp_id "string_of_int")
     (Some (exp_id "Arbg.to_int"))
     (exp_id "Collect.int")
 
 let float =
-  free (Arbogen.Grammar.Z 0)
+  free Boltz.epsilon
     (exp_id "QCheck.Gen.float")
     (Z.pow (Z.of_int 2) 64 |> Card.finite)
     (exp_id "string_of_float")
@@ -188,7 +187,7 @@ module Rec = struct
     ; gen= Some (exp_id ("gen_" ^ typ_name))
     ; spec= Some (exp_id ("spec_" ^ typ_name))
     ; card= Infinite
-    ; boltz_spec= Some (Arbogen.Grammar.Ref typ_name)
+    ; boltz= Some (Boltz.ref typ_name)
     ; of_arbogen= Some (exp_id ("of_arbogen_" ^ typ_name))
     ; collector= Some (exp_id ("collect_" ^ typ_name)) }
 
@@ -196,8 +195,9 @@ module Rec = struct
     let loc = !current_loc in
     let grammar =
       typs
-      |> List.map (fun (name, typ) -> (name, Option.get typ.boltz_spec))
-      |> Arbogen.Frontend.ParseTree.completion
+      |> List.map (fun (name, typ) ->
+             Boltz.as_grammar name (Option.get typ.boltz) )
+      |> List.flatten |> Arbogen.Frontend.ParseTree.completion
       |> Arbogen.Frontend.ParseTree.to_grammar
     in
     let wg =
@@ -271,11 +271,11 @@ end
 
 (** Functions specific to infinite types, regardless of their shape. *)
 module Infinite = struct
-  let generator name expr =
+  let generator name boltz =
     let loc = !current_loc in
     let grammar =
       let open Arbogen.Frontend.ParseTree in
-      to_grammar (completion [(name, expr)])
+      to_grammar (completion (Boltz.as_grammar name boltz))
     in
     let wg =
       let open Arbogen.Boltzmann in
@@ -367,8 +367,8 @@ module Product = struct
   let boltzmann_specification typs =
     try
       typs
-      |> List.map (fun typ -> Option.get typ.boltz_spec)
-      |> Arbogen.Grammar.product |> Option.some
+      |> List.map (fun typ -> Option.get typ.boltz)
+      |> Boltz.product |> Option.some
     with Invalid_argument _ -> None
 
   let collector typs =
@@ -508,25 +508,26 @@ module Sum = struct
     with Exit | Invalid_argument _ -> None
 
   let boltzmann_specification (variants : variants) =
-    let variant_spec (_name, args) =
-      match args with
-      | [] -> Arbogen.Grammar.Z 1
-      | _ ->
-          args
-          |> List.map (fun (t, collect) ->
-                 (* XXX. This assumes that [@collect] occurs only on atomic types
-               *)
-                 if collect then Arbogen.Grammar.Ref "@collect"
-                 else Option.get t.boltz_spec )
-          |> Arbogen.Grammar.product
-          |> fun e -> Arbogen.Grammar.(product [Z 1; e])
+    let variant_spec (name, args) =
+      let args_spec =
+        match args with
+        | [] -> Boltz.epsilon
+        | _ ->
+            args
+            |> List.map (fun (t, collect) ->
+                   (* XXX. This assumes that [@collect] occurs only on atomic types *)
+                   if collect then Boltz.ref "@collect"
+                   else Option.get t.boltz )
+            |> Boltz.product
+      in
+      Boltz.(product [z; indirection name args_spec])
     in
     try
       match List.map variant_spec variants with
       | [] ->
           Log.warn "What should we do with empty sum types?" ;
           None
-      | es -> Some (Arbogen.Grammar.union es)
+      | es -> Some (Boltz.union es)
     with Invalid_argument _ -> None
 
   let constr_arbg name args =
@@ -597,10 +598,10 @@ module Sum = struct
   let make name variants : t =
     let print = printer variants in
     let card = cardinality variants in
-    let boltz_spec = boltzmann_specification variants in
+    let boltz = boltzmann_specification variants in
     let gen =
       match card with
-      | Infinite -> Option.map (Infinite.generator name) boltz_spec
+      | Infinite -> Option.map (Infinite.generator name) boltz
       | Finite n -> generator variants n
       | Unknown -> None
     in
@@ -608,7 +609,7 @@ module Sum = struct
     let of_arbogen =
       arbogen (List.map (fun (s, args) -> (s, List.map fst args)) variants)
     in
-    make boltz_spec print gen spec card of_arbogen (collector variants)
+    make boltz print gen spec card of_arbogen (collector variants)
 end
 
 module Record = struct
