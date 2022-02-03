@@ -188,7 +188,10 @@ let solve_ct ct sat =
     let inner, outer, total = get_generators i_s f_s constr !max_size in
     let g = craft_generator inner outer total pat unflatten unflatten_ind in
     Some (g, total)
-  with Lang.OutOfSubset _ -> None
+  with e ->
+    Log.warn "solver failure %s on type %a" (Printexc.to_string e)
+      print_coretype ct ;
+    None
 
 let flatten_record labs sat _td =
   try
@@ -207,8 +210,13 @@ let flatten_abstract td sat =
 
 (* generator for constrained type declarations *)
 let solve_td td sat =
-  match td.ptype_kind with
-  | Ptype_abstract -> flatten_abstract td sat
-  | Ptype_record labs -> flatten_record labs sat td
-  | Ptype_variant _ -> None
-  | Ptype_open -> None
+  try
+    match td.ptype_kind with
+    | Ptype_abstract -> flatten_abstract td sat
+    | Ptype_record labs -> flatten_record labs sat td
+    | Ptype_variant _ -> None
+    | Ptype_open -> None
+  with e ->
+    Log.warn "solver failure %s on type@.%a" (Printexc.to_string e)
+      print_type_decl td ;
+    None

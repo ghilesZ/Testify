@@ -239,6 +239,12 @@ let print_td fmt (recflag, types) =
   in
   Pprintast.signature fmt (Conv.copy_signature [sig_])
 
+let print_type_decl fmt t =
+  let sig_ =
+    {psig_desc= Psig_type (Recursive, [t]); psig_loc= Location.none}
+  in
+  Pprintast.signature fmt (Conv.copy_signature [sig_])
+
 (* markdown escaping *)
 let md str = String.split_on_char '*' str |> String.concat "\\*"
 
