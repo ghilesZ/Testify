@@ -15,13 +15,19 @@ let z = {spec= Grammar.Z 1; aux_rules= []}
 
 let ref name = {spec= Grammar.Ref name; aux_rules= []}
 
-let product args =
-  { spec= List.map (fun b -> b.spec) args |> Grammar.product
-  ; aux_rules= List.map (fun b -> b.aux_rules) args |> List.flatten }
+let product = function
+  | [] -> invalid_arg "Boltz.product: empty product"
+  | [x] -> x
+  | args ->
+      { spec= List.map (fun b -> b.spec) args |> Grammar.product
+      ; aux_rules= List.map (fun b -> b.aux_rules) args |> List.flatten }
 
-let union args =
-  { spec= List.map (fun b -> b.spec) args |> Grammar.union
-  ; aux_rules= List.map (fun b -> b.aux_rules) args |> List.flatten }
+let union = function
+  | [] -> invalid_arg "Boltz.union: empty union"
+  | [x] -> x
+  | args ->
+      { spec= List.map (fun b -> b.spec) args |> Grammar.union
+      ; aux_rules= List.map (fun b -> b.aux_rules) args |> List.flatten }
 
 let indirection name boltz =
   {spec= Grammar.Ref name; aux_rules= (name, boltz.spec) :: boltz.aux_rules}
