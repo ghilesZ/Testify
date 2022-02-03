@@ -126,36 +126,34 @@ let is_collected (ct : Parsetree.core_type) : bool =
 (* derivation function for type declaration *)
 let rec derive_decl (s : Module_state.t) params
     ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) : Typrepr.t =
-  try
-    match get_attribute_pstr "satisfying" ptype_attributes with
-    | Some e ->
-        Typrepr.Constrained.make_td td
-          (derive_decl s params {td with ptype_attributes= []})
-          e
-    | None -> (
-      match ptype_kind with
-      | Ptype_abstract ->
-          Option.fold
-            ~none:(Typrepr.empty td.ptype_name.txt)
-            ~some:(derive_ctype s params) ptype_manifest
-      | Ptype_variant constructors ->
-          let constr_f c =
-            match c.pcd_args with
-            | Pcstr_tuple cts ->
-                ( c.pcd_name.txt
-                , List.map
-                    (fun ct -> (derive_ctype s params ct, is_collected ct))
-                    cts )
-            | Pcstr_record _labs ->
-                Log.warn "Inline records are not supported" ;
-                raise Exit
-          in
-          Typrepr.Sum.make td.ptype_name.txt (List.map constr_f constructors)
-      | Ptype_record labs ->
-          let lab_f l = (l.pld_name.txt, derive_ctype s params l.pld_type) in
-          Typrepr.Record.make (List.map lab_f labs)
-      | Ptype_open -> Typrepr.empty td.ptype_name.txt )
-  with Invalid_argument _ | Exit -> Typrepr.empty td.ptype_name.txt
+  match get_attribute_pstr "satisfying" ptype_attributes with
+  | Some e ->
+      Typrepr.Constrained.make_td td
+        (derive_decl s params {td with ptype_attributes= []})
+        e
+  | None -> (
+    match ptype_kind with
+    | Ptype_abstract ->
+        Option.fold
+          ~none:(Typrepr.empty td.ptype_name.txt)
+          ~some:(derive_ctype s params) ptype_manifest
+    | Ptype_variant constructors ->
+        let constr_f c =
+          match c.pcd_args with
+          | Pcstr_tuple cts ->
+              ( c.pcd_name.txt
+              , List.map
+                  (fun ct -> (derive_ctype s params ct, is_collected ct))
+                  cts )
+          | Pcstr_record _labs ->
+              Log.warn "Inline records are not supported" ;
+              raise Exit
+        in
+        Typrepr.Sum.make td.ptype_name.txt (List.map constr_f constructors)
+    | Ptype_record labs ->
+        let lab_f l = (l.pld_name.txt, derive_ctype s params l.pld_type) in
+        Typrepr.Record.make (List.map lab_f labs)
+    | Ptype_open -> Typrepr.empty td.ptype_name.txt )
 
 (* derivation function for core types *)
 and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
