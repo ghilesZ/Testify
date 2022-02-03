@@ -42,10 +42,11 @@ let all =
   ; make_not_implemented "increasing_strict"
   ; make_not_implemented "decreasing_strict" ]
 
-(* accepts global constraints of the form:
-   - [@satisfying ID]
-   - [@satisfying fun x -> ID x]
-   where ID belongs to the list of predefined constraints `all` *)
+(** Accepts global constraints of the form:
+
+    - [@satisfying ID]
+    - [@satisfying fun x -> ID x] where ID belongs to the list of predefined
+      constraints `all` *)
 let search (c : expression) : t option =
   match c.pexp_desc with
   | Pexp_ident id ->
