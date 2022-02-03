@@ -47,14 +47,14 @@ let print fmt {gen; spec; card; print; boltz; of_arbogen; collector} =
 
 (** {2 Constructors} *)
 
-let empty (name : string) =
+let empty loc (name : string) =
   let error args = Format.ksprintf Result.error args in
   { boltz= error "No Boltzmann spec for type \"%s\"" name
   ; of_arbogen= error "No of_arbogen function for type \"%s\"" name
   ; gen= None
   ; spec= None
   ; card= Unknown
-  ; print= lambda_s "_" (string_ "<...>")
+  ; print= [%expr fun _ -> "<...>"]
   ; collector= None }
 
 let add_printer info p = {info with print= p}
