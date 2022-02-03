@@ -1,12 +1,11 @@
 open Arbogen
 
-type t = {spec: string Grammar.expression; aux_rules: Frontend.ParseTree.t}
-
-(** {2 Getters} *)
-
-let spec {spec; _} = spec
-
-let aux_rules {aux_rules; _} = aux_rules
+(** Combinatorial description of a type *)
+type t =
+  { spec: string Grammar.expression  (** Main specification of the type *)
+  ; aux_rules: Frontend.ParseTree.t
+        (** Auxilliary rules that can be used by the main specification e.g.
+            for recursive specs *) }
 
 (** {2 Base cases and combinators} *)
 
@@ -17,12 +16,12 @@ let z = {spec= Grammar.Z 1; aux_rules= []}
 let ref name = {spec= Grammar.Ref name; aux_rules= []}
 
 let product args =
-  { spec= List.map spec args |> Grammar.product
-  ; aux_rules= List.map aux_rules args |> List.flatten }
+  { spec= List.map (fun b -> b.spec) args |> Grammar.product
+  ; aux_rules= List.map (fun b -> b.aux_rules) args |> List.flatten }
 
 let union args =
-  { spec= List.map spec args |> Grammar.union
-  ; aux_rules= List.map aux_rules args |> List.flatten }
+  { spec= List.map (fun b -> b.spec) args |> Grammar.union
+  ; aux_rules= List.map (fun b -> b.aux_rules) args |> List.flatten }
 
 let indirection name boltz =
   {spec= Grammar.Ref name; aux_rules= (name, boltz.spec) :: boltz.aux_rules}
