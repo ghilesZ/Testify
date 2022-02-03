@@ -165,7 +165,10 @@ and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
   | None -> (
     match ct.ptyp_desc with
     | Ptyp_var var -> List.assoc var params
-    | Ptyp_constr ({txt; _}, []) -> Module_state.get txt state |> Option.get
+    | Ptyp_constr ({txt; _}, []) ->
+        Option.fold ~some:Fun.id
+          ~none:(Typrepr.empty (lid_to_string txt))
+          (Module_state.get txt state)
     | Ptyp_constr ({txt; _}, l) ->
         let p = Module_state.get_param txt state |> Option.get in
         let env = State.get_env p (List.map (derive_ctype state params) l) in
