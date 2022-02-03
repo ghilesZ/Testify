@@ -135,8 +135,9 @@ let rec derive_decl (s : Module_state.t) params
     | None -> (
       match ptype_kind with
       | Ptype_abstract ->
-          Option.fold ~none:Typrepr.empty ~some:(derive_ctype s params)
-            ptype_manifest
+          Option.fold
+            ~none:(Typrepr.empty td.ptype_name.txt)
+            ~some:(derive_ctype s params) ptype_manifest
       | Ptype_variant constructors ->
           let constr_f c =
             match c.pcd_args with
@@ -153,8 +154,8 @@ let rec derive_decl (s : Module_state.t) params
       | Ptype_record labs ->
           let lab_f l = (l.pld_name.txt, derive_ctype s params l.pld_type) in
           Typrepr.Record.make (List.map lab_f labs)
-      | Ptype_open -> Typrepr.empty )
-  with Invalid_argument _ | Exit -> Typrepr.empty
+      | Ptype_open -> Typrepr.empty td.ptype_name.txt )
+  with Invalid_argument _ | Exit -> Typrepr.empty td.ptype_name.txt
 
 (* derivation function for core types *)
 and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
@@ -181,7 +182,7 @@ and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
         let input = derive_ctype state params input in
         let output = derive_ctype state params output in
         Typrepr.Arrow.make input output
-    | _ -> Typrepr.empty )
+    | _ -> Typrepr.empty (Format.asprintf "%a" print_coretype ct) )
 
 let derive state (recflag, typs) =
   Log.type_decl (recflag, typs) ;

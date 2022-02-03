@@ -43,9 +43,10 @@ let print fmt {gen; spec; card; print; boltz; of_arbogen; collector} =
 
 let default_printer = lambda_s "_" (string_ "<...>")
 
-let empty =
-  { boltz= Error "No Boltzmann spec for the empty type"
-  ; of_arbogen= Error "No of_arbogen function for the empty type"
+let empty (name : string) =
+  let error args = Format.ksprintf Result.error args in
+  { boltz= error "No Boltzmann spec for type \"%s\"" name
+  ; of_arbogen= error "No of_arbogen function for type \"%s\"" name
   ; gen= None
   ; spec= None
   ; card= Unknown
