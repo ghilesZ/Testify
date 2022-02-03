@@ -810,7 +810,7 @@ module Constrained = struct
     in
     let default =
       { typ with
-        gen= Option.map (rejection e) typ.gen
+        gen= Option.map (rejection spec) typ.gen
       ; spec= Some spec
       ; card= Unknown }
     in

@@ -32,8 +32,10 @@ let subseteq i1 i2 =
   | Top, Range _ -> false
   | Range (l1, h1), Range (l2, h2) -> subseteq_range (l1, h1) (l2, h2)
 
-let split_range (l, h) =
-  if l = h then invalid_arg "split"
+let split_range ((l, h) as i) =
+  if l = h then
+    let msg = Format.asprintf "invalid split on range %a" print_range i in
+    invalid_arg msg
   else
     let mid = Q.add l (Q.div (Q.sub h l) q2) in
     [(l, mid); (mid, h)]
@@ -42,8 +44,10 @@ let split = function
   | Top ->
       [ Range (Q.of_float neg_infinity, Q.zero)
       ; Range (Q.zero, Q.of_float infinity) ]
-  | Range (l, h) ->
-      if l = h then invalid_arg "split"
+  | Range (l, h) as i ->
+      if l = h then
+        let msg = Format.asprintf "invalid split on range %a" print i in
+        invalid_arg msg
       else
         let mid = Q.add l (Q.div (Q.sub h l) q2) in
         [Range (l, mid); Range (mid, h)]
@@ -224,13 +228,7 @@ let bwd_div i1 i2 _r : (t * t) option = Some (i1, i2)
 let bwd_neg (i : t) (r : t) : t option = meet i (neg r)
 
 let bwd_pow itv i r : t option =
-  let res = Option.map (meet itv) (root r i) |> Option.join in
-  (* Format.eprintf "%a ** %a = %a" print itv Z.pp_print i print r ; *)
-  (* ( match res with
-   * | Some res ->
-   *     (Format.asprintf "arg1 should be in %a" print res |> failwith : unit)
-   * | None -> failwith "impossible" ) ; *)
-  res
+  Option.map (meet itv) (root r i) |> Option.join
 
 (* Guards *)
 
@@ -239,14 +237,18 @@ let filter_leq_range (l1, h1) (l2, h2) :
   let open Consistency in
   if Q.leq h1 l2 then Sat
   else if Q.gt l1 h2 then Unsat
-  else Filtered (((l1, Q.min h1 h2), (Q.max l1 l2, h2)), l1 = h1 || l2 = h2)
+  else
+    let h1' = Q.min h1 h2 and l2' = Q.max l1 l2 in
+    Filtered (((l1, h1'), (l2', h2)), l1 = h1' || l2' = h2)
 
 let filter_lt_range ((l1, h1) as i1) ((l2, h2) as i2) :
     ((Q.t * Q.t) * (Q.t * Q.t)) Consistency.t =
   let open Consistency in
   if Q.lt h1 l2 then Sat
   else if (l1 = h1 && i1 = i2) || Q.gt l1 h2 then Unsat
-  else Filtered (((l1, Q.min h1 h2), (Q.max l1 l2, h2)), l1 = h1 || l2 = h2)
+  else
+    let h1' = Q.min h1 h2 and l2' = Q.max l1 l2 in
+    Filtered (((l1, h1'), (l2', h2)), l1 = h1' || l2' = h2)
 
 let filter_eq_range ((l1, h1) as i1) ((l2, h2) as i2) :
     (Q.t * Q.t) Consistency.t =

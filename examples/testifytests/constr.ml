@@ -1,3 +1,5 @@
+(* this test hightlights the use of intersection types *)
+
 type nat = (int[@satisfying fun x -> x > 0])
 
 let rec log2 (x : nat) : (nat[@satisfying fun x -> x < 62]) =

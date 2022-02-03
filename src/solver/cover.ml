@@ -92,10 +92,11 @@ module Make (D : Signatures.Abs) = struct
             | Unsat -> cover'
             | Sat -> add_inner cover' biggest
             | Filtered ((abs', _), true) -> add_inner cover' abs'
-            | Filtered ((abs', c), false) ->
-                List.fold_left
-                  (fun acc elm -> add_outer acc elm c)
-                  cover' (D.split abs')
+            | Filtered ((abs', c), false) -> (
+              try
+                let l = D.split abs' in
+                List.fold_left (fun acc elm -> add_outer acc elm c) cover' l
+              with _ -> add_outer cover' abs' c )
           in
           aux new_cover
     in

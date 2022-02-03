@@ -45,7 +45,12 @@ let collect_ct core_type pattern : SSet.t * SSet.t =
         List.fold_left2
           (fun (i_s, f_s) tt pt -> aux i_s f_s tt pt)
           (int_set, float_set) ttup ptup
-    | _ -> raise (Lang.OutOfSubset "core_type or pattern")
+    | _ ->
+        let msg =
+          Format.asprintf "type %a and pattern %a are incompatible"
+            print_coretype ct print_pat pattern
+        in
+        raise (Lang.OutOfSubset msg)
   in
   aux SSet.empty SSet.empty core_type (fill pattern)
 
@@ -193,8 +198,9 @@ let solve_ct ct sat =
       print_coretype ct ;
     None
 
-let flatten_record labs sat _td =
-  try
+(* generator for constrained type declarations *)
+let solve_td td sat =
+  let flatten_record labs sat _td =
     let pat, body = split_fun sat in
     let constr = Lang.of_ocaml body in
     let i_s, f_s = collect_record labs in
@@ -203,13 +209,10 @@ let flatten_record labs sat _td =
     let inner, outer, total = get_generators i_s f_s constr !max_size in
     let g = craft_generator inner outer total pat unflatten unflatten_ind in
     Some (g, total)
-  with Lang.OutOfSubset _ -> None
-
-let flatten_abstract td sat =
-  Option.bind td.ptype_manifest (fun ct -> solve_ct ct sat)
-
-(* generator for constrained type declarations *)
-let solve_td td sat =
+  in
+  let flatten_abstract td sat =
+    Option.bind td.ptype_manifest (fun ct -> solve_ct ct sat)
+  in
   try
     match td.ptype_kind with
     | Ptype_abstract -> flatten_abstract td sat
