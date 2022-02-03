@@ -59,7 +59,9 @@ let register_print (s : t) lid p =
     types=
       Env.update lid
         (function
-          | None -> Some Typrepr.(add_printer (empty (lid_to_string lid)) p)
+          | None ->
+              let typ = Typrepr.empty !current_loc (lid_to_string lid) in
+              Some (Typrepr.add_printer typ p)
           | Some info -> Some Typrepr.(add_printer info p) )
         s.types }
 
@@ -69,7 +71,8 @@ let register_gen (s : t) lid g =
       Env.update lid
         (function
           | None ->
-              Some Typrepr.(add_generator (empty (lid_to_string lid)) g)
+              let typ = Typrepr.empty !current_loc (lid_to_string lid) in
+              Some (Typrepr.add_generator typ g)
           | Some info -> Some Typrepr.(add_generator info g) )
         s.types }
 
@@ -79,8 +82,8 @@ let register_prop (s : t) lid spec =
       Env.update lid
         (function
           | None ->
-              Some
-                Typrepr.(add_specification (empty (lid_to_string lid)) spec)
+              let typ = Typrepr.empty !current_loc (lid_to_string lid) in
+              Some (Typrepr.add_specification typ spec)
           | Some info -> Some Typrepr.(add_specification info spec) )
         s.types }
 
