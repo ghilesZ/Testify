@@ -1,12 +1,20 @@
 let tests = ref ([] : QCheck.Test.t list)
 
+(* same as [pp], but in bold blue] *)
+let bold_blue x = Format.asprintf "\x1b[34;1m%s\x1b[0m" x
+
+(* same as [pp], but in blue *)
+let blue x = Format.asprintf "\x1b[36m%s\x1b[0m" x
+
 (* test storing management *)
-let add_fun count name print gen pred =
+let add_fun count id loc print gen pred =
+  let name = Format.asprintf "function %s in %s" (bold_blue id) (blue loc) in
   let arb = QCheck.make ~print gen in
   let t = QCheck.Test.make ~count ~name arb pred in
   tests := t :: !tests
 
-let add_const count name pred =
+let add_const count id loc pred =
+  let name = Format.asprintf "constant %s in %s" (bold_blue id) (blue loc) in
   let arb = QCheck.make QCheck.Gen.unit in
   let t = QCheck.Test.make ~count ~name arb pred in
   tests := t :: !tests
@@ -97,35 +105,76 @@ let weighted (gens : (float * 'a QCheck.Gen.t) list) : 'a QCheck.Gen.t =
     (aux r gens) rs
 
 module Arbg = struct
-  open Arbogen.Tree
+  open Arbogen
+  open Tree
 
-  let arbogen_to_unit arbg lst rs =
-    match arbg with
-    | Node ("@collect", []) -> consume lst
-    | Node (_, []) -> (QCheck.Gen.unit rs, lst)
-    | Node (_, _) -> invalid_arg "arbogen_to_unit"
+  let max_try = ref 1_000_000
 
-  let arbogen_to_bool arbg lst rs =
-    match arbg with
-    | Node ("@collect", []) -> consume lst
-    | Node (_, []) -> (QCheck.Gen.bool rs, lst)
-    | Node (_, _) -> invalid_arg "arbogen_to_bool"
+  let size = ref 30
 
-  let arbogen_to_int arbg lst rs =
+  let to_unit arbg lst rs =
     match arbg with
-    | Node ("@collect", []) -> consume lst
-    | Node (_, []) -> (QCheck.Gen.int rs, lst)
-    | Node (_, _) -> invalid_arg "arbogen_to_int"
+    | Label ("@collect", []) -> consume lst
+    | Label (_, []) -> (QCheck.Gen.unit rs, lst)
+    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_unit"
 
-  let arbogen_to_float arbg lst rs =
+  let to_bool arbg lst rs =
     match arbg with
-    | Node ("@collect", []) -> consume lst
-    | Node (_, []) -> (QCheck.Gen.float rs, lst)
-    | Node (_, _) -> invalid_arg "arbogen_to_float"
+    | Label ("@collect", []) -> consume lst
+    | Label (_, []) -> (QCheck.Gen.bool rs, lst)
+    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_bool"
+
+  let to_int arbg lst rs =
+    match arbg with
+    | Label ("@collect", []) -> consume lst
+    | Label (_, []) -> (QCheck.Gen.int rs, lst)
+    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_int"
+
+  let to_float arbg lst rs =
+    match arbg with
+    | Label ("@collect", []) -> consume lst
+    | Label (_, []) -> (QCheck.Gen.float rs, lst)
+    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_float"
 
   let count_collect =
-    fold (fun lab ->
-        List.fold_left ( + ) (if String.equal lab "@collect" then 1 else 0) )
+    let sum = List.fold_left Int.add in
+    fold
+      ~label:(fun lab -> sum (if String.equal lab "@collect" then 1 else 0))
+      ~tuple:(sum 0)
+
+  let generate grammar name rs =
+    let search_seed grammar =
+      let size_min = int_of_float (0.9 *. float !size) in
+      let size_max = !size in
+      let s =
+        Boltzmann.search_seed
+          (module Randtools.OcamlRandom)
+          grammar ~size_min ~size_max
+      in
+      match s with
+      | Some (_size, state) -> state
+      | None ->
+          Format.ksprintf failwith
+            "Could not find a tree if size in [%d,\n      %d] in %d attempts"
+            size_min size_max !max_try
+    in
+    Random.set_state rs ;
+    let state = search_seed grammar in
+    Randtools.OcamlRandom.set_state state ;
+    fst @@ Boltzmann.free_gen (module Randtools.OcamlRandom) grammar name
+end
+
+(* collectors *)
+module Collect = struct
+  let unit () = [()]
+
+  let bool (x : bool) = [x]
+
+  let char (x : char) = [x]
+
+  let int (x : int) = [x]
+
+  let float (x : float) = [x]
 end
 
 let count = ref 1000
@@ -171,6 +220,26 @@ let simplex seed (x : instance) (vectors : instance list) (nb_dim : int) =
       List.rev_map (fun f -> 1. -. f) random_vecs
     else List.rev random_vecs )
     vectors
+
+let is_increasing l =
+  match l with
+  | h :: t -> (
+    try
+      List.fold_left (fun acc e -> if acc <= e then e else raise Exit) h t
+      |> ignore ;
+      true
+    with Exit -> false )
+  | [] -> true
+
+let is_increasing_s l =
+  match l with
+  | h :: t -> (
+    try
+      List.fold_left (fun acc e -> if acc < e then e else raise Exit) h t
+      |> ignore ;
+      true
+    with Exit -> false )
+  | [] -> true
 
 let memo f =
   let tbl = Hashtbl.create 1000 in

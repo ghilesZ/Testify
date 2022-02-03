@@ -37,6 +37,8 @@ module Pat = struct
 
   let tuple = Pat.tuple ~loc:!current_loc
 
+  let pair a b = tuple [a; b]
+
   let construct_s str = Pat.construct ~loc:!current_loc (lid_loc str)
 
   let record list = Pat.record ~loc:!current_loc list
@@ -209,16 +211,9 @@ let get_attribute_pstr n attrs =
   | Some _ -> Format.kasprintf failwith "bad %s attribute" n
   | None -> None
 
+let has_attribute n attrs = get_attribute_payload n attrs |> Option.is_some
+
 (* printing *)
-
-(* same as [pp], but in bold blue] *)
-let bold_blue x = Format.asprintf "\x1b[34;1m%s\x1b[0m" x
-
-(* same as [pp], but in blue *)
-let blue x = Format.asprintf "\x1b[36m%s\x1b[0m" x
-
-(* same as [pp], but in gray *)
-let gray x = Format.asprintf "\x1b[37m%s\x1b[0m" x
 
 module Conv = Convert (OCaml_410) (OCaml_current)
 
@@ -237,6 +232,12 @@ let print_coretype fmt t = Pprintast.core_type fmt (Conv.copy_core_type t)
 let print_td fmt (recflag, types) =
   let sig_ =
     {psig_desc= Psig_type (recflag, types); psig_loc= Location.none}
+  in
+  Pprintast.signature fmt (Conv.copy_signature [sig_])
+
+let print_type_decl fmt t =
+  let sig_ =
+    {psig_desc= Psig_type (Recursive, [t]); psig_loc= Location.none}
   in
   Pprintast.signature fmt (Conv.copy_signature [sig_])
 
@@ -384,13 +385,23 @@ module List = struct
   include List
 
   (** Yeah I know... *)
-  let rec map5 f l1 l2 l3 l4 l5 =
-    match (l1, l2, l3, l4, l5) with
-    | [], [], [], [], [] -> []
-    | x1 :: l1, x2 :: l2, x3 :: l3, x4 :: l4, x5 :: l5 ->
-        let y = f x1 x2 x3 x4 x5 in
-        y :: map5 f l1 l2 l3 l4 l5
-    | _ -> invalid_arg "List.map4"
+  let rec map6 f l1 l2 l3 l4 l5 l6 =
+    match (l1, l2, l3, l4, l5, l6) with
+    | [], [], [], [], [], [] -> []
+    | x1 :: l1, x2 :: l2, x3 :: l3, x4 :: l4, x5 :: l5, x6 :: l6 ->
+        let y = f x1 x2 x3 x4 x5 x6 in
+        y :: map6 f l1 l2 l3 l4 l5 l6
+    | _ -> invalid_arg "List.map6"
+
+  let rec map_result f = function
+    | [] -> Ok []
+    | x :: xs -> (
+      match f x with
+      | Ok y -> (
+        match map_result f xs with
+        | Ok ys -> Ok (y :: ys)
+        | Error _ as err -> err )
+      | Error _ as err -> err )
 end
 
 module Typ = struct
@@ -414,3 +425,6 @@ module Type = struct
 
   let field_s ?attrs ?info ?mut str = field ?attrs ?info ?mut (def_loc str)
 end
+
+(** Left-to-right function composition *)
+let ( >>> ) f g x = x |> f |> g
