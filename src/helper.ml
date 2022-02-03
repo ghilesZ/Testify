@@ -219,15 +219,6 @@ let has_attribute n attrs = get_attribute_payload n attrs |> Option.is_some
 
 (* printing *)
 
-(* same as [pp], but in bold blue] *)
-let bold_blue x = Format.asprintf "\x1b[34;1m%s\x1b[0m" x
-
-(* same as [pp], but in blue *)
-let blue x = Format.asprintf "\x1b[36m%s\x1b[0m" x
-
-(* same as [pp], but in gray *)
-let gray x = Format.asprintf "\x1b[37m%s\x1b[0m" x
-
 module Conv = Convert (OCaml_410) (OCaml_current)
 
 let print_expression fmt e =

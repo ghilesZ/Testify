@@ -14,29 +14,32 @@ let number = ref 10000
 (* seed for reproducibility*)
 let seed : int option ref = ref None
 
-let gen_set_seed x = seed := Some x
+let set_seed x = seed := Some x
 
 (* test generation for constants *)
-let test_constant (name : string) loc (f : expression) =
+let test_constant (name : string) (loc : Location.t) (f : expression) =
+  let loc = Format.asprintf "%a" Location.print_loc loc in
   let f = lambda_s "_" (apply_nolbl f [exp_id name]) in
-  let n = Format.asprintf "constant: %s in %s" (bold_blue name) (blue loc) in
-  letunit (open_runtime (apply_nolbl_s "add_const" [one; string_ n; f]))
-
-(* test generation for functions *)
-let test (name : string) args =
   letunit
     (open_runtime
-       (apply_nolbl_s "add_fun" ([int_ !number; string_ name] @ args)) )
+       (apply_nolbl_s "add_const" [one; string_ name; string_ loc; f]) )
+
+(* test generation for functions *)
+let test (name : string) (loc : Location.t) (args : expression list) =
+  let loc = Format.asprintf "%a" Location.print_loc loc in
+  letunit
+    (open_runtime
+       (apply_nolbl_s "add_fun"
+          ([int_ !number; string_ name; string_ loc] @ args) ) )
 
 (* call to set_seed *)
-let set_seed x = letunit (apply_runtime "set_seed" [int_ x])
+let gen_set_seed (x : int) = letunit (apply_runtime "set_seed" [int_ x])
 
 (* call to run_test*)
 let run () = letunit (apply_runtime "run_test" [unit])
 
 (* function application generator *)
-let generate fn args out_print testname satisfy =
-  let testname = Format.asprintf "function: %s" testname in
+let generate (fn : string) loc args out_print satisfy =
   let get_name = id_gen_gen () in
   let args =
     List.map
@@ -65,7 +68,7 @@ let generate fn args out_print testname satisfy =
         string_concat ~sep:" = " [str; apply_nolbl out_print [id]]
         |> pair id |> leto |> lambda_s "rs"
       in
-      test testname
+      test fn loc
         [ apply_nolbl_s "opt_print" [exp_id "snd"]
         ; apply_nolbl_s "opt_gen" [go]
         ; apply_nolbl_s "sat_output" [satisfy] ]
@@ -77,6 +80,48 @@ let generate fn args out_print testname satisfy =
 (** True if and only if the type has the [@collect] attribute. *)
 let is_collected (ct : Parsetree.core_type) : bool =
   Helper.has_attribute "collect" ct.ptyp_attributes
+
+(* let rec apply_decl state params (poly : Typrepr.param) =
+ *   let args = List.combine poly.vars params in
+ *   match poly.body.ptype_kind with
+ *   | Ptype_abstract ->
+ *       { poly.body with
+ *         ptype_manifest=
+ *           Option.map (apply_ctype state args) poly.body.ptype_manifest }
+ *   | Ptype_variant constructors ->
+ *       let constr_f c =
+ *         match c.pcd_args with
+ *         | Pcstr_tuple cts ->
+ *             { c with
+ *               pcd_args= Pcstr_tuple (List.map (apply_ctype state args) cts)
+ *             }
+ *         | Pcstr_record _labs ->
+ *             Log.warn "Inline records are not supported" ;
+ *             raise Exit
+ *       in
+ *       { poly.body with
+ *         ptype_kind= Ptype_variant (List.map constr_f constructors) }
+ *   | Ptype_record labs ->
+ *       let lab_f l = {l with pld_type= apply_ctype args state l.pld_type} in
+ *       {poly.body with ptype_kind= Ptype_record (List.map lab_f labs)}
+ *   | Ptype_open -> poly.body
+ *
+ * and apply_ctype state args ct =
+ *   match ct.ptyp_desc with
+ *   | Ptyp_var var -> List.assoc var args
+ *   | Ptyp_constr (_, []) -> ct
+ *   | Ptyp_constr (name, l) ->
+ *       { ct with
+ *         ptyp_desc= Ptyp_constr (name, List.map (apply_ctype state args) l) }
+ *   | Ptyp_poly (_, ct) -> apply_ctype state args ct
+ *   | Ptyp_tuple tup ->
+ *       {ct with ptyp_desc= Ptyp_tuple (List.map (apply_ctype state args) tup)}
+ *   | Ptyp_arrow (l, i, o) ->
+ *       { ct with
+ *         ptyp_desc=
+ *           Ptyp_arrow (l, apply_ctype state args i, apply_ctype state args o)
+ *       }
+ *   | _ -> ct *)
 
 (* derivation function for type declaration *)
 let rec derive_decl (s : Module_state.t) params
@@ -106,13 +151,8 @@ let rec derive_decl (s : Module_state.t) params
           in
           Typrepr.Sum.make td.ptype_name.txt (List.map constr_f constructors)
       | Ptype_record labs ->
-          let labs =
-            List.map
-              (fun {pld_name; pld_type; _} ->
-                (pld_name.txt, derive_ctype s params pld_type) )
-              labs
-          in
-          Typrepr.Record.make labs
+          let lab_f l = (l.pld_name.txt, derive_ctype s params l.pld_type) in
+          Typrepr.Record.make (List.map lab_f labs)
       | Ptype_open -> Typrepr.empty )
   with Invalid_argument _ | Exit -> Typrepr.empty
 
@@ -182,8 +222,11 @@ let derive state (recflag, typs) =
   List.iter
     (fun td ->
       let id = lparse td.ptype_name.txt in
-      let typrepr = Module_state.get id state |> Option.get in
-      Log.print "%a\n%!" Typrepr.print typrepr )
+      match td.ptype_params with
+      | [] ->
+          let typrepr = Module_state.get id state |> Option.get in
+          Log.print "%a\n%!" Typrepr.print typrepr
+      | _ -> () )
     nonrec_ ;
   (* we wrap them into a recursive function *)
   let mono_typs, poly_typs, glb_constr =
@@ -257,18 +300,16 @@ let get_infos (s : Module_state.t) e =
   let get_gen_print pat =
     match pat.ppat_desc with
     | Ppat_construct ({txt= Lident "()"; _}, _) ->
-        (* allow to omit the explicit type annotation for the unit pattern*)
-        let {gen; print; _} =
-          Option.get (Module_state.get (lparse "unit") s)
-        in
-        (gen |> Option.get, print)
+        (* accepts to omit the explicit type annotation for the unit pattern*)
+        let u = Option.get (Module_state.get (lparse "unit") s) in
+        (u.gen |> Option.get, u.print)
     | Ppat_constraint (_, t) -> (
-        let {gen; print; _} = derive_ctype s [] t in
-        match gen with
+        let ct = derive_ctype s [] t in
+        match ct.gen with
         | None ->
             Log.print "Missing generator for type `%a`\n%!" print_coretype t ;
             raise Exit
-        | Some g -> (g, print) )
+        | Some g -> (g, ct.print) )
     | _ ->
         Log.print "Missing type annotation for argument `%a`\n%!" print_pat
           pat ;
@@ -287,7 +328,6 @@ let get_infos (s : Module_state.t) e =
 
 (* builds a test list to add to the AST. handles explicitly typed values *)
 let gather_tests vb state =
-  let loc = Format.asprintf "%a" Location.print_loc vb.pvb_loc in
   match vb.pvb_pat.ppat_desc with
   (* let constant:typ = val*)
   | Ppat_constraint ({ppat_desc= Ppat_var {txt; _}; _}, typ) -> (
@@ -297,7 +337,7 @@ let gather_tests vb state =
       match info with
       | {spec= Some p; _} ->
           Log.print " is attached a specification. Generating a test.\n%!" ;
-          [test_constant txt loc p]
+          [test_constant txt vb.pvb_loc p]
       | _ ->
           Log.print " is not attached a specification.\n%!" ;
           [] )
@@ -312,17 +352,16 @@ let gather_tests vb state =
           let info = derive_ctype state [] ct in
           Log.print "Return type `%a`%!" print_coretype ct ;
           match info with
-          | {spec= Some prop; print= p; _} ->
+          | {spec= Some prop; _} ->
               Log.print
                 " is attached a specification. Generating a test.\n%!" ;
-              let name =
-                Format.asprintf "%s in %s" (bold_blue txt) (blue loc)
-              in
-              [generate txt args p name prop]
+              [generate txt vb.pvb_loc args info.print prop]
           | _ ->
               Log.print " is not attached a specification.\n%!" ;
               [] ) )
   | _ -> []
+
+let runtime = ref true
 
 (* actual mapper *)
 let mapper =
@@ -333,7 +372,7 @@ let mapper =
       | [] ->
           (* end of structure, we run the collected tests*)
           let t =
-            match !seed with None -> res | Some x -> set_seed x :: res
+            match !seed with None -> res | Some x -> gen_set_seed x :: res
           in
           List.rev (if !in_attr > 0 then res else run () :: t)
       (* type declaration *)

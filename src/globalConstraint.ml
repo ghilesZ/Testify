@@ -42,7 +42,7 @@ let all =
   ; make_not_implemented "increasing_strict"
   ; make_not_implemented "decreasing_strict" ]
 
-(* accpets global constraints of the form:
+(* accepts global constraints of the form:
    - [@satisfying ID]
    - [@satisfying fun x -> ID x]
    where ID belongs to the list of predefined constraints `all` *)

@@ -1,12 +1,20 @@
 let tests = ref ([] : QCheck.Test.t list)
 
+(* same as [pp], but in bold blue] *)
+let bold_blue x = Format.asprintf "\x1b[34;1m%s\x1b[0m" x
+
+(* same as [pp], but in blue *)
+let blue x = Format.asprintf "\x1b[36m%s\x1b[0m" x
+
 (* test storing management *)
-let add_fun count name print gen pred =
+let add_fun count id loc print gen pred =
+  let name = Format.asprintf "function %s in %s" (bold_blue id) (blue loc) in
   let arb = QCheck.make ~print gen in
   let t = QCheck.Test.make ~count ~name arb pred in
   tests := t :: !tests
 
-let add_const count name pred =
+let add_const count id loc pred =
+  let name = Format.asprintf "constant %s in %s" (bold_blue id) (blue loc) in
   let arb = QCheck.make QCheck.Gen.unit in
   let t = QCheck.Test.make ~count ~name arb pred in
   tests := t :: !tests

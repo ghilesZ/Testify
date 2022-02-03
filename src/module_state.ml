@@ -44,6 +44,16 @@ let get_param lid s =
   in
   find lid s
 
+let join (e1 : Typrepr.param State.Env.t) (e2 : Typrepr.param State.Env.t) =
+  State.(Env.fold Env.add e1 e2)
+
+let get_all_params (s : t) =
+  List.fold_left
+    (fun acc (_, m) -> join m.State.params acc)
+    State.Env.empty s
+  |> State.Env.bindings |> List.map snd
+  |> List.map (fun p -> p.Typrepr.body)
+
 let update (s : t) id infos =
   match s with
   | (name, h) :: tl -> (name, State.update h id infos) :: tl

@@ -1,8 +1,9 @@
 let args =
-  let open Satisfying in
-  [ ("-nb", Arg.Int (( := ) number), "Sets the number of runs per test")
+  [ ( "-nb"
+    , Arg.Int (( := ) Satisfying.number)
+    , "Sets the number of runs per test" )
   ; ("-log", Arg.Unit Log.set_output, "Enables the generation of a report")
-  ; ("-seed", Arg.Int gen_set_seed, "Sets the random seed")
+  ; ("-seed", Arg.Int Satisfying.set_seed, "Sets the random seed")
   ; ( "-cover_size"
     , Arg.Int Gegen.set_size
     , "Sets the maximum size of a cover seed" )

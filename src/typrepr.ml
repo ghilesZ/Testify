@@ -15,6 +15,8 @@ type t =
   ; print: expression
   ; collector: expression option }
 
+(** {2 Printing}*)
+
 let print_expr fmt e =
   Format.fprintf fmt "\n```ocaml@.@[%a@]\n```" print_expression e
 
@@ -36,6 +38,8 @@ let print fmt {gen; spec; card; print; boltz; of_arbogen; collector} =
   Format.fprintf fmt "- Of_arbogen: %a\n" (print_res print_expr) of_arbogen ;
   Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen ;
   Format.fprintf fmt "- Collector: %a\n" (print_opt print_expr) collector
+
+(** {2 Constructors}*)
 
 let default_printer = lambda_s "_" (string_ "<...>")
 
@@ -74,7 +78,9 @@ let end_module name typ =
   ; of_arbogen= Result.map (let_open name) typ.of_arbogen
   ; collector= Option.map (let_open name) typ.collector }
 
-(* Predefined types *)
+(** {2 Predefined types} *)
+
+(** {3 Non-parametric types}*)
 let unit =
   free Boltz.epsilon
     (exp_id "QCheck.Gen.unit")
@@ -112,6 +118,9 @@ let float =
     (Ok (exp_id "Arbg.to_float"))
     (exp_id "Collect.float")
 
+(** {3 Parametric types} *)
+
+(** {4 constructors} *)
 let param list = List.map (fun s -> (Typ.var s, Asttypes.Invariant)) list
 
 let ptype ?manifest name params kind =
@@ -135,9 +144,7 @@ let option_ =
     let none = Type.constructor_s "None" in
     let some = Type.constructor_s ~args:(Pcstr_tuple alpha) "Some" in
     let kind = Ptype_variant [none; some] in
-    ptype
-      ~manifest:(Typ.poly ["a"] (Typ.constr_s "option" alpha))
-      "option" vars kind
+    ptype ~manifest:(Typ.constr_s "option" alpha) "option" vars kind
   in
   {vars; body}
 
@@ -147,9 +154,7 @@ let ref_ =
   let body =
     let contents = Type.field_s ~mut:Mutable "contents" alpha in
     let kind = Ptype_record [contents] in
-    ptype
-      ~manifest:(Typ.poly ["a"] (Typ.constr_s "ref" [alpha]))
-      "ref" vars kind
+    ptype ~manifest:(Typ.constr_s "ref" [alpha]) "ref" vars kind
   in
   {vars; body}
 
@@ -163,9 +168,7 @@ let result_ =
       Type.constructor ~args:(Pcstr_tuple [beta]) (def_loc "Error")
     in
     let kind = Ptype_variant [ok; error] in
-    ptype
-      ~manifest:(Typ.poly ["a"; "b"] (Typ.constr_s "error" [alpha; beta]))
-      "error" vars kind
+    ptype ~manifest:(Typ.constr_s "result" [alpha; beta]) "result" vars kind
   in
   {vars; body}
 
@@ -178,12 +181,12 @@ let list_ =
       Type.constructor ~args:(Pcstr_tuple [alpha; alpha_list]) (def_loc "::")
     in
     let empty = Type.constructor (def_loc "[]") in
-    let kind = Ptype_variant [cons; empty] in
-    ptype
-      ~manifest:(Typ.poly ["a"] (Typ.constr_s "list" [alpha]))
-      "list" vars kind
+    let kind = Ptype_variant [empty; cons] in
+    ptype ~manifest:(Typ.constr_s "list" [alpha]) "list" vars kind
   in
   {vars; body}
+
+(** {1 Type combinators} *)
 
 (** {2 Recursive types} *)
 
@@ -684,7 +687,8 @@ module Record = struct
     let field (n, t) =
       (lid_loc n, apply_nolbl (t.gen |> Option.get) [exp_id "rs"])
     in
-    record (List.map field fields) None |> lambda_s "rs" |> Option.some
+    try record (List.map field fields) None |> lambda_s "rs" |> Option.some
+    with _ -> None
 
   let printer fields =
     let field (n, t) =
@@ -722,7 +726,7 @@ module Record = struct
           |> lambda (Pat.record_closed pat)
           |> Option.some
       | _ -> (*record with 0 field*) assert false
-    with Invalid_argument _ -> None
+    with _ -> None
 
   let boltzmann_specification fields =
     fields |> List.map snd |> Product.boltzmann_specification
