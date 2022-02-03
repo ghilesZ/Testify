@@ -217,7 +217,8 @@ let is_increasing l =
   match l with
   | h :: t -> (
     try
-      List.fold_left (fun acc e -> if acc <= e then e else raise Exit) h t ;
+      List.fold_left (fun acc e -> if acc <= e then e else raise Exit) h t
+      |> ignore ;
       true
     with Exit -> false )
   | [] -> true
@@ -226,7 +227,8 @@ let is_increasing_s l =
   match l with
   | h :: t -> (
     try
-      List.fold_left (fun acc e -> if acc < e then e else raise Exit) h t ;
+      List.fold_left (fun acc e -> if acc < e then e else raise Exit) h t
+      |> ignore ;
       true
     with Exit -> false )
   | [] -> true

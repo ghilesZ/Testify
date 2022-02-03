@@ -5,10 +5,12 @@ open Parsetree
 
 type t =
   { id: string  (** The name of the corresponding OCaml attribute *)
-  ; value_provider:
-      Location.t -> Migrate_parsetree.Ast_410.Parsetree.expression
+  ; value_provider: Location.t -> expression
         (** Ast for the value provider used during Boltzmann generation.
-            Takes a location as an input for better error handling. *) }
+            Takes a location as an input for better error handling. *)
+  ; checker: Location.t -> expression
+        (** Ast for checking if a value satisfies the global constraint .*)
+  }
 
 (** {2 Pre-defined constraints} *)
 
@@ -18,12 +20,17 @@ let increasing =
       (fun loc ->
         [%expr
           fun nb_collect ->
-            List.init nb_collect (fun _ -> Random.bits ())
-            |> List.sort Int.compare] ) }
+            List.init nb_collect (fun _ -> Random.int 100)
+            |> List.sort Int.compare] )
+  ; checker= (fun loc -> [%expr is_increasing]) }
 
 let make_not_implemented id =
   { id
   ; value_provider=
+      (fun _loc ->
+        Format.ksprintf failwith "Not implemented: global constraint \"%s\""
+          id )
+  ; checker=
       (fun _loc ->
         Format.ksprintf failwith "Not implemented: global constraint \"%s\""
           id ) }
@@ -35,6 +42,10 @@ let all =
   ; make_not_implemented "increasing_strict"
   ; make_not_implemented "decreasing_strict" ]
 
+(* accpets global constraints of the form:
+   - [@satisfying ID]
+   - [@satisfying fun x -> ID x]
+   where ID belongs to the list of predefined constraints `all` *)
 let search (c : expression) : t option =
   match c.pexp_desc with
   | Pexp_ident id ->

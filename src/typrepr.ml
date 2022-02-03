@@ -226,6 +226,13 @@ module Rec = struct
             fst ([%e of_arbogen] tree queue rs)] )
       wg
 
+  let make_glob_spec (glb_constr : GlobalConstraint.t option) collect =
+    let loc = !current_loc in
+    let check e = e.GlobalConstraint.checker loc in
+    Option.map
+      (fun c -> [%expr fun x -> [%e check c |><| collect] x])
+      glb_constr
+
   let rec_def header get_field typs =
     List.map_result
       (fun (id, typ) ->
@@ -258,6 +265,26 @@ module Rec = struct
     let collector =
       make_mutually_rec "collector" typs (fun typ -> lift_opt typ.collector)
     in
+    let specs : (expression option list, string) result =
+      Result.map
+        (fun _specs ->
+          List.map
+            (fun (name, _) ->
+              let pre expr =
+                match
+                  rec_def "collect" (fun t -> lift_opt t.collector) typs
+                with
+                | Ok f -> Some (f expr)
+                | Error msg ->
+                    Log.warn "Conversion from (Error _) to None: %s" msg ;
+                    None
+              in
+              Option.map pre
+                (make_glob_spec glb_constr (exp_id ("collect_" ^ name)))
+              |> Option.join )
+            typs )
+        specs
+    in
     let generators =
       Result.bind (make_generator glb_constr typs) (fun make_gen ->
           List.map_result
@@ -284,6 +311,13 @@ module Rec = struct
           List.map (fun _ -> None) typs )
         generators
     in
+    let specs =
+      Result.fold ~ok:Fun.id
+        ~error:(fun msg ->
+          Log.warn "Unable to derive specification: %s" msg ;
+          List.map (fun _ -> None) typs )
+        specs
+    in
     (* XXX. Get rid of this *)
     let convert res =
       Result.fold ~ok:(List.map Option.some)
@@ -295,7 +329,7 @@ module Rec = struct
     List.map6
       (fun print gen spec (name, typ) of_arbogen collector ->
         (name, {typ with print; gen; spec; of_arbogen; collector}) )
-      printers generators (convert specs) typs of_arbogen (convert collector)
+      printers generators specs typs of_arbogen (convert collector)
 end
 
 (** {2 Infinite types} *)
