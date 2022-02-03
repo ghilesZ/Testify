@@ -4,23 +4,29 @@ open Parsetree
 open Helper
 open Location
 
-(** representation of an OCaml type *)
+(** {1 Internal representation of an OCaml type} *)
 
 type t =
   { boltz: (Boltz.t, string) Result.t
+        (** Combinatorial specification of the type *)
   ; of_arbogen: (expression, string) Result.t
+        (** AST of a function that converts an arbogen tree to the current
+            type *)
+  ; collector: expression option
+        (** AST of a function collecting values subject to a global
+            constraint in an inhabitant of the type. *)
   ; gen: expression option
-  ; spec: expression option
-  ; card: Card.t
-  ; print: expression
-  ; collector: expression option }
+        (** AST of a random sampler for the current type *)
+  ; spec: expression option  (** AST of a predicate over the current type *)
+  ; card: Card.t  (** Cardinality of the type *)
+  ; print: expression  (** AST of a pretty-printer for the type *) }
 
-(** {2 Printing}*)
-
-let print_expr fmt e =
-  Format.fprintf fmt "\n```ocaml@.@[%a@]\n```" print_expression e
+(** {2 Printing} *)
 
 let print fmt {gen; spec; card; print; boltz; of_arbogen; collector} =
+  let print_expr fmt =
+    Format.fprintf fmt "\n```ocaml@.@[%a@]\n```" print_expression
+  in
   let print_opt f fmt = function
     | None -> Format.fprintf fmt " none"
     | Some e -> f fmt e
@@ -39,9 +45,7 @@ let print fmt {gen; spec; card; print; boltz; of_arbogen; collector} =
   Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen ;
   Format.fprintf fmt "- Collector: %a\n" (print_opt print_expr) collector
 
-(** {2 Constructors}*)
-
-let default_printer = lambda_s "_" (string_ "<...>")
+(** {2 Constructors} *)
 
 let empty (name : string) =
   let error args = Format.ksprintf Result.error args in
@@ -50,7 +54,7 @@ let empty (name : string) =
   ; gen= None
   ; spec= None
   ; card= Unknown
-  ; print= default_printer
+  ; print= lambda_s "_" (string_ "<...>")
   ; collector= None }
 
 let add_printer info p = {info with print= p}
