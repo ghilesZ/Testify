@@ -74,10 +74,6 @@ let capitalize_first_char str =
 (* calls a function defined in the runtime *)
 let apply_runtime s = apply_nolbl_s ("Testify_runtime." ^ s)
 
-let assert_ = Exp.assert_ ~loc:!current_loc
-
-let failwith_ str = apply_nolbl_s "failwith" [str]
-
 (* Same as Exp.fun_ *)
 let lambda = Exp.fun_ ~loc:!current_loc Nolabel None
 

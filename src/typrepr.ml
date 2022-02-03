@@ -607,7 +607,7 @@ module Sum = struct
               (constr [[%pat? x1]])
               [%expr
                 let x1', queue' = [%e of_arbg] x1 queue rs in
-                [%e construct name (Some [%expr x1'])]] )
+                ([%e construct name (Some [%expr x1'])], queue')] )
           x.of_arbogen
     | p ->
         let pat, exp = pat_exp (List.map fst p) id in
