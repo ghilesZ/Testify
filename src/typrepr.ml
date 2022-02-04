@@ -210,29 +210,29 @@ module Rec = struct
     Option.fold ~some:Result.ok ~none:(Result.error "Option is none") opt
 
   let make_generator (glb_constr : GlobalConstraint.t option) typs =
-    let grammar =
-      typs
-      |> List.map_result (fun (name, typ) ->
-             Result.map (Boltz.as_grammar name) typ.boltz )
-      |> Result.map List.flatten
+    let+ grammar =
+      let+ grammars =
+        List.map_result
+          (fun (name, typ) -> Boltz.as_grammar name <$> typ.boltz)
+          typs
+      in
+      List.flatten grammars
     in
-    let wg = Result.map Boltz.compile grammar in
-    Result.map
-      (fun wg name of_arbogen ->
-        let loc = !current_loc in
-        let value_provider =
-          match glb_constr with
-          | None -> [%expr fun _ -> []]
-          | Some e -> e.value_provider loc
-        in
-        [%expr
-          fun rs ->
-            let wg = [%e wg] in
-            let tree = Arbg.generate wg [%e string_ name] rs in
-            let nb_collect = Arbg.count_collect tree in
-            let queue = [%e value_provider] nb_collect in
-            fst ([%e of_arbogen] tree queue rs)] )
-      wg
+    let wg = Boltz.compile grammar in
+    fun name of_arbogen ->
+      let loc = !current_loc in
+      let value_provider =
+        match glb_constr with
+        | None -> [%expr fun _ -> []]
+        | Some e -> e.value_provider loc
+      in
+      [%expr
+        fun rs ->
+          let wg = [%e wg] in
+          let tree = Arbg.generate wg [%e string_ name] rs in
+          let nb_collect = Arbg.count_collect tree in
+          let queue = [%e value_provider] nb_collect in
+          fst ([%e of_arbogen] tree queue rs)]
 
   let make_glob_spec (glb_constr : GlobalConstraint.t option) collect =
     let loc = !current_loc in
@@ -242,19 +242,20 @@ module Rec = struct
       glb_constr
 
   let rec_def header get_field typs =
-    List.map_result
-      (fun (id, typ) ->
-        Result.map (fun field -> (header ^ "_" ^ id, field)) (get_field typ)
-        )
-      typs
-    |> Result.map let_rec_and
+    let+ bodies =
+      List.map_result
+        (fun (id, typ) ->
+          let+ field = get_field typ in
+          (header ^ "_" ^ id, field) )
+        typs
+    in
+    let_rec_and bodies
 
   let make_mutually_rec header typs get_field =
     List.map_result
       (fun (name, _) ->
-        match rec_def header get_field typs with
-        | Ok f -> Ok (f (exp_id (header ^ "_" ^ name)))
-        | Error _ as err -> err )
+        let+ f = rec_def header get_field typs in
+        f (exp_id (header ^ "_" ^ name)) )
       typs
 
   let finish glb_constr typs =
@@ -294,23 +295,23 @@ module Rec = struct
         specs
     in
     let generators =
-      Result.bind (make_generator glb_constr typs) (fun make_gen ->
-          List.map_result
-            (fun (name, t) ->
-              Result.map
-                (fun _arbg ->
-                  let pre expr =
-                    match
-                      rec_def "of_arbogen" (fun typ -> typ.of_arbogen) typs
-                    with
-                    | Ok f -> Some (f expr)
-                    | Error msg ->
-                        Log.warn "Conversion from (Error _) to None: %s" msg ;
-                        None
-                  in
-                  pre (make_gen name (exp_id ("of_arbogen_" ^ name))) )
-                t.of_arbogen )
-            typs )
+      let* make_gen = make_generator glb_constr typs in
+      List.map_result
+        (fun (name, t) ->
+          Result.map
+            (fun _arbg ->
+              let pre expr =
+                match
+                  rec_def "of_arbogen" (fun typ -> typ.of_arbogen) typs
+                with
+                | Ok f -> Some (f expr)
+                | Error msg ->
+                    Log.warn "Conversion from (Error _) to None: %s" msg ;
+                    None
+              in
+              pre (make_gen name (exp_id ("of_arbogen_" ^ name))) )
+            t.of_arbogen )
+        typs
     in
     let generators =
       Result.fold ~ok:Fun.id
@@ -412,32 +413,26 @@ module Product = struct
     let np p =
       let n, id = get_name () in
       let loc = !Helper.current_loc in
-      Result.map
-        (fun of_arbogen -> ([%expr [%e of_arbogen] [%e id] queue rs], n))
-        p.of_arbogen
+      let+ of_arbogen = p.of_arbogen in
+      ([%expr [%e of_arbogen] [%e id] queue rs], n)
     in
-    match List.map_result np typs with
-    | Ok nps ->
-        let bodies, pats = List.split nps in
-        List.fold_left2
-          (fun acc p body ->
-            let pat = Pat.tuple [Pat.of_string p; Pat.of_string "queue"] in
-            let_pat pat body acc )
-          (pair (tuple (List.map exp_id pats)) (exp_id "queue"))
-          (List.rev pats) (List.rev bodies)
-        |> Result.ok
-    | Error _ as err -> err
+    let+ nps = List.map_result np typs in
+    let bodies, pats = List.split nps in
+    List.fold_left2
+      (fun acc p body ->
+        let pat = Pat.tuple [Pat.of_string p; Pat.of_string "queue"] in
+        let_pat pat body acc )
+      (pair (tuple (List.map exp_id pats)) (exp_id "queue"))
+      (List.rev pats) (List.rev bodies)
 
   let arbogen typs =
     let loc = !Helper.current_loc in
-    Result.map
-      (fun body -> [%expr fun queue rs -> [%e body]])
-      (arbogen_body typs)
+    let+ body = arbogen_body typs in
+    [%expr fun queue rs -> [%e body]]
 
   let boltzmann_specification typs =
-    typs
-    |> List.map_result (fun typ -> typ.boltz)
-    |> Result.map Boltz.product
+    let+ args = List.map_result (fun typ -> typ.boltz) typs in
+    Boltz.product args
 
   let collector typs =
     let get_name = id_gen_gen () in
@@ -575,26 +570,28 @@ module Sum = struct
                 cases ) )
     with Exit | Invalid_argument _ -> None
 
-  let boltzmann_specification (variants : variants) =
+  let boltzmann_specification : variants -> (Boltz.t, string) result =
     let variant_spec (name, args) =
-      let args_spec =
+      let+ args_spec =
         match args with
         | [] -> Ok Boltz.epsilon
         | _ ->
-            args
-            |> List.map_result (fun (t, collect) ->
-                   (* XXX. This assumes that [@collect] occurs only on atomic types *)
-                   if collect then Ok (Boltz.ref "@collect") else t.boltz )
-            |> Result.map Boltz.product
+            let+ args =
+              List.map_result
+                (fun (t, collect) ->
+                  (* XXX. This assumes that [@collect] occurs only on atomic types *)
+                  if collect then Ok (Boltz.ref "@collect") else t.boltz )
+                args
+            in
+            Boltz.product args
       in
-      Result.map
-        (fun args_spec -> Boltz.(product [z; indirection name args_spec]))
-        args_spec
+      Boltz.(product [z; indirection name args_spec])
     in
-    match List.map_result variant_spec variants with
-    | Ok [] -> Result.error "Empty sum type"
-    | Ok es -> Ok (Boltz.union es)
-    | Error _ as err -> err
+    function
+    | [] -> Result.error "Empty sum type"
+    | variants ->
+        let+ args = List.map_result variant_spec variants in
+        Boltz.union args
 
   let constr_arbg name args =
     let id = id_gen_gen () in
@@ -605,42 +602,35 @@ module Sum = struct
     match args with
     | [] -> Ok (case (constr []) [%expr [%e construct name None], queue])
     | [(x, _collect)] ->
-        Result.map
-          (fun of_arbg ->
-            case
-              (constr [[%pat? x1]])
-              [%expr
-                let x1', queue' = [%e of_arbg] x1 queue rs in
-                ([%e construct name (Some [%expr x1'])], queue')] )
-          x.of_arbogen
+        let+ of_arbogen = x.of_arbogen in
+        case
+          (constr [[%pat? x1]])
+          [%expr
+            let x1', queue' = [%e of_arbogen] x1 queue rs in
+            ([%e construct name (Some [%expr x1'])], queue')]
     | p ->
         let pat, exp = pat_exp (List.map fst p) id in
         let pat_c = constr pat in
-        Result.map
-          (fun of_arbg ->
-            let body =
-              [%expr
-                let [%p Pat.tuple pat], queue = [%e of_arbg] queue rs in
-                ([%e construct name (Some (tuple exp))], queue)]
-            in
-            case pat_c body )
-          (Product.arbogen (List.map fst args))
+        let+ of_arbogen = Product.arbogen (List.map fst args) in
+        let body =
+          [%expr
+            let [%p Pat.tuple pat], queue = [%e of_arbogen] queue rs in
+            ([%e construct name (Some (tuple exp))], queue)]
+        in
+        case pat_c body
 
   let arbogen name variants =
     let loc = !Helper.current_loc in
-    let cases = List.map_result (fun (c, a) -> constr_arbg c a) variants in
+    let+ cases = List.map_result (fun (c, a) -> constr_arbg c a) variants in
     let default =
       case [%pat? _] [%expr failwith "Ill-formed arbogen tree"]
     in
-    Result.map
-      (fun cases ->
-        [%expr
-          fun arbg queue rs ->
-            match arbg with
-            | Arbogen.Tree.Label ([%p Pat.string name], [Tuple []; child]) ->
-                [%e match_ [%expr child] (cases @ [default])]
-            | _ -> failwith "Ill-formed arbogen tree"] )
-      cases
+    [%expr
+      fun arbg queue rs ->
+        match arbg with
+        | Arbogen.Tree.Label ([%p Pat.string name], [Tuple []; child]) ->
+            [%e match_ [%expr child] (cases @ [default])]
+        | _ -> failwith "Ill-formed arbogen tree"]
 
   let constr_collect name args =
     let id = id_gen_gen () in
@@ -741,14 +731,11 @@ module Record = struct
     let loc = !Helper.current_loc in
     let np (field, p) =
       let _, id = get_name () in
-      Result.map
-        (fun of_arbogen ->
-          (lid_loc field, [%expr [%e of_arbogen] [%e id] queue rs]) )
-        p.of_arbogen
+      let+ of_arbogen = p.of_arbogen in
+      (lid_loc field, [%expr [%e of_arbogen] [%e id] queue rs])
     in
-    Result.map
-      (fun f -> [%expr fun queue rs -> [%e record f None]])
-      (List.map_result np fields)
+    let+ fields = List.map_result np fields in
+    [%expr fun queue rs -> [%e record fields None]]
 
   let make fields =
     let c = cardinality fields in

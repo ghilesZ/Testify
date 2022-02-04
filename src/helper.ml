@@ -379,6 +379,14 @@ let rec_nonrec recflag typs =
   let nonrec_ = List.filter (fun t -> not (List.mem t rec_)) typs in
   (rec_, nonrec_)
 
+(** {2 Monadic operators for the Result type} *)
+
+let ( <$> ) = Result.map
+
+let ( let* ) = Result.bind
+
+let ( let+ ) r f = f <$> r
+
 (** {2 Add some functions to the stdlib} *)
 
 module List = struct
@@ -395,13 +403,10 @@ module List = struct
 
   let rec map_result f = function
     | [] -> Ok []
-    | x :: xs -> (
-      match f x with
-      | Ok y -> (
-        match map_result f xs with
-        | Ok ys -> Ok (y :: ys)
-        | Error _ as err -> err )
-      | Error _ as err -> err )
+    | x :: xs ->
+        let* y = f x in
+        let* ys = map_result f xs in
+        Ok (y :: ys)
 end
 
 module Typ = struct
