@@ -1,0 +1,14 @@
+(rule
+ (deps (source_tree .))
+ (targets ghost.ml)
+ (action (progn
+          (system make)
+          (run touch ghost.ml)))
+)
+
+(library
+ (name sicstus_proxy)
+ (public_name sicstus_proxy)
+ (libraries lwt.unix)
+ (modules Proxy Ghost)
+)
