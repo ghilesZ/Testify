@@ -408,16 +408,14 @@ module Product = struct
     let b' = string_concat [string_ "("; b; string_ ")"] in
     lambda (Pat.tuple pats) b'
 
-  let arbogen_body typs =
+  let arbogen_body args_arbg =
     let get_name = id_gen_gen () in
-    let np p =
+    let np of_arbogen =
       let n, id = get_name () in
       let loc = !Helper.current_loc in
-      let+ of_arbogen = p.of_arbogen in
       ([%expr [%e of_arbogen] [%e id] queue rs], n)
     in
-    let+ nps = List.map_result np typs in
-    let bodies, pats = List.split nps in
+    let bodies, pats = List.map np args_arbg |> List.split in
     List.fold_left2
       (fun acc p body ->
         let pat = Pat.tuple [Pat.of_string p; Pat.of_string "queue"] in
@@ -425,9 +423,9 @@ module Product = struct
       (pair (tuple (List.map exp_id pats)) (exp_id "queue"))
       (List.rev pats) (List.rev bodies)
 
-  let arbogen typs =
+  let arbogen args_arbg =
     let loc = !Helper.current_loc in
-    let+ body = arbogen_body typs in
+    let body = arbogen_body args_arbg in
     [%expr fun queue rs -> [%e body]]
 
   let boltzmann_specification typs =
@@ -450,10 +448,14 @@ module Product = struct
     with Exit -> None
 
   let make typs : t =
+    let of_arbogen =
+      let+ args_arbg = List.map_result (fun typ -> typ.of_arbogen) typs in
+      arbogen args_arbg
+    in
     make
       (boltzmann_specification typs)
       (printer typs) (generator typs) (specification typs) (cardinality typs)
-      (arbogen typs) (collector typs)
+      of_arbogen (collector typs)
 end
 
 (** ADTs *)
@@ -600,18 +602,17 @@ module Sum = struct
       [%pat? Arbogen.Tree.Label ([%p Pat.string name], [%p Pat.list pats])]
     in
     match args with
-    | [] -> Ok (case (constr []) [%expr [%e construct name None], queue])
-    | [(x, _collect)] ->
-        let+ of_arbogen = x.of_arbogen in
+    | [] -> case (constr []) [%expr [%e construct name None], queue]
+    | [of_arbogen] ->
         case
           (constr [[%pat? x1]])
           [%expr
             let x1', queue' = [%e of_arbogen] x1 queue rs in
             ([%e construct name (Some [%expr x1'])], queue')]
-    | p ->
-        let pat, exp = pat_exp (List.map fst p) id in
+    | _ :: _ :: _ ->
+        let pat, exp = pat_exp args id in
         let pat_c = constr pat in
-        let+ of_arbogen = Product.arbogen (List.map fst args) in
+        let of_arbogen = Product.arbogen args in
         let body =
           [%expr
             let [%p Pat.tuple pat], queue = [%e of_arbogen] queue rs in
@@ -621,7 +622,7 @@ module Sum = struct
 
   let arbogen name variants =
     let loc = !Helper.current_loc in
-    let+ cases = List.map_result (fun (c, a) -> constr_arbg c a) variants in
+    let cases = List.map (fun (c, a) -> constr_arbg c a) variants in
     let default =
       case [%pat? _] [%expr failwith "Ill-formed arbogen tree"]
     in
@@ -671,7 +672,20 @@ module Sum = struct
       | Unknown -> None
     in
     let spec = specification variants in
-    let of_arbogen = arbogen name variants in
+    let of_arbogen =
+      (* Only retain useful information *)
+      let+ variants =
+        List.map_result
+          (fun (cname, cargs) ->
+            let+ cargs =
+              List.map_result (fun (typ, _) -> typ.of_arbogen) cargs
+            in
+            (cname, cargs) )
+          variants
+      in
+      (* Actual code generation *)
+      arbogen name variants
+    in
     make boltz print gen spec card of_arbogen (collector variants)
 end
 
