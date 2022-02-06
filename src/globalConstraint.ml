@@ -22,7 +22,39 @@ let increasing =
           fun nb_collect ->
             List.init nb_collect (fun _ -> Random.int 100)
             |> List.sort Int.compare] )
-  ; checker= (fun loc -> [%expr is_increasing]) }
+  ; checker= (fun loc -> [%expr increasing]) }
+
+let increasing_strict =
+  { id= "increasing_strict"
+  ; value_provider=
+      (fun _loc ->
+        Format.ksprintf failwith "Not implemented: global constraint \"%s\""
+          "increasing_strict" )
+  ; checker= (fun loc -> [%expr increasing_strict]) }
+
+let decreasing =
+  { id= "decreasing"
+  ; value_provider=
+      (fun _loc ->
+        Format.ksprintf failwith "Not implemented: global constraint \"%s\""
+          "decreasing" )
+  ; checker= (fun loc -> [%expr decreasing]) }
+
+let decreasing_strict =
+  { id= "decreasing_strict"
+  ; value_provider=
+      (fun _loc ->
+        Format.ksprintf failwith "Not implemented: global constraint \"%s\""
+          "decreasing_strict" )
+  ; checker= (fun loc -> [%expr decreasing_strict]) }
+
+let alldiff =
+  { id= "alldiff"
+  ; value_provider=
+      (fun _loc ->
+        Format.ksprintf failwith "Not implemented: global constraint \"%s\""
+          "alldiff" )
+  ; checker= (fun loc -> [%expr alldiff]) }
 
 let make_not_implemented id =
   { id
@@ -36,11 +68,7 @@ let make_not_implemented id =
           id ) }
 
 let all =
-  [ make_not_implemented "alldiff"
-  ; increasing
-  ; make_not_implemented "decreasing"
-  ; make_not_implemented "increasing_strict"
-  ; make_not_implemented "decreasing_strict" ]
+  [alldiff; increasing; decreasing; increasing_strict; decreasing_strict]
 
 (** Accepts global constraints of the form:
 

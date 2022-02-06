@@ -221,7 +221,7 @@ let simplex seed (x : instance) (vectors : instance list) (nb_dim : int) =
     else List.rev random_vecs )
     vectors
 
-let is_increasing l =
+let increasing l =
   match l with
   | h :: t -> (
     try
@@ -231,7 +231,7 @@ let is_increasing l =
     with Exit -> false )
   | [] -> true
 
-let is_increasing_s l =
+let increasing_strict l =
   match l with
   | h :: t -> (
     try
@@ -240,6 +240,22 @@ let is_increasing_s l =
       true
     with Exit -> false )
   | [] -> true
+
+let decreasing l = List.rev l |> increasing
+
+let decreasing_strict l = List.rev l |> increasing_strict
+
+let alldiff l =
+  let tbl = Hashtbl.create 1000 in
+  try
+    List.iter
+      (fun e ->
+        match Hashtbl.find_opt tbl e with
+        | None -> Hashtbl.add tbl e () ; ()
+        | Some _ -> raise Exit )
+      l ;
+    true
+  with Exit -> false
 
 let memo f =
   let tbl = Hashtbl.create 1000 in
