@@ -15,9 +15,9 @@ let max_size = ref 32
 let dom_name () =
   match !dom with "box" -> Format.asprintf "box_%i" !max_size | x -> x
 
-let get_int s = apply_nolbl_s "get_int" [string_ s]
+let get_int s = apply_runtime "get_int" [string_ s]
 
-let get_float s = apply_nolbl_s "get_float" [string_ s]
+let get_float s = apply_runtime "get_float" [string_ s]
 
 (* fills the '_' of a pattern *)
 let fill =
@@ -159,7 +159,7 @@ let craft_generator inner outer total pattern r_dep r_ind =
       let outer_gens =
         List.fold_left
           (fun acc (w, reject, g) ->
-            let g = apply_nolbl_s "reject" [lambda pattern reject; gen g] in
+            let g = apply_runtime "reject" [lambda pattern reject; gen g] in
             cons_exp (tuple [float_ w; g]) acc )
           empty_list_exp (List.rev outer)
       in
@@ -168,7 +168,7 @@ let craft_generator inner outer total pattern r_dep r_ind =
           (fun acc (w, g) -> cons_exp (tuple [float_ w; gen g]) acc)
           outer_gens (List.rev inner)
       in
-      apply_nolbl_s "weighted" [inner_outer_gens]
+      apply_runtime "weighted" [inner_outer_gens]
 
 let set_dom = function
   | ("box" | "poly" | "rs") as x -> dom := x

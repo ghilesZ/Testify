@@ -153,9 +153,9 @@ let compile_coeff typvar c =
   let open Coeff in
   match (typvar, c) with
   | REAL, Scalar s ->
-      apply_nolbl_s "mk_float" [Scalarext.to_float s |> float_]
+      apply_runtime "mk_float" [Scalarext.to_float s |> float_]
   | INT, Scalar s ->
-      apply_nolbl_s "mk_int" [Scalarext.to_float s |> int_of_float |> int_]
+      apply_runtime "mk_int" [Scalarext.to_float s |> int_of_float |> int_]
   | _ -> invalid_arg "non scalar coeff"
 
 let gen_to_instance g =
@@ -171,7 +171,7 @@ let compile_simplex pol =
   match Apol.to_generator_list pol with
   | h :: tl ->
       let others = list_of_list (List.map gen_to_instance tl) in
-      apply_nolbl_s "simplex"
+      apply_runtime "simplex"
         [exp_id "rs"; gen_to_instance h; others; int_ (nb_dim pol)]
   | [] -> assert false
 
@@ -253,7 +253,7 @@ let compile pol =
               acc )
           empty_list_exp simplices
       in
-      apply_nolbl_s "weighted" [gens]
+      apply_runtime "weighted" [gens]
   in
   Dependant expr
 

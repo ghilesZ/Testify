@@ -91,37 +91,37 @@ let unit =
     (exp_id "QCheck.Gen.unit")
     (Finite Z.one)
     (exp_id "QCheck.Print.unit")
-    (Ok (exp_id "Arbg.to_unit"))
-    (exp_id "Collect.unit")
+    (Ok (exp_id "Testify_runtime.Arbg.to_unit"))
+    (exp_id "Testify_runtime.Collect.unit")
 
 let bool =
   free Boltz.epsilon
     (exp_id "QCheck.Gen.bool")
     (Card.of_int 2) (exp_id "string_of_bool")
-    (Ok (exp_id "Arbg.to_bool"))
-    (exp_id "Collect.bool")
+    (Ok (exp_id "Testify_runtime.Arbg.to_bool"))
+    (exp_id "Testify_runtime.Collect.bool")
 
 let char =
   free Boltz.epsilon
     (exp_id "QCheck.Gen.char")
     (Card.of_int 256) (exp_id "string_of_char")
     (Error "Not of_arbogen function for the type `char`")
-    (exp_id "Collect.char")
+    (exp_id "Testify_runtime.Collect.char")
 
 let int =
   free Boltz.epsilon (exp_id "QCheck.Gen.int")
     (Z.pow (Z.of_int 2) (Sys.int_size - 1) |> Card.finite)
     (exp_id "string_of_int")
-    (Ok (exp_id "Arbg.to_int"))
-    (exp_id "Collect.int")
+    (Ok (exp_id "Testify_runtime.Arbg.to_int"))
+    (exp_id "Testify_runtime.Collect.int")
 
 let float =
   free Boltz.epsilon
     (exp_id "QCheck.Gen.float")
     (Z.pow (Z.of_int 2) 64 |> Card.finite)
     (exp_id "string_of_float")
-    (Ok (exp_id "Arbg.to_float"))
-    (exp_id "Collect.float")
+    (Ok (exp_id "Testify_runtime.Arbg.to_float"))
+    (exp_id "Testify_runtime.Collect.float")
 
 (** {3 Parametric types} *)
 
@@ -229,8 +229,8 @@ module Rec = struct
       [%expr
         fun rs ->
           let wg = [%e wg] in
-          let tree = Arbg.generate wg [%e string_ name] rs in
-          let nb_collect = Arbg.count_collect tree in
+          let tree = Testify_runtime.Arbg.generate wg [%e string_ name] rs in
+          let nb_collect = Testify_runtime.Arbg.count_collect tree in
           let queue = [%e value_provider] nb_collect in
           fst ([%e of_arbogen] tree queue rs)]
 
@@ -353,8 +353,8 @@ module Infinite = struct
         let sicstus_something _ = assert false in
         let of_arbogen _ _ = assert false in
         let wg = [%e wg] in
-        let tree = Arbg.generate wg [%e string_ name] rs in
-        let nb_collect = Arbg.count_collect tree in
+        let tree = Testify_runtime.Arbg.generate wg [%e string_ name] rs in
+        let nb_collect = Testify_runtime.Arbg.count_collect tree in
         let vals = sicstus_something nb_collect in
         fst (of_arbogen vals tree)]
 end
@@ -492,7 +492,7 @@ module Sum = struct
         Q.div (Q.of_bigint c) (Q.of_bigint totalcard)
         |> Q.to_float |> Helper.float_
       in
-      apply_nolbl_s "weighted"
+      apply_runtime "weighted"
         [ list_of_list
             (List.map
                (fun (constr, typs) ->
@@ -807,7 +807,7 @@ module Constrained = struct
         lambda_s "x"
           (apply_nolbl p [exp_id "x"] &&@ apply_nolbl p' [exp_id "x"])
 
-  let rejection pred gen = apply_nolbl_s "reject" [pred; gen]
+  let rejection pred gen = apply_runtime "reject" [pred; gen]
 
   let make ct typ e =
     let spec =
@@ -853,7 +853,7 @@ module Arrow = struct
   let generator =
     Option.map (fun g ->
         lambda_s "rs"
-          (apply_nolbl_s "memo" [lambda_s "_" (apply_nolbl g [exp_id "rs"])]) )
+          (apply_runtime "memo" [lambda_s "_" (apply_nolbl g [exp_id "rs"])]) )
 
   let printer = lambda_s "_" (string_ "(_ -> _)")
 

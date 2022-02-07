@@ -21,16 +21,18 @@ let test_constant (name : string) (loc : Location.t) (f : expression) =
   let loc = Format.asprintf "%a" Location.print_loc loc in
   let f = lambda_s "_" (apply_nolbl f [exp_id name]) in
   letunit
-    (open_runtime
-       (apply_nolbl_s "add_const" [one; string_ name; string_ loc; f]) )
+    (apply_runtime "add_const"
+       [ one
+       ; string_ name
+       ; string_ loc
+       ; let_open "Testify_runtime.Operators" f ] )
 
 (* test generation for functions *)
 let test (name : string) (loc : Location.t) (args : expression list) =
   let loc = Format.asprintf "%a" Location.print_loc loc in
   letunit
-    (open_runtime
-       (apply_nolbl_s "add_fun"
-          ([int_ !number; string_ name; string_ loc] @ args) ) )
+    (apply_runtime "add_fun"
+       ([int_ !number; string_ name; string_ loc] @ args) )
 
 (* call to set_seed *)
 let gen_set_seed (x : int) = letunit (apply_runtime "set_seed" [int_ x])
@@ -69,9 +71,10 @@ let generate (fn : string) loc args out_print satisfy =
         |> pair id |> leto |> lambda_s "rs"
       in
       test fn loc
-        [ apply_nolbl_s "opt_print" [exp_id "snd"]
-        ; apply_nolbl_s "opt_gen" [go]
-        ; apply_nolbl_s "sat_output" [satisfy] ]
+        [ apply_runtime "opt_print" [exp_id "snd"]
+        ; apply_runtime "opt_gen" [go]
+        ; apply_runtime "sat_output"
+            [let_open "Testify_runtime.Operators" satisfy] ]
 
 (**************)
 (* Derivation *)
@@ -81,62 +84,19 @@ let generate (fn : string) loc args out_print satisfy =
 let is_collected (ct : Parsetree.core_type) : bool =
   Helper.has_attribute "collect" ct.ptyp_attributes
 
-(* let rec apply_decl state params (poly : Typrepr.param) =
- *   let args = List.combine poly.vars params in
- *   match poly.body.ptype_kind with
- *   | Ptype_abstract ->
- *       { poly.body with
- *         ptype_manifest=
- *           Option.map (apply_ctype state args) poly.body.ptype_manifest }
- *   | Ptype_variant constructors ->
- *       let constr_f c =
- *         match c.pcd_args with
- *         | Pcstr_tuple cts ->
- *             { c with
- *               pcd_args= Pcstr_tuple (List.map (apply_ctype state args) cts)
- *             }
- *         | Pcstr_record _labs ->
- *             Log.warn "Inline records are not supported" ;
- *             raise Exit
- *       in
- *       { poly.body with
- *         ptype_kind= Ptype_variant (List.map constr_f constructors) }
- *   | Ptype_record labs ->
- *       let lab_f l = {l with pld_type= apply_ctype args state l.pld_type} in
- *       {poly.body with ptype_kind= Ptype_record (List.map lab_f labs)}
- *   | Ptype_open -> poly.body
- *
- * and apply_ctype state args ct =
- *   match ct.ptyp_desc with
- *   | Ptyp_var var -> List.assoc var args
- *   | Ptyp_constr (_, []) -> ct
- *   | Ptyp_constr (name, l) ->
- *       { ct with
- *         ptyp_desc= Ptyp_constr (name, List.map (apply_ctype state args) l) }
- *   | Ptyp_poly (_, ct) -> apply_ctype state args ct
- *   | Ptyp_tuple tup ->
- *       {ct with ptyp_desc= Ptyp_tuple (List.map (apply_ctype state args) tup)}
- *   | Ptyp_arrow (l, i, o) ->
- *       { ct with
- *         ptyp_desc=
- *           Ptyp_arrow (l, apply_ctype state args i, apply_ctype state args o)
- *       }
- *   | _ -> ct *)
-
 (* derivation function for type declaration *)
-let rec derive_decl (s : Module_state.t) params
-    ({ptype_kind; ptype_manifest; ptype_attributes; _} as td) : Typrepr.t =
-  match get_attribute_pstr "satisfying" ptype_attributes with
+let rec derive_decl (s : Module_state.t) params td : Typrepr.t =
+  match get_attribute_pstr "satisfying" td.ptype_attributes with
   | Some e ->
       Typrepr.Constrained.make_td td
         (derive_decl s params {td with ptype_attributes= []})
         e
   | None -> (
-    match ptype_kind with
+    match td.ptype_kind with
     | Ptype_abstract ->
         Option.fold
           ~none:(Typrepr.empty !current_loc td.ptype_name.txt)
-          ~some:(derive_ctype s params) ptype_manifest
+          ~some:(derive_ctype s params) td.ptype_manifest
     | Ptype_variant constructors ->
         let constr_f c =
           match c.pcd_args with
@@ -172,10 +132,7 @@ and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
     | Ptyp_constr ({txt; _}, l) ->
         let p = Module_state.get_param txt state |> Option.get in
         let env = State.get_env p (List.map (derive_ctype state params) l) in
-        let t = derive_decl state env p.body in
-        Log.print "Building type `%a`:\n%a\n" print_coretype ct Typrepr.print
-          t ;
-        t
+        derive_decl state env p.body
     | Ptyp_poly (_, ct) -> derive_ctype state params ct
     | Ptyp_tuple tup ->
         Typrepr.Product.make (List.map (derive_ctype state params) tup)
@@ -364,12 +321,10 @@ let gather_tests vb state =
               [] ) )
   | _ -> []
 
-let runtime = ref true
-
 (* actual mapper *)
 let mapper =
   let in_attr = ref 0 in
-  let state = ref (Module_state.load ()) in
+  let state = ref Module_state.s0 in
   let handle_str mapper str =
     let rec aux res = function
       | [] ->

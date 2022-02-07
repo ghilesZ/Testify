@@ -319,5 +319,5 @@ let compile i =
   | Range (inf, sup) ->
       let i = inf |> Q.to_float |> float_ in
       let s = sup |> Q.to_float |> float_ in
-      apply_nolbl_s "float_range" [i; s]
+      apply_runtime "float_range" [i; s]
   | _ -> exp_id "QCheck.Gen.float"

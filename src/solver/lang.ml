@@ -229,23 +229,25 @@ let to_ocaml ints reals (c : constr) : expression =
     | ToFloat x -> apply_nolbl_s "float" [arith x]
   in
   let cmp_to_string typ cmp =
-    match typ with
-    | F -> (
-      match cmp with
-      | Leq -> "(<=.)"
-      | Lt -> "(<.)"
-      | Geq -> "(>=.)"
-      | Gt -> "(>.)"
-      | Eq -> "(=.)"
-      | Diseq -> "(<>.)" )
-    | I -> (
-      match cmp with
-      | Leq -> "(<=)"
-      | Lt -> "(<)"
-      | Geq -> "(>=)"
-      | Gt -> "(>)"
-      | Eq -> "(=)"
-      | Diseq -> "(<>)" )
+    let_open "Testify_runtime.Operators"
+      (exp_id
+         ( match typ with
+         | F -> (
+           match cmp with
+           | Leq -> "(<=.)"
+           | Lt -> "(<.)"
+           | Geq -> "(>=.)"
+           | Gt -> "(>.)"
+           | Eq -> "(=.)"
+           | Diseq -> "(<>.)" )
+         | I -> (
+           match cmp with
+           | Leq -> "(<=)"
+           | Lt -> "(<)"
+           | Geq -> "(>=)"
+           | Gt -> "(>)"
+           | Eq -> "(=)"
+           | Diseq -> "(<>)" ) ) )
   in
   let rec aux = function
     | Rejection e -> e
@@ -254,27 +256,8 @@ let to_ocaml ints reals (c : constr) : expression =
         let t1 = get_typ ints reals a1 in
         let t2 = get_typ ints reals a2 in
         coerce_to t1 t2 ;
-        apply_nolbl_s (cmp_to_string t1 cmp) [arith a1; arith a2]
+        apply_nolbl (cmp_to_string t1 cmp) [arith a1; arith a2]
   in
   aux c
-
-let unify c1 c2 =
-  match (c1, c2) with
-  | "other", _ | _, "other" -> "other"
-  | "lin", _ | _, "lin" -> "lin"
-  | "bc", "bc" -> "bc"
-  | _ -> assert false
-
-let get_kind c =
-  let rec loop = function
-    | Rejection _ -> "rs"
-    | Boolop (c1, _lop, c2) ->
-        Format.asprintf "%s" (unify (loop c1) (loop c2))
-    | Comparison (Var _, (Geq | Leq | Lt | Gt), (Int _ | Float _)) -> "bc"
-    | Comparison ((Int _ | Float _), (Geq | Leq | Lt | Gt), Var _) -> "bc"
-    | Comparison (Var _, (Geq | Leq | Lt | Gt), Var _) -> "lin"
-    | Comparison _ -> "other"
-  in
-  loop c
 
 exception Split of constr * constr

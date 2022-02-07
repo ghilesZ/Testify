@@ -22,7 +22,7 @@ let increasing =
           fun nb_collect ->
             List.init nb_collect (fun _ -> Random.int 100)
             |> List.sort Int.compare] )
-  ; checker= (fun loc -> [%expr increasing]) }
+  ; checker= (fun loc -> [%expr Testify_runtime.increasing]) }
 
 let increasing_strict =
   { id= "increasing_strict"
@@ -51,10 +51,11 @@ let decreasing_strict =
 let alldiff =
   { id= "alldiff"
   ; value_provider=
-      (fun _loc ->
-        Format.ksprintf failwith "Not implemented: global constraint \"%s\""
-          "alldiff" )
-  ; checker= (fun loc -> [%expr alldiff]) }
+      (fun loc ->
+        [%expr
+          fun nb_collect -> List.init nb_collect (fun _ -> Random.int 100)]
+        )
+  ; checker= (fun loc -> [%expr Testify_runtime.alldiff]) }
 
 let make_not_implemented id =
   { id

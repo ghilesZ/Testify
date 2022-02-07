@@ -2,11 +2,11 @@
 
 (** {2 Warnings and errors} *)
 
-let _alert prefix = Format.kasprintf (Format.eprintf "%s: %s@." prefix)
+let alert_ prefix = Format.kasprintf (Format.eprintf "%s: %s@." prefix)
 
-let error args = _alert "ERROR" args
+let error args = alert_ "ERROR" args
 
-let warn args = _alert "WARNING" args
+let warn args = alert_ "WARNING" args
 
 (** {2 Log file generation} *)
 

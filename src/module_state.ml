@@ -63,15 +63,3 @@ let update_param (s : t) id td =
   match s with
   | (name, h) :: tl -> (name, State.update_param h id td) :: tl
   | [] -> invalid_arg "no module in scope"
-
-let save (_s : t) : unit = ()
-(* let oc = open_out "lol.testify" in
- * Marshal.to_channel oc s [] ;
- * close_out oc *)
-
-let load () : t = s0
-(* try
- *   let ic = open_in "lol.testify" in
- *   let res = Marshal.from_channel ic in
- *   close_in ic ; res
- * with _ -> s0 *)

@@ -268,26 +268,28 @@ let memo f =
 
 (* Redefinition of some operators to explicit types in constraints *)
 
-let ( <=. ) : float -> float -> bool = ( <= )
+module Operators = struct
+  let ( <=. ) : float -> float -> bool = ( <= )
 
-let ( <. ) : float -> float -> bool = ( < )
+  let ( <. ) : float -> float -> bool = ( < )
 
-let ( >. ) : float -> float -> bool = ( > )
+  let ( >. ) : float -> float -> bool = ( > )
 
-let ( >=. ) : float -> float -> bool = ( >= )
+  let ( >=. ) : float -> float -> bool = ( >= )
 
-let ( =. ) : float -> float -> bool = ( = )
+  let ( =. ) : float -> float -> bool = ( = )
 
-let ( <>. ) : float -> float -> bool = ( <> )
+  let ( <>. ) : float -> float -> bool = ( <> )
 
-let ( <= ) : int -> int -> bool = ( <= )
+  let ( <= ) : int -> int -> bool = ( <= )
 
-let ( < ) : int -> int -> bool = ( < )
+  let ( < ) : int -> int -> bool = ( < )
 
-let ( > ) : int -> int -> bool = ( > )
+  let ( > ) : int -> int -> bool = ( > )
 
-let ( >= ) : int -> int -> bool = ( >= )
+  let ( >= ) : int -> int -> bool = ( >= )
 
-let ( = ) : int -> int -> bool = ( = )
+  let ( = ) : int -> int -> bool = ( = )
 
-let ( <> ) : int -> int -> bool = ( <> )
+  let ( <> ) : int -> int -> bool = ( <> )
+end

@@ -50,10 +50,6 @@ module Pat = struct
   let rec list = function
     | [] -> construct_s "[]" None
     | a :: t -> construct_s "::" (Some (tuple [a; list t]))
-
-  let rec list_at_least = function
-    | [] -> of_string "_"
-    | a :: t -> construct_s "::" (Some (tuple [a; list_at_least t]))
 end
 
 (* given a string [name], builds the identifier [name] *)
@@ -163,17 +159,13 @@ let cons_exp h t = construct "( :: )" (Some (tuple [h; t]))
 let list_of_list l = List.fold_right cons_exp l empty_list_exp
 
 (* opens locally the module "Name" and builds the expression *)
-let let_open mod_ exp =
+let let_open mod_ =
   let w = PStr [Str.eval (string_ "-33")] in
   let mod_ = capitalize_first_char mod_ in
   Exp.open_
     ~attrs:[Attr.mk (def_loc "warning") w]
     ~loc:!current_loc
     (Opn.mk ~loc:!current_loc (Mod.ident ~loc:!current_loc (lid_loc mod_)))
-    exp
-
-(* opens the runtime and then build exp *)
-let open_runtime = let_open "Testify_runtime"
 
 (* fresh identifier generator generator *)
 let id_gen_gen () =
