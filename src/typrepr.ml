@@ -460,7 +460,8 @@ end
 
 (** ADTs *)
 module Sum = struct
-  type variants = (string * (t * bool) list) list
+  type variants =
+    (string * (t * int option) (* id of collect if present *) list) list
 
   let cardinality : variants -> Card.t =
     let rec sum acc = function
@@ -582,7 +583,8 @@ module Sum = struct
               List.map_result
                 (fun (t, collect) ->
                   (* XXX. This assumes that [@collect] occurs only on atomic types *)
-                  if collect then Ok (Boltz.ref "@collect") else t.boltz )
+                  if Option.is_some collect then Ok (Boltz.ref "@collect")
+                  else t.boltz )
                 args
             in
             Boltz.product args
@@ -657,7 +659,7 @@ module Sum = struct
       Some (function_ cases)
     with Exit | Invalid_argument _ -> None
 
-  let make name variants : t =
+  let make name (variants : variants) : t =
     let print = printer variants in
     let card = cardinality variants in
     let boltz = boltzmann_specification variants in

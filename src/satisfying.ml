@@ -80,9 +80,18 @@ let generate (fn : string) loc args out_print satisfy =
 (* Derivation *)
 (**************)
 
-(** True if and only if the type has the [@collect] attribute. *)
-let is_collected (ct : Parsetree.core_type) : bool =
-  Helper.has_attribute "collect" ct.ptyp_attributes
+(** True if and only if the type has the [@collect id] attribute. omission of
+    id means [@collect 0] *)
+let is_collected (ct : Parsetree.core_type) : int option =
+  if Helper.has_attribute "collect" ct.ptyp_attributes then
+    let id = Helper.get_attribute_pstr "collect" ct.ptyp_attributes in
+    Option.fold
+      ~some:(function
+        | {pexp_desc= Pexp_constant (Pconst_integer (s, None)); _} ->
+            Some (int_of_string s)
+        | _ -> failwith "wrong payload for collect attribute" )
+      ~none:(Some 0) id
+  else None
 
 (* derivation function for type declaration *)
 let rec derive_decl (s : Module_state.t) params td : Typrepr.t =
