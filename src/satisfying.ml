@@ -17,7 +17,8 @@ let seed : int option ref = ref None
 let set_seed x = seed := Some x
 
 (* test generation for constants *)
-let test_constant (name : string) (loc : Location.t) (f : expression) =
+let test_constant (name : string) (loc : Location.t) (str : expression)
+    (f : expression) =
   let loc = Format.asprintf "%a" Location.print_loc loc in
   let f = lambda_s "_" (apply_nolbl f [exp_id name]) in
   letunit
@@ -25,6 +26,7 @@ let test_constant (name : string) (loc : Location.t) (f : expression) =
        [ one
        ; string_ name
        ; string_ loc
+       ; str
        ; let_open "Testify_runtime.Operators" f ] )
 
 (* test generation for functions *)
@@ -84,13 +86,13 @@ let generate (fn : string) loc args out_print satisfy =
     id means [@collect 0] *)
 let is_collected (ct : Parsetree.core_type) : int option =
   if Helper.has_attribute "collect" ct.ptyp_attributes then
-    let id = Helper.get_attribute_pstr "collect" ct.ptyp_attributes in
-    Option.fold
-      ~some:(function
-        | {pexp_desc= Pexp_constant (Pconst_integer (s, None)); _} ->
-            Some (int_of_string s)
-        | _ -> failwith "wrong payload for collect attribute" )
-      ~none:(Some 0) id
+    Helper.get_attribute_pstr "collect" ct.ptyp_attributes
+    |> Option.fold
+         ~some:(function
+           | {pexp_desc= Pexp_constant (Pconst_integer (s, None)); _} ->
+               Some (int_of_string s)
+           | _ -> failwith "wrong payload for collect attribute" )
+         ~none:(Some 0)
   else None
 
 (* derivation function for type declaration *)
@@ -213,19 +215,24 @@ let derive state (recflag, typs) =
               match get_attribute_pstr "satisfying" td.ptype_attributes with
               | Some e -> (
                 match (glb_constr, GlobalConstraint.search e) with
-                | Some _, Some _ ->
+                | _ :: _, _ ->
                     failwith
-                      "Found two global contraints, please only specify one"
-                | None, (Some _ as g) -> g
-                | _, None ->
+                      "Found several global contraints, please only specify \
+                       one"
+                | [], [g] -> [g]
+                | [], _ :: _ ->
+                    failwith
+                      "Found several global contraints, please only specify \
+                       one"
+                | _, [] ->
                     Format.ksprintf failwith
-                      "I didn't understand the global constraint for\n\
-                      \            type %s" td.ptype_name.txt )
+                      "I didn't understand the global constraint for type %s"
+                      td.ptype_name.txt )
               | None -> glb_constr
             in
             ((name, typ) :: mono, poly, glb_constr)
         | _ -> (mono, td :: poly, glb_constr) )
-      ([], [], None) rec_
+      ([], [], []) rec_
   in
   let mono_typs =
     match mono_typs with
@@ -306,7 +313,9 @@ let gather_tests vb state =
       match info with
       | {spec= Some p; _} ->
           Log.print " is attached a specification. Generating a test.\n%!" ;
-          [test_constant txt vb.pvb_loc p]
+          [ test_constant txt vb.pvb_loc
+              (apply_nolbl info.print [exp_id txt])
+              p ]
       | _ ->
           Log.print " is not attached a specification.\n%!" ;
           [] )

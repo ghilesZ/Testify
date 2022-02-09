@@ -75,12 +75,15 @@ let all =
 
     - [@satisfying ID]
     - [@satisfying fun x -> ID x] where ID belongs to the list of predefined
-      constraints `all` *)
-let search (c : expression) : t option =
+    - [@satisfying fun x -> ID x && ID' x] where ID and ID' belongs to the
+      list of predefined constraints `all` *)
+(* todo handle lambdas correctly *)
+
+let rec search (c : expression) : t list =
   match c.pexp_desc with
   | Pexp_ident id ->
       let id = Helper.lid_to_string id.txt in
-      List.find_opt (fun gc -> gc.id = id) all
+      List.filter (fun gc -> gc.id = id) all
   | Pexp_fun (Nolabel, None, pat, body) -> (
     match (pat.ppat_desc, body.pexp_desc) with
     | ( Ppat_var arg
@@ -89,7 +92,12 @@ let search (c : expression) : t option =
           , [(Nolabel, {pexp_desc= Pexp_ident arg'; _})] ) ) ->
         let funname = Helper.lid_to_string funname.txt in
         if arg.txt = Helper.lid_to_string arg'.txt then
-          List.find_opt (fun gc -> gc.id = funname) all
-        else None
-    | _ -> None )
-  | _ -> None
+          List.filter (fun gc -> gc.id = funname) all
+        else []
+    | ( Ppat_var _arg
+      , Pexp_apply
+          ( {pexp_desc= Pexp_ident {txt= Lident "(&&)"; _}; _}
+          , [(Nolabel, arg1); (Nolabel, arg2)] ) ) ->
+        search arg1 @ search arg2
+    | _ -> [] )
+  | _ -> []

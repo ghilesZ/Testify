@@ -145,12 +145,12 @@ let of_ocaml (expr : expression) : constr =
     | Pexp_apply (({pexp_desc= Pexp_ident {txt= Lident i; _}; _} as op), args)
       -> (
       match (i, args) with
-      | "ocaml", [(Nolabel, a)] -> Rejection a
+      | "reject", [(Nolabel, a)] -> Rejection a
       | _, [(Nolabel, a1); (Nolabel, a2)] -> (
         match i with
         | "&&" -> Boolop (boolean a1, And, boolean a2)
         | "||" -> Boolop (boolean a1, Or, boolean a2)
-        | "=>" -> Boolop (boolean a1, Imply, boolean a2)
+        | "==>" -> Boolop (boolean a1, Imply, boolean a2)
         | _ -> Comparison (numeric a1, handle_cmp op, numeric a2) )
       | _ -> raise (OutOfSubset msg) )
     | _ -> raise (OutOfSubset msg)

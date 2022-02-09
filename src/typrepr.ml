@@ -209,7 +209,7 @@ module Rec = struct
   let lift_opt opt =
     Option.fold ~some:Result.ok ~none:(Result.error "Option is none") opt
 
-  let make_generator (glb_constr : GlobalConstraint.t option) typs =
+  let make_generator (glb_constr : GlobalConstraint.t list) typs =
     let+ grammar =
       let+ grammars =
         List.map_result
@@ -223,8 +223,9 @@ module Rec = struct
       let loc = !current_loc in
       let value_provider =
         match glb_constr with
-        | None -> [%expr fun _ -> []]
-        | Some e -> e.value_provider loc
+        | [] -> [%expr fun _ -> []]
+        | [e] -> e.value_provider loc
+        | _ -> failwith "need exactly one global constraint"
       in
       [%expr
         fun rs ->
@@ -234,12 +235,14 @@ module Rec = struct
           let queue = [%e value_provider] nb_collect in
           fst ([%e of_arbogen] tree queue rs)]
 
-  let make_glob_spec (glb_constr : GlobalConstraint.t option) collect =
+  let make_glob_spec (glb_constr : GlobalConstraint.t list) collect =
     let loc = !current_loc in
     let check e = e.GlobalConstraint.checker loc in
-    Option.map
-      (fun c -> [%expr fun x -> [%e check c |><| collect] x])
-      glb_constr
+    match glb_constr with
+    | [one] -> [%expr fun x -> [%e check one |><| collect] x]
+    | _ :: _ ->
+        failwith "Found several global contraints, please only specify one"
+    | _ -> failwith "Found no global contraints but i was expecting one"
 
   let rec_def header get_field typs =
     let+ bodies =
@@ -258,7 +261,7 @@ module Rec = struct
         f (exp_id (header ^ "_" ^ name)) )
       typs
 
-  let finish glb_constr typs =
+  let finish (glb_constr : GlobalConstraint.t list) typs =
     let printers =
       make_mutually_rec "print" typs (fun typ -> Ok typ.print)
       |> Result.get_ok
@@ -288,9 +291,12 @@ module Rec = struct
                     Log.warn "Conversion from (Error _) to None: %s" msg ;
                     None
               in
-              Option.map pre
-                (make_glob_spec glb_constr (exp_id ("collect_" ^ name)))
-              |> Option.join )
+              match glb_constr with
+              | [] -> None
+              | _ ->
+                  pre
+                    (make_glob_spec glb_constr (exp_id ("collect_" ^ name)))
+              )
             typs )
         specs
     in
@@ -524,7 +530,8 @@ module Sum = struct
         let pat, expr = id () in
         case
           (constr (Some (Pat.of_string pat)))
-          (string_concat [string_ txt; apply_nolbl print [expr]])
+          (string_concat
+             [string_ (txt ^ "("); apply_nolbl print [expr]; string_ ")"] )
     | p ->
         let pat, exp = pat_exp p id in
         case
@@ -841,11 +848,11 @@ module Constrained = struct
 
   let make_td td typ e =
     match GlobalConstraint.search e with
-    | Some _ ->
+    | [] -> make_td td typ e
+    | _ ->
         if Card.is_finite typ.card then
           failwith "global constraints only allowed on recursive types"
         else typ
-    | None -> make_td td typ e
 end
 
 (* generators for function 'a -> 'b are synthetized using only the 'b

@@ -13,9 +13,10 @@ let add_fun count id loc print gen pred =
   let t = QCheck.Test.make ~count ~name arb pred in
   tests := t :: !tests
 
-let add_const count id loc pred =
+let add_const count id loc str pred =
   let name = Format.asprintf "constant %s in %s" (bold_blue id) (blue loc) in
-  let arb = QCheck.make QCheck.Gen.unit in
+  let print () = str in
+  let arb = QCheck.make ~print QCheck.Gen.unit in
   let t = QCheck.Test.make ~count ~name arb pred in
   tests := t :: !tests
 
@@ -116,25 +117,29 @@ module Arbg = struct
     match arbg with
     | Label ("@collect", []) -> consume lst
     | Label (_, []) -> (QCheck.Gen.unit rs, lst)
-    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_unit"
+    | Label (s, _) -> invalid_arg ("arbogen_to_unit wrong label:" ^ s)
+    | Tuple _ -> invalid_arg "arbogen_to_unit, expected label but was tuple"
 
   let to_bool arbg lst rs =
     match arbg with
     | Label ("@collect", []) -> consume lst
     | Label (_, []) -> (QCheck.Gen.bool rs, lst)
-    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_bool"
+    | Label (s, _) -> invalid_arg ("arbogen_to_bool wrong label:" ^ s)
+    | Tuple _ -> invalid_arg "arbogen_to_bool, expected bool but was tuple"
 
   let to_int arbg lst rs =
     match arbg with
     | Label ("@collect", []) -> consume lst
     | Label (_, []) -> (QCheck.Gen.int rs, lst)
-    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_int"
+    | Label (s, _) -> invalid_arg ("arbogen_to_int wrong label:" ^ s)
+    | Tuple _ -> invalid_arg "arbogen_to_int, expected int but was tuple"
 
   let to_float arbg lst rs =
     match arbg with
     | Label ("@collect", []) -> consume lst
     | Label (_, []) -> (QCheck.Gen.float rs, lst)
-    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_float"
+    | Label (s, _) -> invalid_arg ("arbogen_to_float wrong label:" ^ s)
+    | Tuple _ -> invalid_arg "arbogen_to_float, expected float but was tuple"
 
   let count_collect =
     let sum = List.fold_left Int.add in
