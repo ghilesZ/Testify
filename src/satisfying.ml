@@ -123,7 +123,7 @@ let rec derive_decl (s : Module_state.t) params td : Typrepr.t =
         Typrepr.Sum.make td.ptype_name.txt (List.map constr_f constructors)
     | Ptype_record labs ->
         let lab_f l = (l.pld_name.txt, derive_ctype s params l.pld_type) in
-        Typrepr.Record.make (List.map lab_f labs)
+        Typrepr.Record.make td.ptype_name.txt (List.map lab_f labs)
     | Ptype_open -> Typrepr.empty !current_loc td.ptype_name.txt )
 
 (* derivation function for core types *)
@@ -146,11 +146,13 @@ and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
         derive_decl state env p.body
     | Ptyp_poly (_, ct) -> derive_ctype state params ct
     | Ptyp_tuple tup ->
-        Typrepr.Product.make (List.map (derive_ctype state params) tup)
+        let id = Format.asprintf "%a" print_coretype ct in
+        Typrepr.Product.make id (List.map (derive_ctype state params) tup)
     | Ptyp_arrow (Nolabel, input, output) ->
+        let id = Format.asprintf "%a" print_coretype ct in
         let input = derive_ctype state params input in
         let output = derive_ctype state params output in
-        Typrepr.Arrow.make input output
+        Typrepr.Arrow.make id input output
     | _ ->
         Typrepr.empty !current_loc (Format.asprintf "%a" print_coretype ct) )
 
