@@ -215,21 +215,7 @@ let derive state (recflag, typs) =
             in
             let glb_constr =
               match get_attribute_pstr "satisfying" td.ptype_attributes with
-              | Some e -> (
-                match (glb_constr, GlobalConstraint.search e) with
-                | _ :: _, _ ->
-                    failwith
-                      "Found several global contraints, please only specify \
-                       one"
-                | [], [g] -> [g]
-                | [], _ :: _ ->
-                    failwith
-                      "Found several global contraints, please only specify \
-                       one"
-                | _, [] ->
-                    Format.ksprintf failwith
-                      "I didn't understand the global constraint for type %s"
-                      td.ptype_name.txt )
+              | Some e -> glb_constr @ GlobalConstraint.search e
               | None -> glb_constr
             in
             ((name, typ) :: mono, poly, glb_constr)

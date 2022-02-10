@@ -229,7 +229,7 @@ module Rec = struct
         match global with
         | [] -> [%expr fun _ -> []]
         | [e] -> [%expr fun n -> [|[%e e.value_provider loc] n|]]
-        | _ -> failwith "need exactly one global constraint"
+        | h :: _tl -> [%expr fun n -> [|[%e h.value_provider loc] n|]]
       in
       [%expr
         fun rs ->
@@ -244,8 +244,8 @@ module Rec = struct
     let check e = e.GlobalConstraint.checker loc in
     match global with
     | [one] -> [%expr fun x -> [%e check one |><| collect] x]
-    | _ :: _ ->
-        failwith "Found several global contraints, please only specify one"
+    | h :: _tl ->
+        [%expr (* todo: finish me*) fun x -> [%e check h |><| collect] x]
     | _ -> failwith "Found no global contraints but i was expecting one"
 
   let rec_def header get_field typs =
@@ -279,7 +279,7 @@ module Rec = struct
              List.map (fun _ -> Result.error msg) typs )
     in
     let collector =
-      make_mutually_rec "collector" typs (fun typ -> lift_opt typ.collector)
+      make_mutually_rec "collect" typs (fun typ -> lift_opt typ.collector)
     in
     let specs : (expression option list, string) result =
       Result.map

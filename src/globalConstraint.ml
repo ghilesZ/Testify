@@ -1,4 +1,5 @@
 (** {1 Global constraint} *)
+open Helper
 
 open Migrate_parsetree.Ast_410
 open Parsetree
@@ -11,6 +12,8 @@ type t =
   ; checker: Location.t -> expression
         (** Ast for checking if a value satisfies the global constraint .*)
   }
+
+let print fmt {id; _} = Format.fprintf fmt "%s" id
 
 (** {2 Pre-defined constraints} *)
 
@@ -75,6 +78,7 @@ let all =
 
     - [@satisfying ID]
     - [@satisfying fun x -> ID x] where ID belongs to the list of predefined
+      constraints `all`
     - [@satisfying fun x -> ID x && ID' x] where ID and ID' belongs to the
       list of predefined constraints `all` *)
 (* todo handle lambdas correctly *)
@@ -89,15 +93,30 @@ let rec search (c : expression) : t list =
     | ( Ppat_var arg
       , Pexp_apply
           ( {pexp_desc= Pexp_ident funname; _}
+          , [ (Nolabel, {pexp_desc= Pexp_ident arg'; _})
+            ; (Nolabel, {pexp_desc= Pexp_constant _c; _}) ] ) ) ->
+        let funname = Helper.lid_to_string funname.txt in
+        let arg' = Helper.lid_to_string arg'.txt in
+        if arg.txt = arg' then
+          List.find_opt (fun gc -> gc.id = funname) all |> Option.to_list
+        else
+          Format.asprintf "global constraint on unknown variable %s" arg'
+          |> failwith
+    | ( Ppat_var arg
+      , Pexp_apply
+          ( {pexp_desc= Pexp_ident funname; _}
           , [(Nolabel, {pexp_desc= Pexp_ident arg'; _})] ) ) ->
         let funname = Helper.lid_to_string funname.txt in
-        if arg.txt = Helper.lid_to_string arg'.txt then
-          List.filter (fun gc -> gc.id = funname) all
-        else []
-    | ( Ppat_var _arg
+        let arg' = Helper.lid_to_string arg'.txt in
+        if arg.txt = arg' then
+          List.find_opt (fun gc -> gc.id = funname) all |> Option.to_list
+        else
+          Format.asprintf "global constraint on unknown variable %s" arg'
+          |> failwith
+    | ( Ppat_var _
       , Pexp_apply
-          ( {pexp_desc= Pexp_ident {txt= Lident "(&&)"; _}; _}
+          ( {pexp_desc= Pexp_ident {txt= Lident "&&"; _}; _}
           , [(Nolabel, arg1); (Nolabel, arg2)] ) ) ->
-        search arg1 @ search arg2
+        search (lambda pat arg1) @ search (lambda pat arg2)
     | _ -> [] )
   | _ -> []
