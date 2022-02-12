@@ -6,6 +6,8 @@ open Location
 
 (** {1 Internal representation of an OCaml type} *)
 
+type collect_tag = int option
+
 type t =
   { id: string
   ; boltz: (Boltz.t, string) Result.t
@@ -13,18 +15,19 @@ type t =
   ; of_arbogen: (expression, string) Result.t
         (** AST of a function that converts an arbogen tree to the current
             type *)
+  ; tag: collect_tag
   ; collector: expression option
         (** AST of a function collecting values subject to a global
             constraint in an inhabitant of the type. *)
+  ; spec: expression option  (** AST of a predicate over the current type *)
   ; gen: expression option
         (** AST of a random sampler for the current type *)
-  ; spec: expression option  (** AST of a predicate over the current type *)
   ; card: Card.t  (** Cardinality of the type *)
   ; print: expression  (** AST of a pretty-printer for the type *) }
 
 (** {2 Printing} *)
 
-let print fmt {id; gen; spec; card; print; boltz; of_arbogen; collector} =
+let print fmt {id; gen; spec; card; print; boltz; of_arbogen; collector; _} =
   Format.fprintf fmt "- type %s\n" id ;
   let print_expr fmt =
     Format.fprintf fmt "@.\n```ocaml@.@[%a@]@.```\n" print_expression
@@ -58,7 +61,8 @@ let empty loc (name : string) =
   ; spec= None
   ; card= Unknown
   ; print= [%expr fun _ -> "<...>"]
-  ; collector= None }
+  ; collector= None
+  ; tag= None }
 
 let add_printer info p = {info with print= p}
 
@@ -74,10 +78,11 @@ let free id bs g c p of_arbogen col =
   ; spec= None
   ; card= c
   ; of_arbogen
-  ; collector= Some col }
+  ; collector= Some col
+  ; tag= None }
 
 let make id boltz print gen spec card of_arbogen collector =
-  {id; boltz; gen; spec; card; print; of_arbogen; collector}
+  {id; boltz; gen; spec; card; print; of_arbogen; collector; tag= None}
 
 let end_module name typ =
   { typ with
@@ -208,7 +213,8 @@ module Rec = struct
     ; card= Infinite
     ; boltz= Ok (Boltz.ref typ_name)
     ; of_arbogen= Ok (exp_id ("of_arbogen_" ^ typ_name))
-    ; collector= Some (exp_id ("collect_" ^ typ_name)) }
+    ; collector= Some (exp_id ("collect_" ^ typ_name))
+    ; tag= None }
 
   (* XXX. Get rid of this *)
   let lift_opt opt =
@@ -885,4 +891,17 @@ module Arrow = struct
     make id bs printer g None c
       (Result.error "No of_arbogen function for arrow types")
       None
+end
+
+module Collect = struct
+  let make t tag =
+    let collector =
+      Option.map
+        (fun c ->
+          let loc = !current_loc in
+          [%expr
+            fun n -> if n = [%e int_ tag] then [%e c] n else fun _ -> []] )
+        t.collector
+    in
+    {t with tag= Some tag; collector}
 end

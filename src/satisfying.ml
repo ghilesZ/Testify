@@ -134,27 +134,36 @@ and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
         (derive_ctype state params {ct with ptyp_attributes= []})
         e
   | None -> (
-    match ct.ptyp_desc with
-    | Ptyp_var var -> List.assoc var params
-    | Ptyp_constr ({txt; _}, []) ->
-        Option.fold ~some:Fun.id
-          ~none:(Typrepr.empty !current_loc (lid_to_string txt))
-          (Module_state.get txt state)
-    | Ptyp_constr ({txt; _}, l) ->
-        let p = Module_state.get_param txt state |> Option.get in
-        let env = State.get_env p (List.map (derive_ctype state params) l) in
-        derive_decl state env p.body
-    | Ptyp_poly (_, ct) -> derive_ctype state params ct
-    | Ptyp_tuple tup ->
-        let id = Format.asprintf "%a" print_coretype ct in
-        Typrepr.Product.make id (List.map (derive_ctype state params) tup)
-    | Ptyp_arrow (Nolabel, input, output) ->
-        let id = Format.asprintf "%a" print_coretype ct in
-        let input = derive_ctype state params input in
-        let output = derive_ctype state params output in
-        Typrepr.Arrow.make id input output
-    | _ ->
-        Typrepr.empty !current_loc (Format.asprintf "%a" print_coretype ct) )
+    match is_collected ct with
+    | Some i ->
+        Typrepr.Collect.make
+          (derive_ctype state params {ct with ptyp_attributes= []})
+          i
+    | None -> (
+      match ct.ptyp_desc with
+      | Ptyp_var var -> List.assoc var params
+      | Ptyp_constr ({txt; _}, []) ->
+          Option.fold ~some:Fun.id
+            ~none:(Typrepr.empty !current_loc (lid_to_string txt))
+            (Module_state.get txt state)
+      | Ptyp_constr ({txt; _}, l) ->
+          let p = Module_state.get_param txt state |> Option.get in
+          let env =
+            State.get_env p (List.map (derive_ctype state params) l)
+          in
+          derive_decl state env p.body
+      | Ptyp_poly (_, ct) -> derive_ctype state params ct
+      | Ptyp_tuple tup ->
+          let id = Format.asprintf "%a" print_coretype ct in
+          Typrepr.Product.make id (List.map (derive_ctype state params) tup)
+      | Ptyp_arrow (Nolabel, input, output) ->
+          let id = Format.asprintf "%a" print_coretype ct in
+          let input = derive_ctype state params input in
+          let output = derive_ctype state params output in
+          Typrepr.Arrow.make id input output
+      | _ ->
+          Typrepr.empty !current_loc (Format.asprintf "%a" print_coretype ct)
+      ) )
 
 let derive state (recflag, typs) =
   Log.type_decl (recflag, typs) ;

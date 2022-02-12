@@ -1,4 +1,4 @@
-type uniquelist = Empty | Cons of int * uniquelist
+type uniquelist = Empty | Cons of (int[@collect]) * uniquelist
 [@@satisfying fun x -> alldiff x]
 
 let rec add (x : int) (l : uniquelist) : uniquelist =
