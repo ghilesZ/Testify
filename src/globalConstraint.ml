@@ -11,7 +11,7 @@ type t =
             Takes a location as an input for better error handling. *)
   ; checker: Location.t -> expression
         (** Ast for checking if a value satisfies the global constraint .*)
-  }
+  ; group: int }
 
 let print fmt {id; _} = Format.fprintf fmt "%s" id
 
@@ -25,7 +25,8 @@ let increasing =
           fun nb_collect ->
             List.init nb_collect (fun _ -> Random.int 100)
             |> List.sort Int.compare] )
-  ; checker= (fun loc -> [%expr Testify_runtime.increasing]) }
+  ; checker= (fun loc -> [%expr Testify_runtime.increasing])
+  ; group= 0 }
 
 let increasing_strict =
   { id= "increasing_strict"
@@ -33,7 +34,8 @@ let increasing_strict =
       (fun _loc ->
         Format.ksprintf failwith "Not implemented: global constraint \"%s\""
           "increasing_strict" )
-  ; checker= (fun loc -> [%expr increasing_strict]) }
+  ; checker= (fun loc -> [%expr increasing_strict])
+  ; group= 0 }
 
 let decreasing =
   { id= "decreasing"
@@ -41,7 +43,8 @@ let decreasing =
       (fun _loc ->
         Format.ksprintf failwith "Not implemented: global constraint \"%s\""
           "decreasing" )
-  ; checker= (fun loc -> [%expr decreasing]) }
+  ; checker= (fun loc -> [%expr decreasing])
+  ; group= 0 }
 
 let decreasing_strict =
   { id= "decreasing_strict"
@@ -49,7 +52,8 @@ let decreasing_strict =
       (fun _loc ->
         Format.ksprintf failwith "Not implemented: global constraint \"%s\""
           "decreasing_strict" )
-  ; checker= (fun loc -> [%expr decreasing_strict]) }
+  ; checker= (fun loc -> [%expr decreasing_strict])
+  ; group= 0 }
 
 let alldiff =
   { id= "alldiff"
@@ -58,7 +62,8 @@ let alldiff =
         [%expr
           fun nb_collect -> List.init nb_collect (fun _ -> Random.int 100)]
         )
-  ; checker= (fun loc -> [%expr Testify_runtime.alldiff]) }
+  ; checker= (fun loc -> [%expr Testify_runtime.alldiff])
+  ; group= 0 }
 
 let make_not_implemented id =
   { id
@@ -69,7 +74,8 @@ let make_not_implemented id =
   ; checker=
       (fun _loc ->
         Format.ksprintf failwith "Not implemented: global constraint \"%s\""
-          id ) }
+          id )
+  ; group= 0 }
 
 let all =
   [alldiff; increasing; decreasing; increasing_strict; decreasing_strict]
@@ -94,11 +100,15 @@ let rec search (c : expression) : t list =
       , Pexp_apply
           ( {pexp_desc= Pexp_ident funname; _}
           , [ (Nolabel, {pexp_desc= Pexp_ident arg'; _})
-            ; (Nolabel, {pexp_desc= Pexp_constant _c; _}) ] ) ) ->
+            ; ( Nolabel
+              , {pexp_desc= Pexp_constant (Pconst_integer (s, None)); _} ) ]
+          ) ) ->
         let funname = Helper.lid_to_string funname.txt in
         let arg' = Helper.lid_to_string arg'.txt in
         if arg.txt = arg' then
-          List.find_opt (fun gc -> gc.id = funname) all |> Option.to_list
+          List.find_opt (fun gc -> gc.id = funname) all
+          |> Option.to_list
+          |> List.map (fun g -> {g with group= int_of_string s})
         else
           Format.asprintf "global constraint on unknown variable %s" arg'
           |> failwith

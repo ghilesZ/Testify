@@ -182,15 +182,15 @@ end
 
 (* collectors *)
 module Collect = struct
-  let unit () = [()]
+  let unit n () = if n = 0 then [()] else []
 
-  let bool (x : bool) = [x]
+  let bool n (x : bool) = if n = 0 then [x] else []
 
-  let char (x : char) = [x]
+  let char n (x : char) = if n = 0 then [x] else []
 
-  let int (x : int) = [x]
+  let int n (x : int) = if n = 0 then [x] else []
 
-  let float (x : float) = [x]
+  let float n (x : float) = if n = 0 then [x] else []
 end
 
 let count = ref 1000

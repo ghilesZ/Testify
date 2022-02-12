@@ -188,8 +188,21 @@ let string_concat ?(sep = "") = function
 
 module Conv = Convert (OCaml_410) (OCaml_current)
 
+let file_to_string filename =
+  let ch = open_in filename in
+  let s = really_input_string ch (in_channel_length ch) in
+  close_in ch ; s
+
 let print_expression fmt e =
-  Pprintast.expression fmt (Conv.copy_expression e)
+  let oc = open_out "raw.ml" in
+  let fmt_oc = Format.formatter_of_out_channel oc in
+  Format.fprintf fmt_oc "%a%!" Pprintast.expression (Conv.copy_expression e) ;
+  if Sys.command "ocamlformat raw.ml > formatted.ml" = 0 then
+    Format.fprintf fmt "%s" (file_to_string "formatted.ml")
+  else
+    Format.fprintf fmt "%a%!" Pprintast.expression (Conv.copy_expression e) ;
+  close_out oc ;
+  Sys.command "rm -f formatted.ml raw.ml" |> ignore
 
 let print_longident fmt l =
   l |> Longident.flatten |> String.concat "." |> Format.pp_print_string fmt
@@ -204,7 +217,17 @@ let print_td fmt (recflag, types) =
   let sig_ =
     {psig_desc= Psig_type (recflag, types); psig_loc= Location.none}
   in
-  Pprintast.signature fmt (Conv.copy_signature [sig_])
+  let oc = open_out "raw.ml" in
+  let fmt_oc = Format.formatter_of_out_channel oc in
+  Format.fprintf fmt_oc "%a%!" Pprintast.signature
+    (Conv.copy_signature [sig_]) ;
+  if Sys.command "ocamlformat raw.ml > formatted.ml" = 0 then
+    Format.fprintf fmt "%s" (file_to_string "formatted.ml")
+  else
+    Format.fprintf fmt "%a%!" Pprintast.signature
+      (Conv.copy_signature [sig_]) ;
+  close_out oc ;
+  Sys.command "rm -f formatted.ml raw.ml" |> ignore
 
 let print_type_decl fmt t =
   let sig_ =

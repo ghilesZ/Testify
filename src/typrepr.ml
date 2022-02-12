@@ -25,8 +25,9 @@ type t =
 (** {2 Printing} *)
 
 let print fmt {id; gen; spec; card; print; boltz; of_arbogen; collector} =
+  Format.fprintf fmt "- type %s\n" id ;
   let print_expr fmt =
-    Format.fprintf fmt "\ntype %s\n```ocaml@.@[%a@]\n```" id print_expression
+    Format.fprintf fmt "@.\n```ocaml@.@[%a@]@.```\n" print_expression
   in
   let print_opt f fmt = function
     | None -> Format.fprintf fmt " none"
@@ -37,14 +38,14 @@ let print fmt {id; gen; spec; card; print; boltz; of_arbogen; collector} =
     | Error msg -> Format.fprintf fmt "Absent because: %s" msg
   in
   Format.fprintf fmt "- Cardinality: %a\n" Card.pp card ;
-  Format.fprintf fmt "- Printer:%a\n" print_expr print ;
-  Format.fprintf fmt "- Specification:%a\n" (print_opt print_expr) spec ;
+  Format.fprintf fmt "- Printer:\n%a\n" print_expr print ;
+  Format.fprintf fmt "- Specification:\n%a\n" (print_opt print_expr) spec ;
   Format.fprintf fmt "- Boltzmann specification:\n%a\n"
     (print_res Boltz.markdown)
     boltz ;
-  Format.fprintf fmt "- Of_arbogen: %a\n" (print_res print_expr) of_arbogen ;
-  Format.fprintf fmt "- Generator: %a\n" (print_opt print_expr) gen ;
-  Format.fprintf fmt "- Collector: %a\n" (print_opt print_expr) collector
+  Format.fprintf fmt "- Of_arbogen:\n%a\n" (print_res print_expr) of_arbogen ;
+  Format.fprintf fmt "- Generator:\n%a\n" (print_opt print_expr) gen ;
+  Format.fprintf fmt "- Collector:\n%a\n" (print_opt print_expr) collector
 
 (** {2 Constructors} *)
 
@@ -242,10 +243,17 @@ module Rec = struct
   let make_glob_spec (global : GlobalConstraint.t list) collect =
     let loc = !current_loc in
     let check e = e.GlobalConstraint.checker loc in
+    let collect g =
+      let i = g.GlobalConstraint.group |> int_ in
+      apply_nolbl collect [i]
+    in
     match global with
-    | [one] -> [%expr fun x -> [%e check one |><| collect] x]
-    | h :: _tl ->
-        [%expr (* todo: finish me*) fun x -> [%e check h |><| collect] x]
+    | h :: tl ->
+        List.fold_left
+          (fun expr g -> [%expr [%e expr] && [%e check g |><| collect g] x])
+          [%expr [%e check h |><| collect h] x]
+          tl
+        |> lambda_s "x"
     | _ -> failwith "Found no global contraints but i was expecting one"
 
   let rec_def header get_field typs =
@@ -444,13 +452,14 @@ module Product = struct
     let np = function
       | {collector= Some c; _} ->
           let n, id = get_name () in
-          (apply_nolbl c [id], Pat.of_string n)
+          (apply_nolbl c [exp_id "n"; id], Pat.of_string n)
       | {collector= None; _} -> raise Exit
     in
     try
       let names, pats = List.split (List.map np typs) in
       let b = list_of_list names in
-      lambda (Pat.tuple pats) (apply_nolbl_s "List.flatten" [b])
+      lambda_s "n"
+        (lambda (Pat.tuple pats) (apply_nolbl_s "List.flatten" [b]))
       |> Option.some
     with Exit -> None
 
@@ -651,11 +660,13 @@ module Sum = struct
         let col = Option.get x.collector in
         let p, e = id () in
         let pat = Pat.construct_s name (Some (Pat.of_string p)) in
-        case pat (apply_nolbl col [e])
+        case pat (apply_nolbl col [exp_id "n"; e])
     | p ->
         let pat, exp = pat_exp p id in
         let tup =
-          apply_nolbl (Product.collector args |> Option.get) [tuple exp]
+          apply_nolbl
+            (Product.collector args |> Option.get)
+            [exp_id "n"; tuple exp]
         in
         case (Pat.construct_s name (Some (Pat.tuple pat))) tup
 
@@ -664,7 +675,7 @@ module Sum = struct
       let cases =
         List.map (fun (c, a) -> constr_collect c (List.map fst a)) variants
       in
-      Some (function_ cases)
+      Some (lambda_s "n" (function_ cases))
     with Exit | Invalid_argument _ -> None
 
   let make name (variants : variants) : t =
