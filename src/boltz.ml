@@ -85,4 +85,4 @@ let pp fmt {spec; aux_rules} =
       Format.fprintf fmt "\nwhere:\n%a" Arbogen.Frontend.ParseTree.pp
         aux_rules
 
-let markdown fmt = Format.fprintf fmt "```\n%a\n```\n" pp
+let markdown fmt = Format.fprintf fmt "\n```\n%a\n```\n" pp

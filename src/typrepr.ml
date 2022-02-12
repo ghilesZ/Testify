@@ -6,8 +6,6 @@ open Location
 
 (** {1 Internal representation of an OCaml type} *)
 
-type collect_tag = int option
-
 type t =
   { id: string
   ; boltz: (Boltz.t, string) Result.t
@@ -15,7 +13,7 @@ type t =
   ; of_arbogen: (expression, string) Result.t
         (** AST of a function that converts an arbogen tree to the current
             type *)
-  ; tag: collect_tag
+  ; tag: int option
   ; collector: expression option
         (** AST of a function collecting values subject to a global
             constraint in an inhabitant of the type. *)
@@ -30,10 +28,10 @@ type t =
 let print fmt {id; gen; spec; card; print; boltz; of_arbogen; collector; _} =
   Format.fprintf fmt "- type %s\n" id ;
   let print_expr fmt =
-    Format.fprintf fmt "@.\n```ocaml@.@[%a@]@.```\n" print_expression
+    Format.fprintf fmt "\n```ocaml@,%a```\n" print_expression
   in
   let print_opt f fmt = function
-    | None -> Format.fprintf fmt " none"
+    | None -> Format.fprintf fmt "none"
     | Some e -> f fmt e
   in
   let print_res f fmt = function
@@ -42,13 +40,21 @@ let print fmt {id; gen; spec; card; print; boltz; of_arbogen; collector; _} =
   in
   Format.fprintf fmt "- Cardinality: %a\n" Card.pp card ;
   Format.fprintf fmt "- Printer:\n%a\n" print_expr print ;
+  Format.fprintf fmt
+    "@[<v 2><details>@,<summary>Collector</summary>@,%a\n</details>@]\n"
+    (print_opt print_expr) collector ;
   Format.fprintf fmt "- Specification:\n%a\n" (print_opt print_expr) spec ;
-  Format.fprintf fmt "- Boltzmann specification:\n%a\n"
+  Format.fprintf fmt
+    "@[<v 2><details>@,\
+     <summary>Boltzmann specification</summary>@,\
+     %a\n\
+     </details>@]\n"
     (print_res Boltz.markdown)
     boltz ;
-  Format.fprintf fmt "- Of_arbogen:\n%a\n" (print_res print_expr) of_arbogen ;
-  Format.fprintf fmt "- Generator:\n%a\n" (print_opt print_expr) gen ;
-  Format.fprintf fmt "- Collector:\n%a\n" (print_opt print_expr) collector
+  Format.fprintf fmt
+    "@.@[<v 2><details>@,<summary>Of_arbogen</summary>@,%a\n</details>@]\n"
+    (print_res print_expr) of_arbogen ;
+  Format.fprintf fmt "- Generator:\n%a\n" (print_opt print_expr) gen
 
 (** {2 Constructors} *)
 
