@@ -184,33 +184,25 @@ let string_concat ?(sep = "") = function
         (if sep = "" then ( ^@ ) else fun acc e -> acc ^@ string_ sep ^@ e)
         h tl
 
-(* keeps the attributes with name 'n'*)
-let check_attributes n attrs =
-  List.filter (fun a -> a.attr_name.txt = n) attrs
-
-(* gets the only attribute with name 'n', raises an error if more than one,
-   None if 0 *)
-let get_attribute_payload n attrs =
-  match check_attributes n attrs with
-  | [] -> None
-  | [{attr_payload; _}] -> Some attr_payload
-  | _ -> Format.asprintf "only one %s attribute accepted" n |> failwith
-
-(* gets the pstr payload attached to an attribute *)
-let get_attribute_pstr n attrs =
-  match get_attribute_payload n attrs with
-  | Some (PStr [{pstr_desc= Pstr_eval (e, _); _}]) -> Some e
-  | Some _ -> Format.kasprintf failwith "bad %s attribute" n
-  | None -> None
-
-let has_attribute n attrs = get_attribute_payload n attrs |> Option.is_some
-
 (* printing *)
 
 module Conv = Convert (OCaml_410) (OCaml_current)
 
+let file_to_string filename =
+  let ch = open_in filename in
+  let s = really_input_string ch (in_channel_length ch) in
+  close_in ch ; s
+
 let print_expression fmt e =
-  Pprintast.expression fmt (Conv.copy_expression e)
+  let oc = open_out "raw.ml" in
+  let fmt_oc = Format.formatter_of_out_channel oc in
+  Format.fprintf fmt_oc "%a%!" Pprintast.expression (Conv.copy_expression e) ;
+  if Sys.command "ocamlformat raw.ml > formatted.ml" = 0 then
+    Format.fprintf fmt "%s" (file_to_string "formatted.ml")
+  else
+    Format.fprintf fmt "%a%!" Pprintast.expression (Conv.copy_expression e) ;
+  close_out oc ;
+  Sys.command "rm -f formatted.ml raw.ml" |> ignore
 
 let print_longident fmt l =
   l |> Longident.flatten |> String.concat "." |> Format.pp_print_string fmt
@@ -225,13 +217,51 @@ let print_td fmt (recflag, types) =
   let sig_ =
     {psig_desc= Psig_type (recflag, types); psig_loc= Location.none}
   in
-  Pprintast.signature fmt (Conv.copy_signature [sig_])
+  let oc = open_out "raw.ml" in
+  let fmt_oc = Format.formatter_of_out_channel oc in
+  Format.fprintf fmt_oc "%a%!" Pprintast.signature
+    (Conv.copy_signature [sig_]) ;
+  if Sys.command "ocamlformat raw.ml > formatted.ml" = 0 then
+    Format.fprintf fmt "%s" (file_to_string "formatted.ml")
+  else
+    Format.fprintf fmt "%a%!" Pprintast.signature
+      (Conv.copy_signature [sig_]) ;
+  close_out oc ;
+  Sys.command "rm -f formatted.ml raw.ml" |> ignore
 
 let print_type_decl fmt t =
   let sig_ =
     {psig_desc= Psig_type (Recursive, [t]); psig_loc= Location.none}
   in
   Pprintast.signature fmt (Conv.copy_signature [sig_])
+
+let print_payload fmt = function
+  | PStr str -> Pprintast.structure fmt (Conv.copy_structure str)
+  | PSig sig_ -> Pprintast.signature fmt (Conv.copy_signature sig_)
+  | PTyp ct -> print_coretype fmt ct
+  | PPat (pattern, Some expr) ->
+      Format.fprintf fmt "%a %a" print_pat pattern print_expression expr
+  | PPat (pattern, None) -> Format.fprintf fmt "%a" print_pat pattern
+
+(* keeps the attributes with name 'n'*)
+let check_attributes n attrs =
+  List.filter (fun a -> a.attr_name.txt = n) attrs
+
+(* gets the only attribute with name 'n', raises an error if more than one,
+   None if 0 *)
+let get_attribute_payload n attrs =
+  match check_attributes n attrs with
+  | [] -> None
+  | [{attr_payload; _}] -> Some attr_payload
+  | _ -> Format.asprintf "only one %s attribute accepted" n |> failwith
+
+(* gets the single pstr payload attached to an attribute *)
+let get_attribute_pstr n attrs =
+  match get_attribute_payload n attrs with
+  | Some (PStr [{pstr_desc= Pstr_eval (e, _); _}]) -> Some e
+  | _ -> None
+
+let has_attribute n attrs = get_attribute_payload n attrs |> Option.is_some
 
 (* markdown escaping *)
 let md str = String.split_on_char '*' str |> String.concat "\\*"

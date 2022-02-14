@@ -13,9 +13,10 @@ let add_fun count id loc print gen pred =
   let t = QCheck.Test.make ~count ~name arb pred in
   tests := t :: !tests
 
-let add_const count id loc pred =
+let add_const count id loc str pred =
   let name = Format.asprintf "constant %s in %s" (bold_blue id) (blue loc) in
-  let arb = QCheck.make QCheck.Gen.unit in
+  let print () = str in
+  let arb = QCheck.make ~print QCheck.Gen.unit in
   let t = QCheck.Test.make ~count ~name arb pred in
   tests := t :: !tests
 
@@ -57,12 +58,6 @@ type instance = (string * generable) list
 let get_int name (l : instance) = List.assoc name l |> to_int
 
 let get_float name (l : instance) = List.assoc name l |> to_float
-
-(* recursive types handling *)
-
-let consume = function
-  | [] -> invalid_arg "Testify_runtime.consume on emtpy list"
-  | h :: tl -> (h, tl)
 
 (* GENERATORS *)
 
@@ -110,31 +105,52 @@ module Arbg = struct
 
   let max_try = ref 1_000_000
 
-  let size = ref 30
+  let size = ref 10
+
+  let consume = function
+    | [] -> invalid_arg "Testify_runtime.consume on emtpy list"
+    | h :: tl -> (h, tl)
+
+  type 'a store = 'a list array
+
+  (* modifies in place the store *)
+  let consume_store n store =
+    let len = Array.length store in
+    if len < n then
+      Format.asprintf "consume_store %i on store of size %i" n len
+      |> invalid_arg
+    else
+      let nth = store.(n) in
+      let value, rest = consume nth in
+      store.(n) <- rest ; value
 
   let to_unit arbg lst rs =
     match arbg with
-    | Label ("@collect", []) -> consume lst
-    | Label (_, []) -> (QCheck.Gen.unit rs, lst)
-    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_unit"
+    | Label ("@collect", []) -> consume_store 0 lst
+    | Label (_, []) -> QCheck.Gen.unit rs
+    | Label (s, _) -> invalid_arg ("arbogen_to_unit wrong label:" ^ s)
+    | Tuple _ -> invalid_arg "arbogen_to_unit, expected label but was tuple"
 
   let to_bool arbg lst rs =
     match arbg with
-    | Label ("@collect", []) -> consume lst
-    | Label (_, []) -> (QCheck.Gen.bool rs, lst)
-    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_bool"
+    | Label ("@collect", []) -> consume_store 0 lst
+    | Label (_, []) -> QCheck.Gen.bool rs
+    | Label (s, _) -> invalid_arg ("arbogen_to_bool wrong label:" ^ s)
+    | Tuple _ -> invalid_arg "arbogen_to_bool, expected bool but was tuple"
 
   let to_int arbg lst rs =
     match arbg with
-    | Label ("@collect", []) -> consume lst
-    | Label (_, []) -> (QCheck.Gen.int rs, lst)
-    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_int"
+    | Label ("@collect", []) -> consume_store 0 lst
+    | Label (_, []) -> QCheck.Gen.int rs
+    | Label (s, _) -> invalid_arg ("arbogen_to_int wrong label:" ^ s)
+    | Tuple _ -> invalid_arg "arbogen_to_int, expected int but was tuple"
 
   let to_float arbg lst rs =
     match arbg with
-    | Label ("@collect", []) -> consume lst
-    | Label (_, []) -> (QCheck.Gen.float rs, lst)
-    | Label (_, _) | Tuple _ -> invalid_arg "arbogen_to_float"
+    | Label ("@collect", []) -> consume_store 0 lst
+    | Label (_, []) -> QCheck.Gen.float rs
+    | Label (s, _) -> invalid_arg ("arbogen_to_float wrong label:" ^ s)
+    | Tuple _ -> invalid_arg "arbogen_to_float, expected float but was tuple"
 
   let count_collect =
     let sum = List.fold_left Int.add in
@@ -166,15 +182,15 @@ end
 
 (* collectors *)
 module Collect = struct
-  let unit () = [()]
+  let unit _ () = [()]
 
-  let bool (x : bool) = [x]
+  let bool _ (x : bool) = [x]
 
-  let char (x : char) = [x]
+  let char _ (x : char) = [x]
 
-  let int (x : int) = [x]
+  let int _ (x : int) = [x]
 
-  let float (x : float) = [x]
+  let float _ (x : float) = [x]
 end
 
 let count = ref 1000

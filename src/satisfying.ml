@@ -17,7 +17,8 @@ let seed : int option ref = ref None
 let set_seed x = seed := Some x
 
 (* test generation for constants *)
-let test_constant (name : string) (loc : Location.t) (f : expression) =
+let test_constant (name : string) (loc : Location.t) (str : expression)
+    (f : expression) =
   let loc = Format.asprintf "%a" Location.print_loc loc in
   let f = lambda_s "_" (apply_nolbl f [exp_id name]) in
   letunit
@@ -25,6 +26,7 @@ let test_constant (name : string) (loc : Location.t) (f : expression) =
        [ one
        ; string_ name
        ; string_ loc
+       ; str
        ; let_open "Testify_runtime.Operators" f ] )
 
 (* test generation for functions *)
@@ -80,9 +82,18 @@ let generate (fn : string) loc args out_print satisfy =
 (* Derivation *)
 (**************)
 
-(** True if and only if the type has the [@collect] attribute. *)
-let is_collected (ct : Parsetree.core_type) : bool =
-  Helper.has_attribute "collect" ct.ptyp_attributes
+(** True if and only if the type has the [@collect id] attribute. omission of
+    id means [@collect 0] *)
+let is_collected (ct : Parsetree.core_type) : int option =
+  if Helper.has_attribute "collect" ct.ptyp_attributes then
+    Helper.get_attribute_pstr "collect" ct.ptyp_attributes
+    |> Option.fold
+         ~some:(function
+           | {pexp_desc= Pexp_constant (Pconst_integer (s, None)); _} ->
+               Some (int_of_string s)
+           | _ -> failwith "wrong payload for collect attribute" )
+         ~none:(Some 0)
+  else None
 
 (* derivation function for type declaration *)
 let rec derive_decl (s : Module_state.t) params td : Typrepr.t =
@@ -112,7 +123,7 @@ let rec derive_decl (s : Module_state.t) params td : Typrepr.t =
         Typrepr.Sum.make td.ptype_name.txt (List.map constr_f constructors)
     | Ptype_record labs ->
         let lab_f l = (l.pld_name.txt, derive_ctype s params l.pld_type) in
-        Typrepr.Record.make (List.map lab_f labs)
+        Typrepr.Record.make td.ptype_name.txt (List.map lab_f labs)
     | Ptype_open -> Typrepr.empty !current_loc td.ptype_name.txt )
 
 (* derivation function for core types *)
@@ -123,25 +134,36 @@ and derive_ctype (state : Module_state.t) params ct : Typrepr.t =
         (derive_ctype state params {ct with ptyp_attributes= []})
         e
   | None -> (
-    match ct.ptyp_desc with
-    | Ptyp_var var -> List.assoc var params
-    | Ptyp_constr ({txt; _}, []) ->
-        Option.fold ~some:Fun.id
-          ~none:(Typrepr.empty !current_loc (lid_to_string txt))
-          (Module_state.get txt state)
-    | Ptyp_constr ({txt; _}, l) ->
-        let p = Module_state.get_param txt state |> Option.get in
-        let env = State.get_env p (List.map (derive_ctype state params) l) in
-        derive_decl state env p.body
-    | Ptyp_poly (_, ct) -> derive_ctype state params ct
-    | Ptyp_tuple tup ->
-        Typrepr.Product.make (List.map (derive_ctype state params) tup)
-    | Ptyp_arrow (Nolabel, input, output) ->
-        let input = derive_ctype state params input in
-        let output = derive_ctype state params output in
-        Typrepr.Arrow.make input output
-    | _ ->
-        Typrepr.empty !current_loc (Format.asprintf "%a" print_coretype ct) )
+    match is_collected ct with
+    | Some i ->
+        Typrepr.Collect.make
+          (derive_ctype state params {ct with ptyp_attributes= []})
+          i
+    | None -> (
+      match ct.ptyp_desc with
+      | Ptyp_var var -> List.assoc var params
+      | Ptyp_constr ({txt; _}, []) ->
+          Option.fold ~some:Fun.id
+            ~none:(Typrepr.empty !current_loc (lid_to_string txt))
+            (Module_state.get txt state)
+      | Ptyp_constr ({txt; _}, l) ->
+          let p = Module_state.get_param txt state |> Option.get in
+          let env =
+            State.get_env p (List.map (derive_ctype state params) l)
+          in
+          derive_decl state env p.body
+      | Ptyp_poly (_, ct) -> derive_ctype state params ct
+      | Ptyp_tuple tup ->
+          let id = Format.asprintf "%a" print_coretype ct in
+          Typrepr.Product.make id (List.map (derive_ctype state params) tup)
+      | Ptyp_arrow (Nolabel, input, output) ->
+          let id = Format.asprintf "%a" print_coretype ct in
+          let input = derive_ctype state params input in
+          let output = derive_ctype state params output in
+          Typrepr.Arrow.make id input output
+      | _ ->
+          Typrepr.empty !current_loc (Format.asprintf "%a" print_coretype ct)
+      ) )
 
 let derive state (recflag, typs) =
   Log.type_decl (recflag, typs) ;
@@ -202,21 +224,12 @@ let derive state (recflag, typs) =
             in
             let glb_constr =
               match get_attribute_pstr "satisfying" td.ptype_attributes with
-              | Some e -> (
-                match (glb_constr, GlobalConstraint.search e) with
-                | Some _, Some _ ->
-                    failwith
-                      "Found two global contraints, please only specify one"
-                | None, (Some _ as g) -> g
-                | _, None ->
-                    Format.ksprintf failwith
-                      "I didn't understand the global constraint for\n\
-                      \            type %s" td.ptype_name.txt )
+              | Some e -> glb_constr @ GlobalConstraint.search e
               | None -> glb_constr
             in
             ((name, typ) :: mono, poly, glb_constr)
         | _ -> (mono, td :: poly, glb_constr) )
-      ([], [], None) rec_
+      ([], [], []) rec_
   in
   let mono_typs =
     match mono_typs with
@@ -297,7 +310,9 @@ let gather_tests vb state =
       match info with
       | {spec= Some p; _} ->
           Log.print " is attached a specification. Generating a test.\n%!" ;
-          [test_constant txt vb.pvb_loc p]
+          [ test_constant txt vb.pvb_loc
+              (apply_nolbl info.print [exp_id txt])
+              p ]
       | _ ->
           Log.print " is not attached a specification.\n%!" ;
           [] )

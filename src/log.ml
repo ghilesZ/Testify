@@ -32,10 +32,10 @@ let type_decl ((_, typs) as td) =
   let open Helper in
   let open Migrate_parsetree.Ast_410.Parsetree in
   print "### Declaration of type(s)\n" ;
-  print "- source:\n```ocaml@.@[%a@]\n```\n" print_td td ;
+  print "- source:\n\n```ocaml@.%a\n```\n\n" print_td td ;
   List.iter
     (fun td ->
-      print "- name:  `%s`\n- Kind: %s%s%s\n" td.ptype_name.txt
+      print "- Kind: %s%s%s\n"
         ( if
           Option.is_none
             (get_attribute_pstr "satisfying" td.ptype_attributes)
