@@ -325,12 +325,21 @@ let gather_tests vb state =
           []
       | Some (args, ct) -> (
           let info = derive_ctype state [] ct in
+          let printer =
+            try
+              Some
+                ( Typlang.parse_ct ct
+                |> Typlang.printer (fun s ->
+                       let t = Module_state.get (lparse s) state in
+                       (Option.get t).print ) )
+            with _ -> None
+          in
           Log.print "Return type `%a`%!" print_coretype ct ;
-          match info with
-          | {spec= Some prop; _} ->
+          match (info, printer) with
+          | {spec= Some prop; _}, Some printer ->
               Log.print
                 " is attached a specification. Generating a test.\n%!" ;
-              [generate txt vb.pvb_loc args info.print prop]
+              [generate txt vb.pvb_loc args printer prop]
           | _ ->
               Log.print " is not attached a specification.\n%!" ;
               [] ) )

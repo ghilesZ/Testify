@@ -27,6 +27,11 @@ and arith =
 
 and bop = Add | Sub | Mul | Div | Pow | AddF | SubF | MulF | DivF
 
+let print_lop fmt = function
+  | Imply -> Format.fprintf fmt "==>"
+  | And -> Format.fprintf fmt "&&"
+  | Or -> Format.fprintf fmt "||"
+
 let print_bop fmt = function
   | Add -> Format.fprintf fmt "+"
   | Sub -> Format.fprintf fmt "-"
@@ -56,6 +61,16 @@ let rec print_arith fmt = function
   | ToInt a -> Format.fprintf fmt "(int_of_float %a)" print_arith a
   | ToFloat a -> Format.fprintf fmt "(float_of_int %a)" print_arith a
   | Var v -> Format.fprintf fmt "%s" v
+
+let rec print fmt = function
+  | Rejection e ->
+      Format.fprintf fmt "reject %a" Pprintast.expression
+        (Conv.copy_expression e)
+  | Boolop (c1, lop, c2) ->
+      Format.fprintf fmt "%a %a %a" print c1 print_lop lop print c2
+  | Comparison (a1, cmp, a2) ->
+      Format.fprintf fmt "%a %a %a" print_arith a1 print_cmp cmp print_arith
+        a2
 
 let neg_cmp = function
   | Lt -> Geq

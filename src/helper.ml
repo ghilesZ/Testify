@@ -193,6 +193,8 @@ let file_to_string filename =
   let s = really_input_string ch (in_channel_length ch) in
   close_in ch ; s
 
+let sep s fmt () = Format.fprintf fmt "%s" s
+
 let print_expression fmt e =
   let oc = open_out "raw.ml" in
   let fmt_oc = Format.formatter_of_out_channel oc in
