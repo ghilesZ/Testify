@@ -6,6 +6,9 @@ _obuild
 *.byte
 *.docdir
 .merlin
+*.sav
+*.so
+*.o
 
 /rewrite
 *.markdown
