@@ -10,7 +10,7 @@
 #define DEBUG_TEST 0
 #endif
 #define LOG(X...)\
-            do { if (DEBUG_TEST) fprintf(stderr, X); } while (0)
+  do { if (DEBUG_TEST) fprintf(stderr, X); } while (0)
 
 unsigned char buff[MAX];
 

@@ -31,7 +31,7 @@ let exit_code = '\001'
 let process =
   lazy
     (let () = Unix.putenv "LD_LIBRARY_PATH" "/usr/local/sicstus4.7.1/lib" in
-     let ((p_out, p_in) as process) = Unix.open_process "./oracle" in
+     let ((p_out, p_in) as process) = Unix.open_process "oracle" in
      let pid = Unix.process_pid process in
      let p_out, p_in =
        (Unix.descr_of_in_channel p_out, Unix.descr_of_out_channel p_in)
