@@ -1,7 +1,5 @@
-(include_subdirs unqualified)
-
 (library
-  (public_name testify_runtime)
-  (name testify_runtime)
-  (foreign_stubs (language c) (names sicstus_stubs))
-  (libraries qcheck arbogen))
+ (public_name testify_runtime)
+ (name testify_runtime)
+ (libraries sicstus_proxy qcheck arbogen)
+)

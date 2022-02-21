@@ -1,3 +1,5 @@
+module Sicstus = Sicstus_proxy.Proxy
+
 let tests = ref ([] : QCheck.Test.t list)
 
 (* same as [pp], but in bold blue] *)
@@ -26,7 +28,9 @@ let run_test () =
   |> ignore ;
   tests := []
 
-let set_seed = QCheck_base_runner.set_seed
+let set_seed x =
+  QCheck_base_runner.set_seed x ;
+  Sicstus.set_seed x
 
 (* input -> output utilities *)
 let opt_pred pred = function None -> true | Some x -> pred x

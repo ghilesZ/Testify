@@ -20,61 +20,35 @@ let print fmt {id; _} = Format.fprintf fmt "%s" id
 let increasing =
   { id= "increasing"
   ; value_provider=
-      (fun loc ->
-        [%expr
-          fun nb_collect ->
-            List.init nb_collect (fun _ -> Random.int 100)
-            |> List.sort Int.compare] )
+      (fun loc -> [%expr Testify_runtime.Sicstus.increasing_list])
   ; checker= (fun loc -> [%expr Testify_runtime.increasing])
   ; group= 0 }
 
 let increasing_strict =
   { id= "increasing_strict"
   ; value_provider=
-      (fun _loc ->
-        Format.ksprintf failwith "Not implemented: global constraint \"%s\""
-          "increasing_strict" )
+      (fun loc -> [%expr Testify_runtime.Sicstus.increasing_strict_list])
   ; checker= (fun loc -> [%expr increasing_strict])
   ; group= 0 }
 
 let decreasing =
   { id= "decreasing"
   ; value_provider=
-      (fun _loc ->
-        Format.ksprintf failwith "Not implemented: global constraint \"%s\""
-          "decreasing" )
+      (fun loc -> [%expr Testify_runtime.Sicstus.decreasing_list])
   ; checker= (fun loc -> [%expr decreasing])
   ; group= 0 }
 
 let decreasing_strict =
   { id= "decreasing_strict"
   ; value_provider=
-      (fun _loc ->
-        Format.ksprintf failwith "Not implemented: global constraint \"%s\""
-          "decreasing_strict" )
+      (fun loc -> [%expr Testify_runtime.Sicstus.decreasing_strict_list])
   ; checker= (fun loc -> [%expr decreasing_strict])
   ; group= 0 }
 
 let alldiff =
   { id= "alldiff"
-  ; value_provider=
-      (fun loc ->
-        [%expr
-          fun nb_collect -> List.init nb_collect (fun _ -> Random.int 100)]
-        )
+  ; value_provider= (fun loc -> [%expr Testify_runtime.Sicstus.all_diff_list])
   ; checker= (fun loc -> [%expr Testify_runtime.alldiff])
-  ; group= 0 }
-
-let make_not_implemented id =
-  { id
-  ; value_provider=
-      (fun _loc ->
-        Format.ksprintf failwith "Not implemented: global constraint \"%s\""
-          id )
-  ; checker=
-      (fun _loc ->
-        Format.ksprintf failwith "Not implemented: global constraint \"%s\""
-          id )
   ; group= 0 }
 
 let all =

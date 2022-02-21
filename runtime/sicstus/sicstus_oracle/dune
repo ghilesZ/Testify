@@ -1,0 +1,15 @@
+(rule
+ (deps (source_tree .))
+ (targets ghost.ml)
+ (action (progn
+          (system make)
+          (setenv LD_LIBRARY_PATH /usr/local/sicstus4.7.1/lib (echo ""))
+          (run touch ghost.ml)))
+)
+
+(library
+ (name sicstus_proxy)
+ (public_name sicstus_proxy)
+ (libraries lwt.unix)
+ (modules Proxy Ghost)
+)
