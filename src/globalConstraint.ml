@@ -28,21 +28,21 @@ let increasing_strict =
   { id= "increasing_strict"
   ; value_provider=
       (fun loc -> [%expr Testify_runtime.Sicstus.increasing_strict_list])
-  ; checker= (fun loc -> [%expr increasing_strict])
+  ; checker= (fun loc -> [%expr Testify_runtime.increasing_strict])
   ; group= 0 }
 
 let decreasing =
   { id= "decreasing"
   ; value_provider=
       (fun loc -> [%expr Testify_runtime.Sicstus.decreasing_list])
-  ; checker= (fun loc -> [%expr decreasing])
+  ; checker= (fun loc -> [%expr Testify_runtime.decreasing])
   ; group= 0 }
 
 let decreasing_strict =
   { id= "decreasing_strict"
   ; value_provider=
       (fun loc -> [%expr Testify_runtime.Sicstus.decreasing_strict_list])
-  ; checker= (fun loc -> [%expr decreasing_strict])
+  ; checker= (fun loc -> [%expr Testify_runtime.decreasing_strict])
   ; group= 0 }
 
 let alldiff =
