@@ -71,7 +71,7 @@ let compile (rules : Frontend.ParseTree.t) =
   let grammar =
     rules |> Frontend.ParseTree.completion |> Frontend.ParseTree.to_grammar
   in
-  let oracle = Boltzmann.Oracle.Naive.make_expectation 30 grammar in
+  let oracle = Boltzmann.Oracle.Naive.make_expectation 100000 grammar in
   let wg = Boltzmann.WeightedGrammar.of_grammar oracle grammar in
   Printer.weighted_grammar wg
 

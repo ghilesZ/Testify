@@ -1,0 +1,2 @@
+(executables (names bst itv_tree assoc_list)
+            (libraries testify_runtime)) 
