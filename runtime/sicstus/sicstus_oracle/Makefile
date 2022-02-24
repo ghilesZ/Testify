@@ -1,5 +1,5 @@
-SPLD=/usr/local/sicstus4.7.1/bin/spld
-SICSTUS=/usr/local/sicstus4.7.1/bin/sicstus
+SPLD=/home/dien/sicstus/bin/spld
+SICSTUS=/home/dien/sicstus/bin/sicstus
 
 all: oracle install
 
