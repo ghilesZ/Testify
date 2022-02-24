@@ -612,13 +612,13 @@ module Sum = struct
               List.map_result
                 (fun (t, collect) ->
                   (* XXX. This assumes that [@collect] occurs only on atomic types *)
-                  if Option.is_some collect then Ok (Boltz.ref "@collect")
+                  if Option.is_some collect then Ok Boltz.(product [z; ref "@collect"])
                   else t.boltz )
                 args
             in
             Boltz.product args
       in
-      Boltz.(product [z; indirection name args_spec])
+      Boltz.(product [indirection name args_spec])
     in
     function
     | [] -> Result.error "Empty sum type"
