@@ -45,7 +45,7 @@ let () =
   Random.self_init () ;
   Format.printf "\n====map====\n" ;
   Format.printf "targeted_size average_size nb_generated average_time\n" ;
-  let allowed_time = 60. in
+  let allowed_time = 3. in
   List.iter
     (fun i ->
       Testify_runtime.Arbg.size := i*2 ;

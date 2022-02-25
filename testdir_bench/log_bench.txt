@@ -142,3 +142,49 @@ targeted_size average_size nb_generated average_time
 targeted_size average_size nb_generated average_time
 10 9.000000 238690 0.000096
 100 94.374540 21210 0.000667
+
+
+ALLOWED_TIME = 1. sec.
+
+====quadtree====
+targeted_size average_size nb_generated average_time
+10 8.000000 18020 0.000055
+100 93.849561 2393 0.000417
+1000 947.727273 264 0.003737
+10000 9435.200000 25 0.039880
+
+
+ALLOWED_TIME = 60. sec.
+
+====quadtree====
+targeted_size average_size nb_generated average_time
+10 8.000000 834486 0.000071
+
+
+ALLOWED_TIME = 3. sec.
+
+====quadtree====
+targeted_size average_size nb_generated average_time
+10 8.000000 70002 0.000043
+100 93.849738 7254 0.000414
+1000 945.294737 380 0.004019
+10000 9714.000000 3 0.056332
+
+====map====
+targeted_size average_size nb_generated average_time
+10 9.000000 33017 0.000091
+
+
+ALLOWED_TIME = 60. sec.
+
+====quadtree====
+targeted_size average_size nb_generated average_time
+10 8.000000 771564 0.000078
+
+
+ALLOWED_TIME = 10. sec.
+
+====quadtree====
+targeted_size average_size nb_generated average_time
+10 8.000000 209398 0.000048
+100 93.855115 23315 0.000429

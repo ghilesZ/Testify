@@ -1,33 +1,33 @@
-type interval_tree_x =
+type quad_tree_x =
   | LeafX
   | NodeX of
       (int[@collect 1])
-      * interval_tree_y
-      * interval_tree_y
+      * quad_tree_y
+      * quad_tree_y
       * (int[@collect 2])
 [@@satisfying fun x -> increasing x 1 && increasing x 2]
 
-and interval_tree_y =
+and quad_tree_y =
   | LeafY
   | NodeY of
       (int[@collect 3])
-      * interval_tree_x
-      * interval_tree_x
+      * quad_tree_x
+      * quad_tree_x
       * (int[@collect 4])
 [@@satisfying fun x -> increasing x 3 && increasing x 4]
 
 let gen_quad =
-  let rec of_arbogen_interval_tree_x arbg queue rs =
+  let rec of_arbogen_quad_tree_x arbg queue rs =
     match arbg with
-    | Arbogen.Tree.Label ("interval_tree_x", [Tuple []; child]) -> (
+    | Arbogen.Tree.Label ("quad_tree_x", [Tuple []; child]) -> (
       match child with
       | Arbogen.Tree.Label ("LeafX", []) -> LeafX
       | Arbogen.Tree.Label ("NodeX", [x1; x2; x3; x4]) ->
           let x1, x2, x3, x4 =
             (fun queue rs ->
               let x1 = Testify_runtime.Arbg.to_int x1 queue rs in
-              let x2 = of_arbogen_interval_tree_y x2 queue rs in
-              let x3 = of_arbogen_interval_tree_y x3 queue rs in
+              let x2 = of_arbogen_quad_tree_y x2 queue rs in
+              let x3 = of_arbogen_quad_tree_y x3 queue rs in
               let x4 = Testify_runtime.Arbg.to_int x4 queue rs in
               (x1, x2, x3, x4) )
               queue rs
@@ -35,17 +35,17 @@ let gen_quad =
           NodeX (x1, x2, x3, x4)
       | _ -> failwith "Ill-formed arbogen tree" )
     | _ -> failwith "Ill-formed arbogen tree"
-  and of_arbogen_interval_tree_y arbg queue rs =
+  and of_arbogen_quad_tree_y arbg queue rs =
     match arbg with
-    | Arbogen.Tree.Label ("interval_tree_y", [Tuple []; child]) -> (
+    | Arbogen.Tree.Label ("quad_tree_y", [Tuple []; child]) -> (
       match child with
       | Arbogen.Tree.Label ("LeafY", []) -> LeafY
       | Arbogen.Tree.Label ("NodeY", [x1; x2; x3; x4]) ->
           let x1, x2, x3, x4 =
             (fun queue rs ->
               let x1 = Testify_runtime.Arbg.to_int x1 queue rs in
-              let x2 = of_arbogen_interval_tree_x x2 queue rs in
-              let x3 = of_arbogen_interval_tree_x x3 queue rs in
+              let x2 = of_arbogen_quad_tree_x x2 queue rs in
+              let x3 = of_arbogen_quad_tree_x x3 queue rs in
               let x4 = Testify_runtime.Arbg.to_int x4 queue rs in
               (x1, x2, x3, x4) )
               queue rs
@@ -58,10 +58,10 @@ let gen_quad =
     let wg =
       let open Arbogen.Boltzmann.WeightedGrammar in
       { names=
-          [| "interval_tree_x"
+          [| "quad_tree_x"
            ; "LeafX"
            ; "NodeX"
-           ; "interval_tree_y"
+           ; "quad_tree_y"
            ; "LeafY"
            ; "NodeY"
            ; "@collect" |]
@@ -78,19 +78,19 @@ let gen_quad =
            ; Product [Ref 6; Ref 0; Ref 0; Ref 6]
            ; Z 0 |] }
     in
-    let tree = Testify_runtime.Arbg.generate wg "interval_tree_x" rs in
+    let tree = Testify_runtime.Arbg.generate wg "quad_tree_x" rs in
     let nb_collect = Testify_runtime.Arbg.count_collect tree in
     let queue =
       (fun n -> [|Testify_runtime.Sicstus.increasing_list n|]) nb_collect
     in
-    (nb_collect, of_arbogen_interval_tree_x tree queue rs)
+    (nb_collect, of_arbogen_quad_tree_x tree queue rs)
 
 let () =
   Printexc.record_backtrace true ;
   Random.self_init () ;
   Format.printf "\n====quadtree====\n" ;
   Format.printf "targeted_size average_size nb_generated average_time\n" ;
-  let allowed_time = 1. in
+  let allowed_time = 10. in
   List.iter
     (fun i ->
       Testify_runtime.Arbg.size := i ;
