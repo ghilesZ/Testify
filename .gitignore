@@ -13,5 +13,4 @@ _obuild
 /rewrite
 *.markdown
 gen/*
-testdir_*
 oracle
