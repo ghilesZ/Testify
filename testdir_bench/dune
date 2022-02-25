@@ -1,3 +1,3 @@
 (executables
-(names bst itv_tree assoc_list increasing_list)
-(libraries testify_runtime)) 
+(names bst itv_tree assoc_list increasing_list map)
+(libraries testify_runtime))

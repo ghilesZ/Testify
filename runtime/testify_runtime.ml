@@ -37,7 +37,9 @@ let opt_pred pred = function None -> true | Some x -> pred x
 
 let opt_gen g rs =
   try Some (g rs)
-  with Invalid_argument _ | QCheck.No_example_found _ -> None
+  with (Invalid_argument _ | QCheck.No_example_found _) as e ->
+    Format.eprintf "%s\n" (Printexc.to_string e) ;
+    None
 
 let opt_print p = function
   | Some x -> p x
@@ -117,6 +119,9 @@ module Arbg = struct
 
   type 'a store = 'a list array
 
+  let print_store print_elem fmt store =
+    Array.iter (Format.pp_print_list print_elem fmt) store
+
   (* modifies in place the store *)
   let consume_store n store =
     let len = Array.length store in
@@ -142,12 +147,25 @@ module Arbg = struct
     | Label (s, _) -> invalid_arg ("arbogen_to_bool wrong label:" ^ s)
     | Tuple _ -> invalid_arg "arbogen_to_bool, expected bool but was tuple"
 
-  let to_int arbg lst rs =
+  let to_int arbg (lst : int store) rs =
     match arbg with
     | Label ("@collect", []) -> consume_store 0 lst
     | Label (_, []) -> QCheck.Gen.int rs
     | Label (s, _) -> invalid_arg ("arbogen_to_int wrong label:" ^ s)
-    | Tuple _ -> invalid_arg "arbogen_to_int, expected int but was tuple"
+    | Tuple [] -> QCheck.Gen.int rs
+    | Tuple l ->
+        let size_tuple = List.length l in
+        Format.asprintf
+          "arbogen_to_int, expected int but was %i-uplet. Store: %a"
+          size_tuple
+          (print_store Format.pp_print_int)
+          lst
+        |> invalid_arg
+
+  let print t =
+    let oc = stdout in
+    let t = Arbogen.Tree.annotate t in
+    Arbogen.Tree.output_dot ~show_type:true ~show_id:false ~indent:true oc t
 
   let to_float arbg lst rs =
     match arbg with
