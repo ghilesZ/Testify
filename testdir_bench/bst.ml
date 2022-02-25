@@ -149,39 +149,69 @@ let gen_reject_bst count =
     false
   with Stop -> true
 
-
 let () =
+  Printexc.record_backtrace true;
   Random.self_init ();
-  Testify_runtime.count := 1;
-  (* spec_binary_tree (gen_arbitrary_bst (Random.get_state ())) |> ignore; *)
-  print_newline ();
-  for i = 1 to 20 do
-    Testify_runtime.Arbg.size := i ;
-    let tstart = Unix.gettimeofday () in
-    let res = gen_reject_bst (i*1000) in
-    let tend = Unix.gettimeofday () in
-    Format.printf "rejection %d %f %b\n" i (tend -. tstart) res;
-  done;
+  Format.printf "\n====bst====\n";
+  Format.printf "targeted_size average_size nb_generated average_time\n";
+  let allowed_time = 1. in
+  List.iter (fun i ->
+      Testify_runtime.Arbg.size := i*2;
+      let ttotal = ref 0. in
+      let nb_generated = ref 0 in
+      let size_generated = ref 0 in
+      try
+        while true do
+          let tstart = Unix.gettimeofday () in
+          let size, _ = gen_bst (Random.get_state ()) in
+          let tend = Unix.gettimeofday () in
+          if !ttotal +. tend -. tstart > allowed_time then
+            raise Exit;
+          size_generated := !size_generated + size;
+          incr nb_generated;
+          ttotal := !ttotal +. tend -. tstart;
+        done;
+      with Exit ->
+            begin
+              Format.printf "%d %f %d %f\n" i ((float_of_int !size_generated) /. (float_of_int !nb_generated)) !nb_generated (!ttotal /. (float_of_int !nb_generated));
+              Format.print_flush ()
+            end)
+    [10;100;1000;10000]
 
-  for i = 1 to 20 do
-    Testify_runtime.Arbg.size := i ;
-    let tstart = Unix.gettimeofday () in
-    gen_bst (Random.get_state ()) |> ignore;
-    let tend = Unix.gettimeofday () in
-    Format.printf "boltz %d %f\n" i (tend -. tstart);
-  done;
+
+
+(* let () = *)
+(*   Random.self_init (); *)
+(*   Testify_runtime.count := 1; *)
+(*   (\* spec_binary_tree (gen_arbitrary_bst (Random.get_state ())) |> ignore; *\) *)
+(*   print_newline (); *)
+(*   for i = 1 to 20 do *)
+(*     Testify_runtime.Arbg.size := i ; *)
+(*     let tstart = Unix.gettimeofday () in *)
+(*     let res = gen_reject_bst (i*1000) in *)
+(*     let tend = Unix.gettimeofday () in *)
+(*     Format.printf "rejection %d %f %b\n" i (tend -. tstart) res; *)
+(*   done; *)
+
+(*   for i = 1 to 20 do *)
+(*     Testify_runtime.Arbg.size := i ; *)
+(*     let tstart = Unix.gettimeofday () in *)
+(*     gen_bst (Random.get_state ()) |> ignore; *)
+(*     let tend = Unix.gettimeofday () in *)
+(*     Format.printf "boltz %d %f\n" i (tend -. tstart); *)
+(*   done; *)
   
-  for i = 1 to 40 do
-    Testify_runtime.Arbg.size := i*1000 ;
-    let tstart = Unix.gettimeofday () in
-    let size, _ = gen_bst (Random.get_state ()) in
-    let tend = Unix.gettimeofday () in
-    Format.printf "boltz %d %f\n" size (tend -. tstart);
-    Format.print_flush ();
-  done;
+(*   for i = 1 to 40 do *)
+(*     Testify_runtime.Arbg.size := i*1000 ; *)
+(*     let tstart = Unix.gettimeofday () in *)
+(*     let size, _ = gen_bst (Random.get_state ()) in *)
+(*     let tend = Unix.gettimeofday () in *)
+(*     Format.printf "boltz %d %f\n" size (tend -. tstart); *)
+(*     Format.print_flush (); *)
+(*   done; *)
 
-  for i = 1 to 40 do
-    Testify_runtime.Arbg.size := i*1000 ;
-    gen_bst_timings (Random.get_state ()) |> ignore;
-    Format.print_flush ();
-  done
+(*   for i = 1 to 40 do *)
+(*     Testify_runtime.Arbg.size := i*1000 ; *)
+(*     gen_bst_timings (Random.get_state ()) |> ignore; *)
+(*     Format.print_flush (); *)
+(*   done *)

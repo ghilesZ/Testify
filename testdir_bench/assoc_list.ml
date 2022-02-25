@@ -44,16 +44,31 @@ let gen_assoc_list rs =
 let () =
   Printexc.record_backtrace true;
   Random.self_init ();
-  for i = 10 to 30 do
-    for _k = 1 to 10 do
-      Testify_runtime.Arbg.size := i*1000;
-      let tstart = Unix.gettimeofday () in
-      let size, _ = gen_assoc_list (Random.get_state ()) in
-      let tend = Unix.gettimeofday () in
-      Format.printf "boltz %d %f\n" size (tend -. tstart);
-      Format.print_flush ();
-    done;
-  done;
+  Format.printf "\n====assoc_list====\n";
+  Format.printf "targeted_size average_size nb_generated average_time\n";
+  let allowed_time = 1. in
+  List.iter (fun i ->
+      Testify_runtime.Arbg.size := i;
+      let ttotal = ref 0. in
+      let nb_generated = ref 0 in
+      let size_generated = ref 0 in
+      try
+        while true do
+          let tstart = Unix.gettimeofday () in
+          let size, _ = gen_assoc_list (Random.get_state ()) in
+          let tend = Unix.gettimeofday () in
+          if !ttotal +. tend -. tstart > allowed_time then
+            raise Exit;
+          size_generated := !size_generated + size;
+          incr nb_generated;
+          ttotal := !ttotal +. tend -. tstart;
+        done;
+      with Exit ->
+            begin
+              Format.printf "%d %f %d %f\n" i ((float_of_int !size_generated) /. (float_of_int !nb_generated)) !nb_generated (!ttotal /. (float_of_int !nb_generated));
+              Format.print_flush ()
+            end)
+    [10;100;1000;10000]
 
 
 (* let rec collect_assoc_list n = *)
