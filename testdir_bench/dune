@@ -1,3 +1,3 @@
 (executables
-(names map bicollect bst itv_tree assoc_list increasing_list)
+(names quad map bicollect bst itv_tree assoc_list increasing_list)
 (libraries testify_runtime))
