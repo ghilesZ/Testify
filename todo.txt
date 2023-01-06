@@ -6,3 +6,5 @@ testable libs:
 
 p-e ajouter des relations entre les arguments d'une fonction:
 - https://github.com/yawaramin/ocaml-decimal/blob/main/lib/decimal.ml#L517
+- mutally recursive types can not be handled properly by the current
+implementation, e.g specs

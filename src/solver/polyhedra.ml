@@ -85,7 +85,7 @@ let filter pol e1 cmp e2 =
 (* extracts the variable with the largest interval range *)
 let largest pol : Var.t * Interval.t =
   let env = pol.Abstract1.env in
-  let box = Abstract1.to_box Apol.man pol in
+  let box = Apol.to_box1 pol in
   let itvs = box.Abstract1.interval_array in
   let len = Array.length itvs in
   let rec aux cur i_max diam_max itv_max =
@@ -111,7 +111,7 @@ let split pol =
   [p1; p2]
 
 (* difference operator *)
-let diff p1 p2 = snd (Apol.set_diff p1 p2)
+let diff p1 p2 = Apol.diff p1 p2
 
 let split pol =
   (* Format.printf "entering split\n%!" ; *)
@@ -218,7 +218,7 @@ let vol_simplex pol =
   loop (List.length l - 1) Z.one l
 
 let default_volume abs =
-  let b = Abstract1.to_box Apol.man abs in
+  let b = Apol.to_box1 abs in
   b.Abstract1.interval_array
   |> Array.fold_left
        (fun v i ->

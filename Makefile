@@ -1,5 +1,5 @@
 all:
-	@dune build examples/ src/rewriter.exe # dont build test_dir*
+	@dune build src/rewriter.exe # dont build test_dir*
 
 test:
 	@dune runtest --force -j1 --no-buffer

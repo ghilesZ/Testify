@@ -78,11 +78,9 @@ let compile (rules : Frontend.ParseTree.t) =
 (** {2 Pretty printing} *)
 
 let pp fmt {spec; aux_rules} =
-  Arbogen.Grammar.pp_expression ~pp_ref:Format.pp_print_string fmt spec ;
+  Grammar.pp_expression ~pp_ref:Format.pp_print_string fmt spec ;
   match aux_rules with
   | [] -> ()
-  | _ ->
-      Format.fprintf fmt "\nwhere:\n%a" Arbogen.Frontend.ParseTree.pp
-        aux_rules
+  | _ -> Format.fprintf fmt "\nwhere:\n%a" Frontend.ParseTree.pp aux_rules
 
 let markdown fmt = Format.fprintf fmt "\n```\n%a\n```\n" pp
